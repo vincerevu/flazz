@@ -44,9 +44,6 @@ type RuntimeProviderFlavor =
 
 type ProviderId =
   | RuntimeProviderFlavor
-  | "opencode"
-  | "opencode-go"
-  | "github-copilot"
 
 type ProviderView = "overview" | "picker" | "detail"
 
@@ -99,26 +96,6 @@ const defaultConfig: ModelConfig = {
 
 const providerList: ProviderMeta[] = [
   {
-    id: "opencode",
-    name: "OpenCode Zen",
-    description: "Reliable optimized models",
-    connectDescription: "OpenCode Zen is not wired into Flazz runtime yet, but the full provider entry is now mirrored in the UI.",
-    icon: "opencode",
-    group: "popular",
-    tag: "Recommended",
-    connectable: false,
-  },
-  {
-    id: "opencode-go",
-    name: "OpenCode Go",
-    description: "Low cost subscription for everyone",
-    connectDescription: "OpenCode Go is not wired into Flazz runtime yet, but the full provider entry is now mirrored in the UI.",
-    icon: "opencode-go",
-    group: "popular",
-    tag: "Recommended",
-    connectable: false,
-  },
-  {
     id: "anthropic",
     name: "Anthropic",
     description: "Direct access to Claude models, including Pro and Max",
@@ -127,15 +104,6 @@ const providerList: ProviderMeta[] = [
     group: "popular",
     runtimeFlavor: "anthropic",
     connectable: true,
-  },
-  {
-    id: "github-copilot",
-    name: "GitHub Copilot",
-    description: "AI models for coding assistance via GitHub Copilot",
-    connectDescription: "GitHub Copilot is not wired into Flazz runtime yet, but the full provider entry is now mirrored in the UI.",
-    icon: "github-copilot",
-    group: "popular",
-    connectable: false,
   },
   {
     id: "openai",
