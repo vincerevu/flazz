@@ -2,6 +2,7 @@
   "name": "@x/renderer",
   "private": true,
   "type": "module",
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
