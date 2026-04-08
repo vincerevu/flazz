@@ -6,7 +6,9 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "clean": "rimraf dist",
+    "build:tsc": "tsc",
+    "build": "run-s clean build:tsc",
     "dev": "tsc -w",
     "test": "node --experimental-strip-types --test src/**/*.test.ts"
   },
