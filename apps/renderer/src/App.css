@@ -91,38 +91,40 @@
 }
 
 :root {
+  --font-family-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --radius: 0.625rem;
-  --background: var(--bg-color, oklch(1 0 0));
-  --foreground: var(--text-color, oklch(0.145 0 0));
-  --card: var(--bg-color, oklch(1 0 0));
-  --card-foreground: var(--text-color, oklch(0.145 0 0));
-  --popover: var(--bg-color, oklch(1 0 0));
-  --popover-foreground: var(--text-color, oklch(0.145 0 0));
-  --primary: var(--main-color, oklch(0.205 0 0));
-  --primary-foreground: var(--bg-color, oklch(0.985 0 0));
-  --secondary: var(--sub-alt-color, oklch(0.97 0 0));
-  --secondary-foreground: var(--text-color, oklch(0.205 0 0));
-  --muted: var(--sub-alt-color, oklch(0.97 0 0));
-  --muted-foreground: var(--sub-color, oklch(0.556 0 0));
-  --accent: var(--sub-color, oklch(0.97 0 0));
-  --accent-foreground: var(--text-color, oklch(0.205 0 0));
-  --destructive: var(--error-color, oklch(0.577 0.245 27.325));
-  --border: var(--sub-alt-color, oklch(0.922 0 0));
-  --input: var(--sub-alt-color, oklch(0.922 0 0));
-  --ring: var(--main-color, oklch(0.708 0 0));
+  --background: var(--background-base, var(--bg-color, oklch(1 0 0)));
+  --foreground: var(--text-base, var(--text-color, oklch(0.145 0 0)));
+  --card: var(--surface-raised-stronger-non-alpha, var(--bg-color, oklch(1 0 0)));
+  --card-foreground: var(--text-base, var(--text-color, oklch(0.145 0 0)));
+  --popover: var(--surface-float-base, var(--bg-color, oklch(1 0 0)));
+  --popover-foreground: var(--text-base, var(--text-color, oklch(0.145 0 0)));
+  --primary: var(--surface-interactive-base, var(--main-color, oklch(0.205 0 0)));
+  --primary-foreground: var(--text-on-interactive-base, var(--bg-color, oklch(0.985 0 0)));
+  --secondary: var(--surface-raised-base, var(--sub-alt-color, oklch(0.97 0 0)));
+  --secondary-foreground: var(--text-base, var(--text-color, oklch(0.205 0 0)));
+  --muted: var(--surface-base, var(--sub-alt-color, oklch(0.97 0 0)));
+  --muted-foreground: var(--text-weak, var(--sub-color, oklch(0.556 0 0)));
+  --accent: var(--surface-base-hover, var(--sub-color, oklch(0.97 0 0)));
+  --accent-foreground: var(--text-base, var(--text-color, oklch(0.205 0 0)));
+  --destructive: var(--surface-critical-base, var(--error-color, oklch(0.577 0.245 27.325)));
+  --border: var(--border-weak-base, var(--sub-alt-color, oklch(0.922 0 0)));
+  --input: var(--input-base, var(--sub-alt-color, oklch(0.922 0 0)));
+  --ring: var(--border-interactive-base, var(--main-color, oklch(0.708 0 0)));
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: var(--bg-color, oklch(0.985 0 0));
-  --sidebar-foreground: var(--text-color, oklch(0.145 0 0));
-  --sidebar-primary: var(--main-color, oklch(0.205 0 0));
-  --sidebar-primary-foreground: var(--bg-color, oklch(0.985 0 0));
-  --sidebar-accent: var(--sub-color, oklch(0.90 0 0));
-  --sidebar-accent-foreground: var(--text-color, oklch(0.205 0 0));
-  --sidebar-border: var(--sub-alt-color, oklch(0.922 0 0));
-  --sidebar-ring: var(--main-color, oklch(0.708 0 0));
+  --sidebar: var(--background-stronger, var(--bg-color, oklch(0.985 0 0)));
+  --sidebar-foreground: var(--text-base, var(--text-color, oklch(0.145 0 0)));
+  --sidebar-primary: var(--surface-interactive-base, var(--main-color, oklch(0.205 0 0)));
+  --sidebar-primary-foreground: var(--text-on-interactive-base, var(--bg-color, oklch(0.985 0 0)));
+  --sidebar-accent: var(--surface-base-hover, var(--sub-color, oklch(0.90 0 0)));
+  --sidebar-accent-foreground: var(--text-base, var(--text-color, oklch(0.205 0 0)));
+  --sidebar-border: var(--border-weak-base, var(--sub-alt-color, oklch(0.922 0 0)));
+  --sidebar-ring: var(--border-interactive-base, var(--main-color, oklch(0.708 0 0)));
   --scrollbar-track: oklch(0.95 0 0);
   --scrollbar-thumb: oklch(0.75 0 0);
   --scrollbar-thumb-hover: oklch(0.65 0 0);
@@ -172,8 +174,9 @@
     scrollbar-width: thin;
   }
 
-  body {
+body {
     @apply bg-background text-foreground;
+    font-family: var(--font-family-sans);
   }
 
   ::-webkit-scrollbar {

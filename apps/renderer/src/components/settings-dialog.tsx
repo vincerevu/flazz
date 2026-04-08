@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect, useCallback } from "react"
-import { Server, Key, Shield, Palette, Monitor, Sun, Moon, Loader2, CheckCircle2 } from "lucide-react"
+import { Server, Key, Shield, Palette, Loader2, CheckCircle2 } from "lucide-react"
 
 import {
   Dialog,
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/contexts/theme-context"
+import { ProviderSettingsPanel } from "@/components/provider-settings-panel"
 import { toast } from "sonner"
 
 type ConfigTab = "models" | "mcp" | "security" | "appearance"
@@ -35,10 +36,10 @@ interface TabConfig {
 const tabs: TabConfig[] = [
   {
     id: "models",
-    label: "Models",
+    label: "Providers",
     icon: Key,
     path: "config/models.json",
-    description: "Configure LLM providers and API keys",
+    description: "Connect and manage model providers",
   },
   {
     id: "mcp",
@@ -66,67 +67,129 @@ interface SettingsDialogProps {
   children: React.ReactNode
 }
 
-// --- Theme option for Appearance tab ---
-
-function ThemeOption({
-  label,
-  icon: Icon,
-  isSelected,
-  onClick,
+function AppearanceRow({
+  title,
+  description,
+  children,
 }: {
-  label: string
-  icon: React.ElementType
-  isSelected: boolean
-  onClick: () => void
+  title: string
+  description: React.ReactNode
+  children: React.ReactNode
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all",
-        isSelected
-          ? "border-primary bg-primary/5"
-          : "border-border hover:border-primary/50 hover:bg-muted/50"
-      )}
-    >
-      <Icon className={cn("size-6", isSelected ? "text-primary" : "text-muted-foreground")} />
-      <span className={cn("text-sm font-medium", isSelected ? "text-primary" : "text-foreground")}>
-        {label}
-      </span>
-    </button>
+    <div className="flex flex-wrap items-center gap-4 border-b border-border py-3 last:border-none sm:flex-nowrap">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <div className="pt-0.5 text-sm text-muted-foreground">{description}</div>
+      </div>
+      <div className="flex w-full justify-end sm:w-auto sm:shrink-0">{children}</div>
+    </div>
   )
 }
 
 function AppearanceSettings() {
-  const { theme, setTheme } = useTheme()
+  const {
+    colorScheme,
+    setColorScheme,
+    previewColorScheme,
+    themeId,
+    setThemeId,
+    previewTheme,
+    cancelPreview,
+    themeIds,
+    getThemeName,
+    uiFont,
+    setUIFont,
+    codeFont,
+    setCodeFont,
+  } = useTheme()
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h4 className="text-sm font-medium mb-3">Theme</h4>
-        <p className="text-xs text-muted-foreground mb-4">
-          Select your preferred color scheme
-        </p>
-        <div className="grid grid-cols-3 gap-3">
-          <ThemeOption
-            label="Light"
-            icon={Sun}
-            isSelected={theme === "light"}
-            onClick={() => setTheme("light")}
+    <div className="flex flex-col gap-2">
+      <h3 className="pb-2 text-sm font-medium text-foreground">Appearance</h3>
+      <div className="rounded-xl border bg-muted/25 px-4">
+        <AppearanceRow
+          title="Color scheme"
+          description="Choose whether Flazz follows the system, light, or dark theme"
+        >
+          <Select value={colorScheme} onValueChange={(value) => setColorScheme(value as "light" | "dark" | "system")}>
+            <SelectTrigger className="w-full sm:w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="system" onMouseEnter={() => previewColorScheme("system")} onMouseLeave={cancelPreview}>
+                System
+              </SelectItem>
+              <SelectItem value="light" onMouseEnter={() => previewColorScheme("light")} onMouseLeave={cancelPreview}>
+                Light
+              </SelectItem>
+              <SelectItem value="dark" onMouseEnter={() => previewColorScheme("dark")} onMouseLeave={cancelPreview}>
+                Dark
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </AppearanceRow>
+
+        <AppearanceRow
+          title="Theme"
+          description={
+            <>
+              Customise how Flazz is themed.{" "}
+              <a
+                href="https://opencode.ai/docs/themes/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-foreground underline underline-offset-2"
+              >
+                Learn more
+              </a>
+            </>
+          }
+        >
+          <Select value={themeId} onValueChange={setThemeId}>
+            <SelectTrigger className="w-full sm:w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {themeIds.map((id) => (
+                <SelectItem
+                  key={id}
+                  value={id}
+                  onMouseEnter={() => previewTheme(id)}
+                  onMouseLeave={cancelPreview}
+                >
+                  {getThemeName(id)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </AppearanceRow>
+
+        <AppearanceRow
+          title="UI Font"
+          description="Customise the font used throughout the interface"
+        >
+          <Input
+            value={uiFont}
+            onChange={(event) => setUIFont(event.target.value)}
+            placeholder="System Sans"
+            className="w-full sm:w-[220px]"
+            style={{ fontFamily: "var(--font-family-sans)" }}
           />
-          <ThemeOption
-            label="Dark"
-            icon={Moon}
-            isSelected={theme === "dark"}
-            onClick={() => setTheme("dark")}
+        </AppearanceRow>
+
+        <AppearanceRow
+          title="Code Font"
+          description="Customise the font used in code blocks and terminals"
+        >
+          <Input
+            value={codeFont}
+            onChange={(event) => setCodeFont(event.target.value)}
+            placeholder="System Mono"
+            className="w-full sm:w-[220px] font-mono"
+            style={{ fontFamily: "var(--font-family-mono)" }}
           />
-          <ThemeOption
-            label="System"
-            icon={Monitor}
-            isSelected={theme === "system"}
-            onClick={() => setTheme("system")}
-          />
-        </div>
+        </AppearanceRow>
       </div>
     </div>
   )
@@ -497,6 +560,8 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
   )
 }
 
+void ModelSettings
+
 // --- Main Settings Dialog ---
 
 export function SettingsDialog({ children }: SettingsDialogProps) {
@@ -628,7 +693,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             {/* Content */}
             <div className={cn("flex-1 p-4 min-h-0", activeTab === "models" ? "overflow-y-auto" : "overflow-hidden")}>
               {activeTab === "models" ? (
-                <ModelSettings dialogOpen={open} />
+                <ProviderSettingsPanel dialogOpen={open} />
               ) : activeTab === "appearance" ? (
                 <AppearanceSettings />
               ) : loading ? (
