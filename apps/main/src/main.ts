@@ -22,6 +22,8 @@ import { init as initAgentRunner } from "@flazz/core/dist/agent-schedule/runner.
 import { initConfigs } from "@flazz/core/dist/config/initConfigs.js";
 import started from "electron-squirrel-startup";
 
+const rendererDevUrl = "http://localhost:4318";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -129,7 +131,7 @@ function createWindow() {
   // Handle navigation to external URLs (e.g., clicking a link without target="_blank")
   win.webContents.on("will-navigate", (event, url) => {
     const isInternal =
-      url.startsWith("app://") || url.startsWith("http://localhost:5173");
+      url.startsWith("app://") || url.startsWith(rendererDevUrl);
     if (!isInternal) {
       event.preventDefault();
       shell.openExternal(url);
@@ -139,7 +141,7 @@ function createWindow() {
   if (app.isPackaged) {
     win.loadURL("app://-/index.html");
   } else {
-    win.loadURL("http://localhost:5173");
+    win.loadURL(rendererDevUrl);
   }
 }
 

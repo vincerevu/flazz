@@ -88,18 +88,11 @@ import { SettingsDialog } from "@/components/settings-dialog"
 import { toast } from "@/lib/toast"
 import { ServiceEvent } from "@flazz/shared/src/service-events.js"
 import z from "zod"
+import type { TreeNode } from "@/features/knowledge/types"
 
 type OAuthStateConfigEntry = {
   connected: boolean
   error?: string | null
-}
-
-interface TreeNode {
-  path: string
-  name: string
-  kind: "file" | "dir"
-  children?: TreeNode[]
-  loaded?: boolean
 }
 
 type KnowledgeActions = {
