@@ -88,21 +88,7 @@ function AppearanceRow({
 }
 
 function AppearanceSettings() {
-  const {
-    colorScheme,
-    setColorScheme,
-    previewColorScheme,
-    themeId,
-    setThemeId,
-    previewTheme,
-    cancelPreview,
-    themeIds,
-    getThemeName,
-    uiFont,
-    setUIFont,
-    codeFont,
-    setCodeFont,
-  } = useTheme()
+  const { colorScheme, setColorScheme } = useTheme()
 
   return (
     <div className="flex flex-col gap-2">
@@ -117,78 +103,17 @@ function AppearanceSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="system" onMouseEnter={() => previewColorScheme("system")} onMouseLeave={cancelPreview}>
+              <SelectItem value="system">
                 System
               </SelectItem>
-              <SelectItem value="light" onMouseEnter={() => previewColorScheme("light")} onMouseLeave={cancelPreview}>
+              <SelectItem value="light">
                 Light
               </SelectItem>
-              <SelectItem value="dark" onMouseEnter={() => previewColorScheme("dark")} onMouseLeave={cancelPreview}>
+              <SelectItem value="dark">
                 Dark
               </SelectItem>
             </SelectContent>
           </Select>
-        </AppearanceRow>
-
-        <AppearanceRow
-          title="Theme"
-          description={
-            <>
-              Customise how Flazz is themed.{" "}
-              <a
-                href="https://opencode.ai/docs/themes/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-foreground underline underline-offset-2"
-              >
-                Learn more
-              </a>
-            </>
-          }
-        >
-          <Select value={themeId} onValueChange={setThemeId}>
-            <SelectTrigger className="w-full sm:w-[220px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {themeIds.map((id) => (
-                <SelectItem
-                  key={id}
-                  value={id}
-                  onMouseEnter={() => previewTheme(id)}
-                  onMouseLeave={cancelPreview}
-                >
-                  {getThemeName(id)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </AppearanceRow>
-
-        <AppearanceRow
-          title="UI Font"
-          description="Customise the font used throughout the interface"
-        >
-          <Input
-            value={uiFont}
-            onChange={(event) => setUIFont(event.target.value)}
-            placeholder="System Sans"
-            className="w-full sm:w-[220px]"
-            style={{ fontFamily: "var(--font-family-sans)" }}
-          />
-        </AppearanceRow>
-
-        <AppearanceRow
-          title="Code Font"
-          description="Customise the font used in code blocks and terminals"
-        >
-          <Input
-            value={codeFont}
-            onChange={(event) => setCodeFont(event.target.value)}
-            placeholder="System Mono"
-            className="w-full sm:w-[220px] font-mono"
-            style={{ fontFamily: "var(--font-family-mono)" }}
-          />
         </AppearanceRow>
       </div>
     </div>

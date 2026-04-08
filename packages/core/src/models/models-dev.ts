@@ -6,13 +6,15 @@ import { WorkDir } from "../config/config.js";
 const CACHE_PATH = path.join(WorkDir, "config", "models.dev.json");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
+const ModelsDevFlag = z.union([z.boolean(), z.record(z.string(), z.unknown())]);
+
 const ModelsDevModel = z.object({
   id: z.string().optional(),
   name: z.string().optional(),
   release_date: z.string().optional(),
-  tool_call: z.boolean().optional(),
-  experimental: z.boolean().optional(),
-  status: z.enum(["alpha", "beta", "deprecated"]).optional(),
+  tool_call: ModelsDevFlag.optional(),
+  experimental: ModelsDevFlag.optional(),
+  status: z.string().optional(),
 }).passthrough();
 
 const ModelsDevProvider = z.object({
@@ -126,12 +128,16 @@ function pickProvider(
 
 function isStableModel(model: z.infer<typeof ModelsDevModel>): boolean {
   if (model.experimental) return false;
-  if (model.status && ["alpha", "beta", "deprecated"].includes(model.status)) return false;
+  if (model.status && ["alpha", "beta", "deprecated", "preview", "experimental"].includes(model.status.toLowerCase())) {
+    return false;
+  }
   return true;
 }
 
 function supportsToolCall(model: z.infer<typeof ModelsDevModel>): boolean {
-  return model.tool_call === true;
+  if (typeof model.tool_call === "boolean") return model.tool_call;
+  if (model.tool_call && typeof model.tool_call === "object") return true;
+  return false;
 }
 
 function normalizeModels(models: Record<string, z.infer<typeof ModelsDevModel>>): ProviderSummary["models"] {
