@@ -67,6 +67,7 @@ import { appIpc } from '@/services/app-ipc'
 import { runsIpc } from '@/services/runs-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
 import { knowledgeIpc } from '@/services/knowledge-ipc'
+import { agentScheduleIpc } from '@/services/agent-schedule-ipc'
 
 interface BackgroundTaskSchedule {
   type: 'cron' | 'window' | 'once'
@@ -88,6 +89,7 @@ interface DesktopWindowState {
 interface AgentSchedule {
   name: string
   description?: string
+  startingMessage?: string
   schedule: BackgroundTaskSchedule
   enabled: boolean
   status?: 'running' | 'scheduled' | 'finished' | 'failed' | 'triggered'
@@ -112,8 +114,39 @@ function App() {
   // --- Search Dialog ---
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   
-  const [backgroundTasks] = useState<AgentSchedule[]>([])
+  const [backgroundTasks, setBackgroundTasks] = useState<AgentSchedule[]>([])
   const [selectedBackgroundTask, setSelectedBackgroundTask] = useState<string | null>(null)
+
+  const loadBackgroundTasks = useCallback(async () => {
+    try {
+      const config = await agentScheduleIpc.getConfig()
+      const state = await agentScheduleIpc.getState()
+
+      const merged: AgentSchedule[] = Object.entries(config.agents).map(([name, entry]) => {
+        const agentState = state.agents[name]
+        return {
+          name,
+          description: entry.description,
+          startingMessage: entry.startingMessage,
+          schedule: entry.schedule,
+          enabled: entry.enabled ?? true,
+          status: agentState?.status,
+          nextRunAt: agentState?.nextRunAt,
+          lastRunAt: agentState?.lastRunAt,
+          lastError: agentState?.lastError,
+          runCount: agentState?.runCount,
+        }
+      })
+
+      setBackgroundTasks(merged)
+    } catch (err) {
+      console.error('Failed to load background tasks:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadBackgroundTasks()
+  }, [loadBackgroundTasks])
 
   // --- Navigation & History ---
   const historyRef = useRef<{ back: ViewState[]; forward: ViewState[] }>({ back: [], forward: [] })
@@ -493,9 +526,21 @@ const handleWindowMinimize = useCallback(() => {
   }, [expandedFrom, navigate])
 
   const handleToggleBackgroundTask = useCallback(async (name: string, enabled: boolean) => {
-    console.log('Toggle task:', name, enabled)
-    // TODO: implement agent schedule update via 'agent-schedule:updateAgent'
-  }, [])
+    const task = backgroundTasks.find(t => t.name === name)
+    if (!task) return
+
+    try {
+      await agentScheduleIpc.updateAgent(name, {
+        schedule: task.schedule,
+        enabled,
+        startingMessage: task.startingMessage,
+        description: task.description,
+      })
+      await loadBackgroundTasks()
+    } catch (err) {
+      console.error('Failed to toggle background task:', err)
+    }
+  }, [backgroundTasks, loadBackgroundTasks])
 
 
   // Keyboard shortcut: Cmd+K / Ctrl+K to open search
