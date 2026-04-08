@@ -3,8 +3,9 @@ import fs from "fs";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
 
+export const LegacyWorkDir = path.join(homedir(), ".Flazz");
 // Resolve app root relative to compiled file location (dist/...)
-export const WorkDir = path.join(homedir(), ".Flazz");
+export const WorkDir = path.join(homedir(), "Flazz");
 
 // Get the directory of this file (for locating bundled assets)
 const __filename = fileURLToPath(import.meta.url);
@@ -16,6 +17,19 @@ function ensureDirs() {
     ensure(path.join(WorkDir, "agents"));
     ensure(path.join(WorkDir, "config"));
     ensure(path.join(WorkDir, "knowledge"));
+}
+
+function migrateLegacyWorkDir() {
+    if (WorkDir === LegacyWorkDir) return;
+    if (!fs.existsSync(LegacyWorkDir)) return;
+    if (fs.existsSync(WorkDir)) return;
+
+    try {
+        fs.renameSync(LegacyWorkDir, WorkDir);
+        console.log(`[Workspace] Migrated workspace from ${LegacyWorkDir} to ${WorkDir}`);
+    } catch (error) {
+        console.warn("[Workspace] Failed to migrate legacy workspace directory:", error);
+    }
 }
 
 function ensureDefaultConfigs() {
@@ -89,6 +103,7 @@ function ensureWelcomeFile() {
     }
 }
 
+migrateLegacyWorkDir();
 ensureDirs();
 ensureDefaultConfigs();
 ensureWelcomeFile();

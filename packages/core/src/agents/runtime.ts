@@ -16,6 +16,7 @@ import { isBlocked, extractCommandNames } from "../application/lib/command-execu
 import container from "../di/container.js";
 import { IModelConfigRepo } from "../models/repo.js";
 import { createProvider } from "../models/models.js";
+import { getModelExecutionPolicy } from "../models/provider-capabilities.js";
 import { IAgentsRepo } from "./repo.js";
 import { IMonotonicallyIncreasingIdGenerator } from "../application/lib/id-gen.js";
 import { IBus } from "../application/lib/bus.js";
@@ -227,6 +228,11 @@ export class StreamStepMessageBuilder {
     private reasoningBuffer: string = "";
     private providerOptions: z.infer<typeof ProviderOptions> | undefined = undefined;
     private reasoningProviderOptions: z.infer<typeof ProviderOptions> | undefined = undefined;
+    private sanitizeTextArtifacts: boolean;
+
+    constructor(options?: { sanitizeTextArtifacts?: boolean }) {
+        this.sanitizeTextArtifacts = options?.sanitizeTextArtifacts ?? false;
+    }
 
     flushBuffers() {
         if (this.reasoningBuffer || this.reasoningProviderOptions) {
@@ -235,7 +241,12 @@ export class StreamStepMessageBuilder {
             this.reasoningProviderOptions = undefined;
         }
         if (this.textBuffer) {
-            this.parts.push({ type: "text", text: this.textBuffer });
+            const nextText = this.sanitizeTextArtifacts
+                ? sanitizeAssistantTextArtifacts(this.textBuffer)
+                : this.textBuffer;
+            if (nextText) {
+                this.parts.push({ type: "text", text: nextText });
+            }
             this.textBuffer = "";
         }
     }
@@ -268,6 +279,7 @@ export class StreamStepMessageBuilder {
                 });
                 break;
             case "finish-step":
+            case "finish":
                 this.providerOptions = event.providerOptions;
                 break;
             case "error":
@@ -284,6 +296,225 @@ export class StreamStepMessageBuilder {
             providerOptions: this.providerOptions,
         };
     }
+}
+
+function sanitizeAssistantTextArtifacts(text: string): string {
+    let next = text;
+
+    next = next
+        .replace(/<\|tool_call_begin\|>/g, "")
+        .replace(/<\|tool_call_end\|>/g, "")
+        .replace(/<\|tool_calls_section_begin\|>/g, "")
+        .replace(/<\|tool_calls_section_end\|>/g, "")
+        .trim();
+
+    const serializedTextMatchers = [
+        /^\[\{\s*"type"\s*:\s*"text"\s*,\s*"text"\s*:\s*"([\s\S]*)"\s*\}\]\s*\}?$/s,
+        /^\[\{\s*type\s*:\s*['"]text['"]\s*,\s*text\s*:\s*['"]([\s\S]*)['"]\s*\}\]\s*\}?$/s,
+    ];
+
+    for (const matcher of serializedTextMatchers) {
+        const match = next.match(matcher);
+        if (!match) continue;
+        try {
+            const quoted = `"${match[1]
+                .replace(/\\/g, "\\\\")
+                .replace(/"/g, '\\"')
+                .replace(/\r/g, "\\r")
+                .replace(/\n/g, "\\n")}"`;
+            return JSON.parse(quoted).trim();
+        } catch {
+            return match[1].replace(/\\n/g, "\n").replace(/\\'/g, "'").trim();
+        }
+    }
+
+    return next;
+}
+
+function collectTextualToolCalls(value: unknown): Array<{ toolName: string; input: unknown }> {
+    if (!value) return [];
+
+    if (Array.isArray(value)) {
+        return value.flatMap(collectTextualToolCalls);
+    }
+
+    if (typeof value !== "object") return [];
+    const record = value as Record<string, unknown>;
+
+    if (
+        typeof record.toolName === "string"
+        && record.input !== undefined
+    ) {
+        return [{ toolName: record.toolName, input: record.input }];
+    }
+
+    if (
+        typeof record.name === "string"
+        && (record.arguments !== undefined || record.input !== undefined)
+    ) {
+        return [{ toolName: record.name, input: record.arguments ?? record.input }];
+    }
+
+    if (Array.isArray(record.tool_calls)) {
+        return collectTextualToolCalls(record.tool_calls);
+    }
+
+    if (Array.isArray(record.toolCalls)) {
+        return collectTextualToolCalls(record.toolCalls);
+    }
+
+    if (Array.isArray(record.content)) {
+        return collectTextualToolCalls(record.content);
+    }
+
+    if (record.type === "tool-call" || record.type === "tool_call") {
+        const toolName = typeof record.toolName === "string"
+            ? record.toolName
+            : typeof record.name === "string"
+                ? record.name
+                : null;
+        if (toolName) {
+            return [{ toolName, input: record.input ?? record.arguments ?? {} }];
+        }
+    }
+
+    return [];
+}
+
+function tryParseTextualToolCalls(text: string): Array<{ toolName: string; input: unknown }> {
+    const cleaned = sanitizeAssistantTextArtifacts(text);
+    const candidates = new Set<string>([cleaned]);
+
+    const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenced?.[1]) {
+        candidates.add(fenced[1].trim());
+    }
+
+    const firstJsonLike = Math.min(
+        ...[cleaned.indexOf("{"), cleaned.indexOf("[")].filter((index) => index >= 0),
+    );
+    const lastBrace = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+    if (Number.isFinite(firstJsonLike) && firstJsonLike >= 0 && lastBrace > firstJsonLike) {
+        candidates.add(cleaned.slice(firstJsonLike, lastBrace + 1));
+    }
+
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        try {
+            const parsed = JSON.parse(candidate);
+            const toolCalls = collectTextualToolCalls(parsed);
+            if (toolCalls.length > 0) {
+                return toolCalls;
+            }
+        } catch {
+            continue;
+        }
+    }
+
+    return [];
+}
+
+async function normalizeAssistantMessage({
+    message,
+    agent,
+    idGenerator,
+    allowTextToolFallback,
+}: {
+    message: z.infer<typeof AssistantMessage>;
+    agent: z.infer<typeof Agent>;
+    idGenerator: IMonotonicallyIncreasingIdGenerator;
+    allowTextToolFallback: boolean;
+}): Promise<z.infer<typeof AssistantMessage>> {
+    if (!(message.content instanceof Array)) {
+        return message;
+    }
+
+    const parts = message.content.map((part) => {
+        if (part.type !== "text") return part;
+        return {
+            ...part,
+            text: sanitizeAssistantTextArtifacts(part.text),
+        };
+    }).filter((part) => !(part.type === "text" && part.text.length === 0));
+
+    if (!allowTextToolFallback || parts.some((part) => part.type === "tool-call")) {
+        return {
+            ...message,
+            content: parts,
+        };
+    }
+
+    const availableTools = new Set(Object.keys(agent.tools ?? {}));
+    const textBlob = parts
+        .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+        .trim();
+
+    const parsedToolCalls = tryParseTextualToolCalls(textBlob)
+        .filter((toolCall) => availableTools.has(toolCall.toolName));
+
+    if (parsedToolCalls.length === 0) {
+        return {
+            ...message,
+            content: parts,
+        };
+    }
+
+    const toolCallParts: z.infer<typeof ToolCallPart>[] = [];
+    for (const toolCall of parsedToolCalls) {
+        toolCallParts.push({
+            type: "tool-call",
+            toolCallId: await idGenerator.next(),
+            toolName: toolCall.toolName,
+            arguments: toolCall.input,
+        });
+    }
+
+    return {
+        ...message,
+        content: [
+            ...parts.filter((part) => part.type !== "text"),
+            ...toolCallParts,
+        ],
+    };
+}
+
+function hasVisibleAssistantOutput(message: z.infer<typeof AssistantMessage>) {
+    if (typeof message.content === "string") {
+        return message.content.trim().length > 0;
+    }
+
+    return message.content.some((part) => {
+        if (part.type === "text" || part.type === "reasoning") {
+            return part.text.trim().length > 0;
+        }
+        return true;
+    });
+}
+
+function appendLengthStopNotice(message: z.infer<typeof AssistantMessage>): z.infer<typeof AssistantMessage> {
+    const warning = "The selected model stopped early because it hit the provider's output limit. Try a shorter prompt or a more tool-compatible model/provider.";
+
+    if (typeof message.content === "string") {
+        return {
+            ...message,
+            content: message.content.trim()
+                ? `${message.content}\n\n${warning}`
+                : warning,
+        };
+    }
+
+    return {
+        ...message,
+        content: [
+            ...message.content,
+            {
+                type: "text",
+                text: warning,
+            },
+        ],
+    };
 }
 
 function formatLlmStreamError(rawError: unknown): string {
@@ -702,7 +933,9 @@ export async function* streamAgent({
     const agent = await loadAgent(state.agentName!);
 
     // set up tools
-    const tools = await buildTools(agent);
+    const requestedTools = await buildTools(agent);
+    const executionPolicy = getModelExecutionPolicy(modelConfig.provider);
+    const tools = executionPolicy.toolExecutionMode === "full" ? requestedTools : {};
 
     // set up provider + model
     const provider = createProvider(modelConfig.provider);
@@ -860,7 +1093,6 @@ export async function* streamAgent({
         // run one LLM turn.
         loopLogger.log('running llm turn');
         // stream agent response and build message
-        const messageBuilder = new StreamStepMessageBuilder();
         const now = new Date();
         const currentDateTime = now.toLocaleString('en-US', {
             weekday: 'long',
@@ -871,8 +1103,15 @@ export async function* streamAgent({
             minute: '2-digit',
             timeZoneName: 'short'
         });
-        const instructionsWithDateTime = `Current date and time: ${currentDateTime}\n\n${agent.instructions}`;
+        const compatibilityNote = executionPolicy.toolExecutionMode === "disabled" && Object.keys(requestedTools).length > 0
+            ? "\n\nProvider compatibility note: Tool execution is disabled for this provider endpoint because it does not reliably return structured tool calls in Flazz. Do not claim to inspect tools, run MCP servers, browse, or execute actions. Answer directly with the information already available in the conversation and be explicit when tool access is unavailable."
+            : "";
+        const instructionsWithDateTime = `Current date and time: ${currentDateTime}\n\n${agent.instructions}${compatibilityNote}`;
         let streamError: string | null = null;
+        let lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "error" | "other" | "unknown" | null = null;
+        const messageBuilder = new StreamStepMessageBuilder({
+            sanitizeTextArtifacts: executionPolicy.sanitizeTextArtifacts,
+        });
         for await (const event of streamLlm(
             model,
             state.messages,
@@ -897,10 +1136,21 @@ export async function* streamAgent({
                 });
                 break;
             }
+            if (event.type === "finish-step" || event.type === "finish") {
+                lastFinishReason = event.finishReason;
+            }
         }
 
         // build and emit final message from agent response
-        const message = messageBuilder.get();
+        let message = await normalizeAssistantMessage({
+            message: messageBuilder.get(),
+            agent,
+            idGenerator,
+            allowTextToolFallback: executionPolicy.allowTextToolFallback,
+        });
+        if (lastFinishReason === "length" && !hasVisibleAssistantOutput(message)) {
+            message = appendLengthStopNotice(message);
+        }
         yield* processEvent({
             runId,
             messageId: await idGenerator.next(),
@@ -1047,6 +1297,13 @@ async function* streamLlm(
                     usage: event.usage,
                     finishReason: event.finishReason,
                     providerOptions: event.providerMetadata,
+                };
+                break;
+            case "finish":
+                yield {
+                    type: "finish",
+                    finishReason: event.finishReason,
+                    totalUsage: event.totalUsage,
                 };
                 break;
             default:

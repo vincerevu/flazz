@@ -9,6 +9,7 @@ import {
 } from './oauth-handler.js';
 import { watcher as watcherCore, workspace } from '@x/core';
 import { workspace as workspaceShared } from '@x/shared';
+import { WorkDir } from '@x/core/dist/config/config.js';
 import * as mcpCore from '@x/core/dist/mcp/mcp.js';
 import * as runsCore from '@x/core/dist/runs/runs.js';
 import { bus } from '@x/core/dist/runs/bus.js';
@@ -96,6 +97,27 @@ function getVersions(): {
     node: process.versions.node,
     electron: process.versions.electron,
   };
+}
+
+function getWindowState(win: BrowserWindow | null): IPCChannels['app:getWindowState']['res'] {
+  return {
+    isMaximized: win?.isMaximized() ?? false,
+    isFullscreen: win?.isFullScreen() ?? false,
+    platform: process.platform,
+    supportsCustomTitlebar: process.platform !== 'darwin',
+  };
+}
+
+function getEventWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
+  return BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
+}
+
+export function emitWindowStateChanged(win: BrowserWindow): void {
+  if (win.isDestroyed() || !win.webContents) {
+    return;
+  }
+
+  win.webContents.send('app:windowStateChanged', getWindowState(win));
 }
 
 // ============================================================================
@@ -194,7 +216,7 @@ function handleWorkspaceChange(event: z.infer<typeof workspaceShared.WorkspaceCh
 
 /**
  * Start workspace watcher
- * Watches ~/.Flazz recursively and emits change events to renderer
+ * Watches the Flazz workspace recursively and emits change events to renderer
  * 
  * This should be called once when the app starts (from main.ts).
  * The watcher runs as a main-process service and catches ALL filesystem changes
@@ -303,6 +325,31 @@ export function setupIpcHandlers() {
     'app:getVersions': async () => {
       // args is null for this channel (no request payload)
       return getVersions();
+    },
+    'app:getWindowState': async (event) => {
+      return getWindowState(getEventWindow(event));
+    },
+    'app:minimizeWindow': async (event) => {
+      getEventWindow(event)?.minimize();
+      return { success: true };
+    },
+    'app:toggleMaximizeWindow': async (event) => {
+      const win = getEventWindow(event);
+      if (!win) {
+        return getWindowState(null);
+      }
+
+      if (win.isMaximized()) {
+        win.unmaximize();
+      } else {
+        win.maximize();
+      }
+
+      return getWindowState(win);
+    },
+    'app:closeWindow': async (event) => {
+      getEventWindow(event)?.close();
+      return { success: true };
     },
     'workspace:getRoot': async () => {
       return workspace.getRoot();
@@ -482,8 +529,8 @@ export function setupIpcHandlers() {
       if (filePath.startsWith('~')) {
         filePath = path.join(os.homedir(), filePath.slice(1));
       } else if (!path.isAbsolute(filePath)) {
-        // Workspace-relative path — resolve against ~/.Flazz/
-        filePath = path.join(os.homedir(), '.Flazz', filePath);
+        // Workspace-relative path — resolve against the Flazz workspace
+        filePath = path.join(WorkDir, filePath);
       }
       const error = await shell.openPath(filePath);
       return { error: error || undefined };
@@ -493,8 +540,8 @@ export function setupIpcHandlers() {
       if (filePath.startsWith('~')) {
         filePath = path.join(os.homedir(), filePath.slice(1));
       } else if (!path.isAbsolute(filePath)) {
-        // Workspace-relative path — resolve against ~/.Flazz/
-        filePath = path.join(os.homedir(), '.Flazz', filePath);
+        // Workspace-relative path — resolve against the Flazz workspace
+        filePath = path.join(WorkDir, filePath);
       }
       const stat = await fs.stat(filePath);
       if (stat.size > 10 * 1024 * 1024) {

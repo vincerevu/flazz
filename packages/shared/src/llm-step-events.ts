@@ -51,6 +51,19 @@ export const LlmStepStreamFinishStepEvent = z.object({
     providerOptions: ProviderOptions.optional(),
 });
 
+export const LlmStepStreamFinishEvent = z.object({
+    type: z.literal("finish"),
+    finishReason: z.enum(["stop", "tool-calls", "length", "content-filter", "error", "other", "unknown"]),
+    totalUsage: z.object({
+        inputTokens: z.number().optional(),
+        outputTokens: z.number().optional(),
+        totalTokens: z.number().optional(),
+        reasoningTokens: z.number().optional(),
+        cachedInputTokens: z.number().optional(),
+    }).optional(),
+    providerOptions: ProviderOptions.optional(),
+});
+
 export const LlmStepStreamErrorEvent = BaseEvent.extend({
     type: z.literal("error"),
     error: z.string(),
@@ -65,5 +78,6 @@ export const LlmStepStreamEvent = z.union([
     LlmStepStreamTextEndEvent,
     LlmStepStreamToolCallEvent,
     LlmStepStreamFinishStepEvent,
+    LlmStepStreamFinishEvent,
     LlmStepStreamErrorEvent,
 ]);

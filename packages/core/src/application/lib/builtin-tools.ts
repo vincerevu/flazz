@@ -1280,8 +1280,7 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
         }),
         isAvailable: async () => {
             try {
-                const homedir = process.env.HOME || process.env.USERPROFILE || '';
-                const braveConfigPath = path.join(homedir, '.Flazz', 'config', 'brave-search.json');
+                const braveConfigPath = path.join(WorkDir, 'config', 'brave-search.json');
                 const raw = await fs.readFile(braveConfigPath, 'utf8');
                 const config = JSON.parse(raw);
                 return !!config.apiKey;
@@ -1292,8 +1291,7 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
         execute: async ({ query, count, freshness }: { query: string; count?: number; freshness?: string }) => {
             try {
                 // Read API key from config
-                const homedir = process.env.HOME || process.env.USERPROFILE || '';
-                const braveConfigPath = path.join(homedir, '.Flazz', 'config', 'brave-search.json');
+                const braveConfigPath = path.join(WorkDir, 'config', 'brave-search.json');
 
                 let apiKey: string;
                 try {
@@ -1303,14 +1301,14 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
                 } catch {
                     return {
                         success: false,
-                        error: 'Brave Search API key not configured. Create ~/.Flazz/config/brave-search.json with { "apiKey": "<your-key>" }',
+                        error: 'Brave Search API key not configured. Create ~/Flazz/config/brave-search.json with { "apiKey": "<your-key>" }',
                     };
                 }
 
                 if (!apiKey) {
                     return {
                         success: false,
-                        error: 'Brave Search API key is empty. Set "apiKey" in ~/.Flazz/config/brave-search.json',
+                        error: 'Brave Search API key is empty. Set "apiKey" in ~/Flazz/config/brave-search.json',
                     };
                 }
 
@@ -1378,8 +1376,7 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
         }),
         isAvailable: async () => {
             try {
-                const homedir = process.env.HOME || process.env.USERPROFILE || '';
-                const exaConfigPath = path.join(homedir, '.Flazz', 'config', 'exa-search.json');
+                const exaConfigPath = path.join(WorkDir, 'config', 'exa-search.json');
                 const raw = await fs.readFile(exaConfigPath, 'utf8');
                 const config = JSON.parse(raw);
                 return !!config.apiKey;
@@ -1389,8 +1386,7 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
         },
         execute: async ({ query, numResults, category }: { query: string; numResults?: number; category?: string }) => {
             try {
-                const homedir = process.env.HOME || process.env.USERPROFILE || '';
-                const exaConfigPath = path.join(homedir, '.Flazz', 'config', 'exa-search.json');
+                const exaConfigPath = path.join(WorkDir, 'config', 'exa-search.json');
 
                 let apiKey: string;
                 try {
@@ -1400,14 +1396,14 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
                 } catch {
                     return {
                         success: false,
-                        error: 'Exa Search API key not configured. Create ~/.Flazz/config/exa-search.json with { "apiKey": "<your-key>" }',
+                        error: 'Exa Search API key not configured. Create ~/Flazz/config/exa-search.json with { "apiKey": "<your-key>" }',
                     };
                 }
 
                 if (!apiKey) {
                     return {
                         success: false,
-                        error: 'Exa Search API key is empty. Set "apiKey" in ~/.Flazz/config/exa-search.json',
+                        error: 'Exa Search API key is empty. Set "apiKey" in ~/Flazz/config/exa-search.json',
                     };
                 }
 

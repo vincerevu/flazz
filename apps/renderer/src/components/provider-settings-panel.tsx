@@ -953,7 +953,13 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
             ) : null}
 
             <div>
-              <Button onClick={() => void handleConnect()} disabled={detailSaving} className="h-11 min-w-28 px-5">
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => void handleConnect()}
+                disabled={detailSaving}
+                className="min-w-28"
+              >
                 {detailSaving ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" />
