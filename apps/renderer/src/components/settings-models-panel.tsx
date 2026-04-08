@@ -6,6 +6,8 @@ import { Loader2, Search, X } from "lucide-react"
 import { ProviderIcon } from "@/components/provider-icon"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { workspaceIpc } from "@/services/workspace-ipc"
+import { modelsIpc } from "@/services/models-ipc"
 
 type RuntimeProviderFlavor =
   | "openai"
@@ -140,14 +142,14 @@ export function SettingsModelsPanel({ dialogOpen }: { dialogOpen: boolean }) {
       setLoading(true)
       try {
         const [runtimeConfigResult, modelsListResult] = await Promise.all([
-          window.ipc.invoke("workspace:readFile", { path: MODELS_PATH }).catch(() => null),
-          window.ipc.invoke("models:list", null).catch(() => ({ providers: [] })),
+          workspaceIpc.readFile(MODELS_PATH).catch(() => null),
+          modelsIpc.list().catch(() => ({ providers: [] })),
         ])
 
         let connections: SavedProviderConnections = { providers: {} }
 
         try {
-          const connectionResult = await window.ipc.invoke("workspace:readFile", { path: CONNECTIONS_PATH })
+          const connectionResult = await workspaceIpc.readFile(CONNECTIONS_PATH)
           const parsedConnections = JSON.parse(connectionResult.data) as SavedProviderConnections
           if (parsedConnections?.providers) {
             connections = parsedConnections

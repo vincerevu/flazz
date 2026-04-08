@@ -28,6 +28,12 @@ import { GoogleClientIdModal } from "@/components/google-client-id-modal"
 import { ProviderIcon } from "@/components/provider-icon"
 import { getGoogleClientId, setGoogleClientId } from "@/lib/google-client-id-store"
 import { toast } from "sonner"
+import { oauthIpc } from "@/services/oauth-ipc"
+import { composioIpc } from "@/services/composio-ipc"
+import { composioActionsIpc } from "@/services/composio-actions-ipc"
+import { granolaIpc } from "@/services/granola-ipc"
+import { modelsActionsIpc } from "@/services/models-actions-ipc"
+import { modelsIpc } from "@/services/models-ipc"
 
 interface ProviderState {
   isConnected: boolean
@@ -121,7 +127,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     async function loadProviders() {
       try {
         setProvidersLoading(true)
-        const result = await window.ipc.invoke('oauth:list-providers', null)
+        const result = await oauthIpc.listProviders()
         setProviders(result.providers || [])
       } catch (error) {
         console.error('Failed to get available providers:', error)
@@ -141,7 +147,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       try {
         setModelsLoading(true)
         setModelsError(null)
-        const result = await window.ipc.invoke("models:list", null)
+        const result = await modelsIpc.list()
         const catalog: Record<string, LlmModelOption[]> = {}
         for (const provider of result.providers || []) {
           catalog[provider.id] = provider.models || []
@@ -188,7 +194,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const refreshGranolaConfig = useCallback(async () => {
     try {
       setGranolaLoading(true)
-      const result = await window.ipc.invoke('granola:getConfig', null)
+      const result = await granolaIpc.getConfig()
       setGranolaEnabled(result.enabled)
     } catch (error) {
       console.error('Failed to load Granola config:', error)
@@ -202,7 +208,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const handleGranolaToggle = useCallback(async (enabled: boolean) => {
     try {
       setGranolaLoading(true)
-      await window.ipc.invoke('granola:setConfig', { enabled })
+      await granolaIpc.setConfig(enabled)
       setGranolaEnabled(enabled)
       toast.success(enabled ? 'Granola sync enabled' : 'Granola sync disabled')
     } catch (error) {
@@ -217,7 +223,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const refreshSlackStatus = useCallback(async () => {
     try {
       // setSlackLoading(true)
-      const result = await window.ipc.invoke('composio:get-connection-status', { toolkitSlug: 'slack' })
+      const result = await composioActionsIpc.getConnectionStatus('slack')
       setSlackConnected(result.isConnected)
     } catch (error) {
       console.error('Failed to load Slack status:', error)
@@ -231,7 +237,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const startSlackConnect = useCallback(async () => {
     try {
       setSlackConnecting(true)
-      const result = await window.ipc.invoke('composio:initiate-connection', { toolkitSlug: 'slack' })
+      const result = await composioActionsIpc.initiateConnection('slack')
       if (!result.success) {
         toast.error(result.error || 'Failed to connect to Slack')
         setSlackConnecting(false)
@@ -248,7 +254,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   /*
   const handleConnectSlack = useCallback(async () => {
     // Check if Composio is configured
-    const configResult = await window.ipc.invoke('composio:is-configured', null)
+    const configResult = await composioActionsIpc.isConfigured()
     if (!configResult.configured) {
       setComposioApiKeyOpen(true)
       return
@@ -260,7 +266,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   // Handle Composio API key submission
   const handleComposioApiKeySubmit = useCallback(async (apiKey: string) => {
     try {
-      await window.ipc.invoke('composio:set-api-key', { apiKey })
+      await composioActionsIpc.setApiKey(apiKey)
       setComposioApiKeyOpen(false)
       toast.success('Composio API key saved')
       // Now start the Slack connection
@@ -298,11 +304,11 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
         model,
         knowledgeGraphModel,
       }
-      const result = await window.ipc.invoke("models:test", providerConfig)
+      const result = await modelsActionsIpc.test(providerConfig)
       if (result.success) {
         setTestState({ status: "success" })
         // Save and continue
-        await window.ipc.invoke("models:saveConfig", providerConfig)
+        await modelsActionsIpc.saveConfig(providerConfig)
         handleNext()
       } else {
         setTestState({ status: "error", error: result.error })
@@ -329,7 +335,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     const newStates: Record<string, ProviderState> = {}
 
     try {
-      const result = await window.ipc.invoke('oauth:getState', null)
+      const result = await oauthIpc.getState()
       const config = result.config || {}
       for (const provider of providers) {
         newStates[provider] = {
@@ -361,7 +367,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
 
   // Listen for OAuth completion events
   useEffect(() => {
-    const cleanup = window.ipc.on('oauth:didConnect', (event) => {
+    const cleanup = oauthIpc.onDidConnect((event) => {
       const { provider, success, error } = event
 
       setProviderStates(prev => ({
@@ -386,7 +392,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
 
   // Listen for Composio connection events
   useEffect(() => {
-    const cleanup = window.ipc.on('composio:didConnect', (event) => {
+    const cleanup = composioIpc.onDidConnect((event) => {
       const { toolkitSlug, success, error } = event
 
       if (toolkitSlug === 'slack') {
@@ -411,7 +417,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     }))
 
     try {
-      const result = await window.ipc.invoke('oauth:connect', { provider, clientId })
+      const result = await oauthIpc.connect(provider, clientId)
 
       if (!result.success) {
         toast.error(result.error || `Failed to connect to ${provider}`)

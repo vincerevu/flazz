@@ -10,6 +10,7 @@ import {
 import { useDebounce } from '@/hooks/use-debounce'
 import type { FileTab } from '@/components/tab-bar'
 import { stripKnowledgePrefix, toKnowledgePath, wikiLabel } from '@/lib/wiki-links'
+import { workspaceIpc } from '@/services/workspace-ipc'
 
 const GRAPH_TAB_PATH = '__Flazz_graph_view__'
 const untitledBaseName = 'untitled'
@@ -124,10 +125,10 @@ export function useFileEditor({
     let cancelled = false
     ;(async () => {
       try {
-        const stat = await window.ipc.invoke('workspace:stat', { path: pathToLoad })
+        const stat = await workspaceIpc.stat(pathToLoad)
         if (cancelled || fileLoadRequestIdRef.current !== requestId || selectedPathRef.current !== pathToLoad) return
         if (stat.kind === 'file') {
-          const result = await window.ipc.invoke('workspace:readFile', { path: pathToLoad })
+          const result = await workspaceIpc.readFile(pathToLoad)
           if (cancelled || fileLoadRequestIdRef.current !== requestId || selectedPathRef.current !== pathToLoad) return
           setFileContent(result.data)
           const normalizeForCompare = (s: string) => s.split('\n').map(line => line.trimEnd()).join('\n').trim()
@@ -201,13 +202,13 @@ export function useFileEditor({
               if (targetPath !== pathAtStart) {
                 let suffix = 1
                 while (true) {
-                  const exists = await window.ipc.invoke('workspace:exists', { path: targetPath })
+                  const exists = await workspaceIpc.exists(targetPath)
                   if (!exists.exists) break
                   targetPath = `${parentDir}/${desiredName}-${suffix}.md`
                   suffix += 1
                 }
                 renameInProgressRef.current = true
-                await window.ipc.invoke('workspace:rename', { from: pathAtStart, to: targetPath })
+                await workspaceIpc.rename(pathAtStart, targetPath)
                 pathToSave = targetPath
                 contentToSave = rewriteWikiLinksForRenamedFileInMarkdown(
                   debouncedContent,
@@ -249,11 +250,7 @@ export function useFileEditor({
             }
           }
         }
-        await window.ipc.invoke('workspace:writeFile', {
-          path: pathToSave,
-          data: contentToSave,
-          opts: { encoding: 'utf8' }
-        })
+        await workspaceIpc.writeFile(pathToSave, contentToSave, { encoding: 'utf8' })
         initialContentByPathRef.current.set(pathToSave, contentToSave)
 
         if (renamedFrom && renamedTo) {
@@ -396,17 +393,13 @@ export function useFileEditor({
         let name = untitledBaseName
         let fullPath = `${parentPath}/${name}.md`
         while (index < 1000) {
-          const exists = await window.ipc.invoke('workspace:exists', { path: fullPath })
+          const exists = await workspaceIpc.exists(fullPath)
           if (!exists.exists) break
           index += 1
           name = `${untitledBaseName}-${index}`
           fullPath = `${parentPath}/${name}.md`
         }
-        await window.ipc.invoke('workspace:writeFile', {
-          path: fullPath,
-          data: `# ${name}\n\n`,
-          opts: { encoding: 'utf8' }
-        })
+        await workspaceIpc.writeFile(fullPath, `# ${name}\n\n`, { encoding: 'utf8' })
         navigateToFile(fullPath)
       } catch (err) {
         console.error('Failed to create note:', err)
@@ -415,10 +408,7 @@ export function useFileEditor({
     },
     createFolder: async (parentPath: string = 'knowledge') => {
       try {
-        await window.ipc.invoke('workspace:mkdir', {
-          path: `${parentPath}/new-folder-${Date.now()}`,
-          recursive: true
-        })
+        await workspaceIpc.mkdir(`${parentPath}/new-folder-${Date.now()}`, { recursive: true })
       } catch (err) {
         console.error('Failed to create folder:', err)
         throw err
@@ -430,7 +420,7 @@ export function useFileEditor({
         const finalName = isDir ? newName : (newName.endsWith('.md') ? newName : `${newName}.md`)
         parts[parts.length - 1] = finalName
         const newPath = parts.join('/')
-        await window.ipc.invoke('workspace:rename', { from: oldPath, to: newPath })
+        await workspaceIpc.rename(oldPath, newPath)
         const rewriteForRename = (content: string) =>
           isDir ? content : rewriteWikiLinksForRenamedFileInMarkdown(content, oldPath, newPath)
         setFileTabs(prev => prev.map(tab => (tab.path === oldPath ? { ...tab, path: newPath } : tab)))
@@ -469,7 +459,7 @@ export function useFileEditor({
     },
     remove: async (path: string) => {
       try {
-        await window.ipc.invoke('workspace:remove', { path, opts: { trash: true } })
+        await workspaceIpc.remove(path, { trash: true })
         if (path.endsWith('.md')) {
           removeEditorCacheForPath(path)
           initialContentByPathRef.current.delete(path)
@@ -498,14 +488,10 @@ export function useFileEditor({
     const resolvedPath = toKnowledgePath(wikiPath)
     if (!resolvedPath) return null
     try {
-      const exists = await window.ipc.invoke('workspace:exists', { path: resolvedPath })
+      const exists = await workspaceIpc.exists(resolvedPath)
       if (!exists.exists) {
         const title = wikiLabel(wikiPath) || 'New Note'
-        await window.ipc.invoke('workspace:writeFile', {
-          path: resolvedPath,
-          data: `# ${title}\n\n`,
-          opts: { encoding: 'utf8', mkdirp: true },
-        })
+        await workspaceIpc.writeFile(resolvedPath, `# ${title}\n\n`, { encoding: 'utf8', mkdirp: true })
       }
       return resolvedPath
     } catch (err) {

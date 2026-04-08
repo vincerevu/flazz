@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import type { TreeNode, DirEntry } from '../types'
 import { stripKnowledgePrefix, toKnowledgePath } from '@/lib/wiki-links'
+import { workspaceIpc } from '@/services/workspace-ipc'
 
 // Sort nodes (dirs first, then alphabetically)
 function sortNodes(nodes: TreeNode[]): TreeNode[] {
@@ -69,10 +70,7 @@ export function useWorkspaceTree() {
 
   const loadDirectory = useCallback(async () => {
     try {
-      const result = await window.ipc.invoke('workspace:readdir', {
-        path: 'knowledge',
-        opts: { recursive: true, includeHidden: false }
-      })
+      const result = await workspaceIpc.readdir('knowledge', { recursive: true, includeHidden: false })
       return buildTree(result)
     } catch (err) {
       console.error('Failed to load directory:', err)

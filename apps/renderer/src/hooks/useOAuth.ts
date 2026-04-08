@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from '@/lib/toast';
+import { oauthIpc } from '@/services/oauth-ipc';
 
 type OAuthStateConfigEntry = {
   connected: boolean;
@@ -17,7 +18,7 @@ export function useOAuth(provider: string) {
   const checkConnection = useCallback(async () => {
     try {
       setIsLoading(true);
-      const result = await window.ipc.invoke('oauth:getState', null);
+      const result = await oauthIpc.getState();
       const config = (result.config ?? {}) as Record<string, OAuthStateConfigEntry>;
       setIsConnected(config[provider]?.connected ?? false);
     } catch (error) {
@@ -35,7 +36,7 @@ export function useOAuth(provider: string) {
   
     // Listen for OAuth completion events
     useEffect(() => {
-      const cleanup = window.ipc.on('oauth:didConnect', (event) => {
+      const cleanup = oauthIpc.onDidConnect((event) => {
         if (event.provider !== provider) {
           return; // Ignore events for other providers
         }
@@ -59,7 +60,7 @@ export function useOAuth(provider: string) {
   const connect = useCallback(async (clientId?: string) => {
     try {
       setIsConnecting(true);
-      const result = await window.ipc.invoke('oauth:connect', { provider, clientId });
+      const result = await oauthIpc.connect(provider, clientId);
       if (result.success) {
         // OAuth flow started - keep isConnecting state, wait for event
         // Event listener will handle the actual completion
@@ -78,7 +79,7 @@ export function useOAuth(provider: string) {
   const disconnect = useCallback(async () => {
     try {
       setIsLoading(true);
-      const result = await window.ipc.invoke('oauth:disconnect', { provider });
+      const result = await oauthIpc.disconnect(provider);
       if (result.success) {
         toast(`Disconnected from ${provider}`, 'success');
         setIsConnected(false);
@@ -113,7 +114,7 @@ export function useConnectedProviders() {
   const refresh = useCallback(async () => {
     try {
       setIsLoading(true);
-      const result = await window.ipc.invoke('oauth:getState', null);
+      const result = await oauthIpc.getState();
       const config = (result.config ?? {}) as Record<string, OAuthStateConfigEntry>;
       const connected = Object.entries(config)
         .filter(([, value]) => value?.connected)
@@ -145,7 +146,7 @@ export function useAvailableProviders() {
     async function load() {
       try {
         setIsLoading(true);
-        const result = await window.ipc.invoke('oauth:list-providers', null);
+        const result = await oauthIpc.listProviders();
         setProviders(result.providers);
       } catch (error) {
         console.error('Failed to get available providers:', error);

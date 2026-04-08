@@ -89,6 +89,9 @@ import { toast } from "@/lib/toast"
 import { ServiceEvent } from "@flazz/shared/src/service-events.js"
 import z from "zod"
 import type { TreeNode } from "@/features/knowledge/types"
+import { servicesIpc } from "@/services/services-ipc"
+import { oauthIpc } from "@/services/oauth-ipc"
+import { workspaceIpc } from "@/services/workspace-ipc"
 
 type OAuthStateConfigEntry = {
   connected: boolean
@@ -208,7 +211,7 @@ function SyncStatusBar() {
 
   // Track active runs from real-time events
   useEffect(() => {
-    const cleanup = window.ipc.on('services:events', (event) => {
+    const cleanup = servicesIpc.onEvents((event) => {
       const nextEvent = event as ServiceEventType
       if (nextEvent.type === 'run_start') {
         setActiveServices((prev) => {
@@ -258,10 +261,7 @@ function SyncStatusBar() {
     async function loadLogs() {
       setLogLoading(true)
       try {
-        const result = await window.ipc.invoke('workspace:readFile', {
-          path: 'logs/services.jsonl',
-          encoding: 'utf8',
-        })
+        const result = await workspaceIpc.readFile('logs/services.jsonl', 'utf8')
         if (cancelled) return
         const lines = result.data.trim().split('\n').filter(Boolean)
         const parsed: ServiceEventType[] = []
@@ -403,7 +403,7 @@ export function SidebarContentPanel({
 
     const refreshOauthError = async () => {
       try {
-        const result = await window.ipc.invoke('oauth:getState', null)
+        const result = await oauthIpc.getState()
         const config = (result.config ?? {}) as Record<string, OAuthStateConfigEntry>
         const hasError = Object.values(config).some((entry) => Boolean(entry?.error))
         if (mounted) {
@@ -422,7 +422,7 @@ export function SidebarContentPanel({
     }
 
     refreshOauthError()
-    const cleanup = window.ipc.on('oauth:didConnect', () => {
+    const cleanup = oauthIpc.onDidConnect(() => {
       refreshOauthError()
     })
 
@@ -567,10 +567,7 @@ export function SidebarContentPanel({
 
 async function transcribeWithDeepgram(audioBlob: Blob): Promise<string | null> {
   try {
-    const configResult = await window.ipc.invoke('workspace:readFile', {
-      path: 'config/deepgram.json',
-      encoding: 'utf8',
-    })
+    const configResult = await workspaceIpc.readFile('config/deepgram.json', 'utf8')
     const { apiKey } = JSON.parse(configResult.data) as { apiKey: string }
     if (!apiKey) throw new Error('No apiKey in deepgram.json')
 
@@ -606,10 +603,7 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
   const relativePathRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
-    window.ipc.invoke('workspace:readFile', {
-      path: 'config/deepgram.json',
-      encoding: 'utf8',
-    }).then((result: { data: string }) => {
+    workspaceIpc.readFile('config/deepgram.json', 'utf8').then((result: { data: string }) => {
       const { apiKey } = JSON.parse(result.data) as { apiKey: string }
       setHasDeepgramKey(!!apiKey)
     }).catch(() => {
@@ -632,11 +626,7 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
       const relativePath = `Voice Memos/${dateStr}/${noteName}`
       relativePathRef.current = relativePath
 
-      // Create the note immediately with a "Recording..." placeholder
-      await window.ipc.invoke('workspace:mkdir', {
-        path: `knowledge/Voice Memos/${dateStr}`,
-        recursive: true,
-      })
+      await workspaceIpc.mkdir(`knowledge/Voice Memos/${dateStr}`, { recursive: true })
 
       const initialContent = `# Voice Memo
 
@@ -648,11 +638,7 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
 
 *Recording in progress...*
 `
-      await window.ipc.invoke('workspace:writeFile', {
-        path: notePath,
-        data: initialContent,
-        opts: { encoding: 'utf8' },
-      })
+      await workspaceIpc.writeFile(notePath, initialContent, { encoding: 'utf8' })
 
       // Select the note so the user can see it
       onNoteCreated?.(notePath)
@@ -677,10 +663,7 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
 
         // Save audio file to voice_memos folder (for backup/reference)
         try {
-          await window.ipc.invoke('workspace:mkdir', {
-            path: 'voice_memos',
-            recursive: true,
-          })
+          await workspaceIpc.mkdir('voice_memos', { recursive: true })
 
           const arrayBuffer = await blob.arrayBuffer()
           const base64 = btoa(
@@ -690,11 +673,7 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
             ),
           )
 
-          await window.ipc.invoke('workspace:writeFile', {
-            path: `voice_memos/${audioFilename}`,
-            data: base64,
-            opts: { encoding: 'base64' },
-          })
+          await workspaceIpc.writeFile(`voice_memos/${audioFilename}`, base64, { encoding: 'base64' })
         } catch {
           console.error('Failed to save audio file')
         }
@@ -713,11 +692,7 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
 
 *Transcribing...*
 `
-          await window.ipc.invoke('workspace:writeFile', {
-            path: currentNotePath,
-            data: transcribingContent,
-            opts: { encoding: 'utf8' },
-          })
+          await workspaceIpc.writeFile(currentNotePath, transcribingContent, { encoding: 'utf8' })
         }
 
         // Transcribe and update the note with the transcript
@@ -744,11 +719,7 @@ ${transcript}
 
 *Transcription failed. Please try again.*
 `
-          await window.ipc.invoke('workspace:writeFile', {
-            path: currentNotePath,
-            data: finalContent,
-            opts: { encoding: 'utf8' },
-          })
+          await workspaceIpc.writeFile(currentNotePath, finalContent, { encoding: 'utf8' })
 
           // Re-select to trigger refresh
           onNoteCreated?.(currentNotePath)

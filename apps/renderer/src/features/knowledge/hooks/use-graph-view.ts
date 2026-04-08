@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { GraphNode, GraphEdge } from '@/components/graph-view'
 import { stripKnowledgePrefix, wikiLabel, toKnowledgePath } from '@/lib/wiki-links'
+import { workspaceIpc } from '@/services/workspace-ipc'
 
 const graphPalette = [
   { hue: 210, sat: 72, light: 52 },
@@ -43,7 +44,7 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
 
       for (const path of knowledgeFilePaths) {
         if (cancelledRef.cancelled) return
-        const result = await window.ipc.invoke('workspace:readFile', { path })
+        const result = await workspaceIpc.readFile(path)
         const markdown = result.data
         const matches = markdown.matchAll(wikiLinkRegex)
         for (const match of matches) {

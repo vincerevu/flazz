@@ -32,6 +32,7 @@ import {
   usePromptInputController,
 } from '@/components/ai-elements/prompt-input'
 import { toast } from 'sonner'
+import { shellIpc } from '@/services/shell-ipc'
 
 export type StagedAttachment = {
   id: string
@@ -119,7 +120,7 @@ function ChatInputInner({
     const newAttachments: StagedAttachment[] = []
     for (const filePath of paths) {
       try {
-        const result = await window.ipc.invoke('shell:readFileBase64', { path: filePath })
+        const result = await shellIpc.readFileBase64(filePath)
         if (result.size > MAX_ATTACHMENT_SIZE) {
           toast.error(`File too large: ${getFileDisplayName(filePath)} (max 10MB)`)
           continue

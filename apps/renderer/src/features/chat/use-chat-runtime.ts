@@ -14,6 +14,8 @@ import {
   normalizeToolInput,
 } from '@/lib/chat-conversation'
 import { toast } from 'sonner'
+import { runsIpc } from '@/services/runs-ipc'
+import { workspaceIpc } from '@/services/workspace-ipc'
 
 type RunEventType = z.infer<typeof RunEvent>
 type ListRunsResponseType = z.infer<typeof ListRunsResponse>
@@ -239,7 +241,7 @@ export function useChatRuntime({
       const allRuns: ChatRunListItem[] = []
       let cursor: string | undefined = undefined
       do {
-        const result: ListRunsResponseType = await window.ipc.invoke('runs:list', { cursor })
+        const result: ListRunsResponseType = await runsIpc.list(cursor)
         allRuns.push(...result.runs)
         cursor = result.nextCursor
       } while (cursor)
@@ -276,7 +278,7 @@ export function useChatRuntime({
   const loadRun = useCallback(async (id: string) => {
     const requestId = (loadRunRequestIdRef.current += 1)
     try {
-      const run = await window.ipc.invoke('runs:fetch', { runId: id }) as RunRecord
+      const run = await runsIpc.fetch(id) as RunRecord
       if (loadRunRequestIdRef.current !== requestId) return
 
       const parsed = hydrateRunConversation(run)
@@ -591,7 +593,7 @@ export function useChatRuntime({
   }, [appendStreamingBuffer, clearStreamingBuffer, loadRuns])
 
   useEffect(() => {
-    const cleanup = window.ipc.on('runs:events', ((event: unknown) => {
+    const cleanup = runsIpc.onEvents(((event: unknown) => {
       handleRunEvent(event as RunEventType)
     }) as (event: null) => void)
     return cleanup
@@ -655,7 +657,7 @@ export function useChatRuntime({
       let isNewRun = false
       let newRunCreatedAt: string | null = null
       if (!currentRunId) {
-        const run = await window.ipc.invoke('runs:create', { agentId }) as { id: string; createdAt: string }
+        const run = await runsIpc.create(agentId) as { id: string; createdAt: string }
         currentRunId = run.id
         newRunCreatedAt = run.createdAt
         setRunId(currentRunId)
@@ -700,17 +702,14 @@ export function useChatRuntime({
         }
 
         const attachmentPayload = contentParts as unknown as string
-        await window.ipc.invoke('runs:createMessage', {
-          runId: currentRunId,
-          message: attachmentPayload,
-        })
+        await runsIpc.createMessage(currentRunId, attachmentPayload)
       } else {
         let formattedMessage = userMessage
         if (mentions && mentions.length > 0) {
           const attachedFiles = await Promise.all(
             mentions.map(async (mention) => {
               try {
-                const result = await window.ipc.invoke('workspace:readFile', { path: mention.path })
+              const result = await workspaceIpc.readFile(mention.path)
                 return { path: mention.path, content: result.data as string }
               } catch (err) {
                 console.error('Failed to read mentioned file:', mention.path, err)
@@ -727,10 +726,7 @@ export function useChatRuntime({
           }
         }
 
-        await window.ipc.invoke('runs:createMessage', {
-          runId: currentRunId,
-          message: formattedMessage,
-        })
+        await runsIpc.createMessage(currentRunId, formattedMessage)
 
         titleSource = formattedMessage
       }
@@ -761,7 +757,7 @@ export function useChatRuntime({
     setIsStopping(true)
 
     try {
-      await window.ipc.invoke('runs:stop', { runId, force: isForce })
+      await runsIpc.stop(runId, isForce)
     } catch (error) {
       console.error('Failed to stop run:', error)
     }
@@ -787,10 +783,7 @@ export function useChatRuntime({
     })
 
     try {
-      await window.ipc.invoke('runs:authorizePermission', {
-        runId,
-        authorization: { subflow, toolCallId, response, scope }
-      })
+      await runsIpc.authorizePermission(runId, { subflow, toolCallId, response, scope })
     } catch (error) {
       console.error('Failed to authorize permission:', error)
       setPermissionResponses((prev) => {
@@ -804,10 +797,7 @@ export function useChatRuntime({
   const handleAskHumanResponse = useCallback(async (toolCallId: string, subflow: string[], response: string) => {
     if (!runId) return
     try {
-      await window.ipc.invoke('runs:provideHumanInput', {
-        runId,
-        reply: { subflow, toolCallId, response }
-      })
+      await runsIpc.provideHumanInput(runId, { subflow, toolCallId, response })
     } catch (error) {
       console.error('Failed to provide human input:', error)
     }

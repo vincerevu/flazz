@@ -63,6 +63,8 @@ import {
 import { useTheme } from '@/contexts/theme-context'
 import { RendererAppShell } from '@/components/app-shell/renderer-app-shell'
 import { useChatRuntime } from '@/features/chat/use-chat-runtime'
+import { appIpc } from '@/services/app-ipc'
+import { runsIpc } from '@/services/runs-ipc'
 
 interface BackgroundTaskSchedule {
   type: 'cron' | 'window' | 'once'
@@ -212,23 +214,23 @@ function App() {
 
 
 const handleWindowMinimize = useCallback(() => {
-    void window.ipc.invoke('app:minimizeWindow', null)
+    void appIpc.minimizeWindow()
   }, [])
 
   const handleWindowToggleMaximize = useCallback(() => {
-    void window.ipc.invoke('app:toggleMaximizeWindow', null).then((nextState) => {
+    void appIpc.toggleMaximizeWindow().then((nextState) => {
       setWindowState(nextState)
     })
   }, [])
 
   const handleWindowClose = useCallback(() => {
-    void window.ipc.invoke('app:closeWindow', null)
+    void appIpc.closeWindow()
   }, [])
 
   useEffect(() => {
     let isMounted = true
 
-    void window.ipc.invoke('app:getWindowState', null).then((nextState) => {
+    void appIpc.getWindowState().then((nextState) => {
       if (isMounted) {
         setWindowState(nextState)
       }
@@ -236,7 +238,7 @@ const handleWindowMinimize = useCallback(() => {
       console.error('Failed to load window state', error)
     })
 
-    const cleanup = window.ipc.on('app:windowStateChanged', (nextState) => {
+    const cleanup = appIpc.onWindowStateChanged((nextState) => {
       setWindowState(nextState)
     })
 
@@ -783,7 +785,7 @@ const handleWindowMinimize = useCallback(() => {
                 },
                 onDeleteRun: async (runIdToDelete) => {
                   try {
-                    await window.ipc.invoke('runs:delete', { runId: runIdToDelete })
+                    await runsIpc.delete(runIdToDelete)
                     // Close any chat tab showing the deleted run
                     const tabForRun = chatTabs.find(t => t.runId === runIdToDelete)
                     if (tabForRun) {
@@ -1009,12 +1011,10 @@ const handleWindowMinimize = useCallback(() => {
                         }}
                         onRestore={async (oid) => {
                           try {
-                            await window.ipc.invoke('knowledge:restore', {
-                              path: versionHistoryPath.startsWith('knowledge/')
-                                ? versionHistoryPath.slice('knowledge/'.length)
-                                : versionHistoryPath,
-                              oid,
-                            })
+                            const restorePath = versionHistoryPath.startsWith('knowledge/')
+                              ? versionHistoryPath.slice('knowledge/'.length)
+                              : versionHistoryPath
+                            await window.ipc.invoke('knowledge:restore', { path: restorePath, oid })
                             // Reload file content
                             const result = await window.ipc.invoke('workspace:readFile', { path: versionHistoryPath })
                             handleEditorChange(versionHistoryPath, result.data)

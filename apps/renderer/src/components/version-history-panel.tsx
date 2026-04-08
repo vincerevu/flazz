@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { X, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { knowledgeIpc } from '@/services/knowledge-ipc'
+import { workspaceIpc } from '@/services/workspace-ipc'
 
 interface CommitInfo {
   oid: string
@@ -42,7 +44,7 @@ export function VersionHistoryPanel({
     setLoading(true)
     setError(null)
     try {
-      const result = await window.ipc.invoke('knowledge:history', { path: relPath })
+      const result = await knowledgeIpc.history(relPath)
       setCommits(result.commits)
     } catch (err) {
       console.error('Failed to load version history:', err)
@@ -58,7 +60,7 @@ export function VersionHistoryPanel({
 
   // Refresh when new commits land
   useEffect(() => {
-    return window.ipc.on('knowledge:didCommit', () => {
+    return knowledgeIpc.onDidCommit(() => {
       loadHistory()
     })
   }, [loadHistory])
@@ -68,7 +70,7 @@ export function VersionHistoryPanel({
       setSelectedOid(null)
       // Read current file content
       try {
-        const result = await window.ipc.invoke('workspace:readFile', { path })
+        const result = await workspaceIpc.readFile(path)
         onSelectVersion(null, result.data)
       } catch (err) {
         console.error('Failed to read current file:', err)
@@ -78,7 +80,7 @@ export function VersionHistoryPanel({
 
     setSelectedOid(oid)
     try {
-      const result = await window.ipc.invoke('knowledge:fileAtCommit', { path: relPath, oid })
+      const result = await knowledgeIpc.fileAtCommit(relPath, oid)
       onSelectVersion(oid, result.content)
     } catch (err) {
       console.error('Failed to load file at commit:', err)
