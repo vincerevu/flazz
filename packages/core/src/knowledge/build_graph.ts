@@ -281,7 +281,7 @@ async function buildGraphWithFiles(
             // Build fresh index before each batch to include notes from previous batches
             console.log(`Building knowledge index for batch ${batchNumber}...`);
             const indexStartTime = Date.now();
-            const index = buildKnowledgeIndex();
+            const index = await buildKnowledgeIndex();
             const indexForPrompt = formatIndexForPrompt(index);
             const indexDuration = ((Date.now() - indexStartTime) / 1000).toFixed(2);
             console.log(`Index built in ${indexDuration}s: ${index.people.length} people, ${index.organizations.length} orgs, ${index.projects.length} projects, ${index.topics.length} topics, ${index.other.length} other`);
@@ -443,7 +443,7 @@ async function processVoiceMemosForKnowledge(): Promise<boolean> {
         try {
             // Build knowledge index
             console.log(`[GraphBuilder] Building knowledge index for batch ${batchNumber}...`);
-            const index = buildKnowledgeIndex();
+            const index = await buildKnowledgeIndex();
             const indexForPrompt = formatIndexForPrompt(index);
 
             console.log(`[GraphBuilder] Processing batch ${batchNumber}/${totalBatches} (${batch.length} files)...`);
