@@ -13,25 +13,34 @@ interface NoteCreationConfig {
 const CONFIG_FILE = path.join(WorkDir, 'config', 'note_creation.json');
 const DEFAULT_STRICTNESS: NoteCreationStrictness = 'high';
 
+let cachedConfig: NoteCreationConfig | null = null;
+
 /**
  * Read the full config file.
  */
 function readConfig(): NoteCreationConfig {
+    if (cachedConfig) {
+        return cachedConfig;
+    }
+
     try {
         if (!fs.existsSync(CONFIG_FILE)) {
-            return { strictness: DEFAULT_STRICTNESS, configured: false };
+            cachedConfig = { strictness: DEFAULT_STRICTNESS, configured: false };
+            return cachedConfig;
         }
         const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
         const config = JSON.parse(raw);
-        return {
+        cachedConfig = {
             strictness: ['low', 'medium', 'high'].includes(config.strictness)
                 ? config.strictness
                 : DEFAULT_STRICTNESS,
             configured: config.configured === true,
             onboardingComplete: config.onboardingComplete === true,
         };
+        return cachedConfig;
     } catch {
-        return { strictness: DEFAULT_STRICTNESS, configured: false };
+        cachedConfig = { strictness: DEFAULT_STRICTNESS, configured: false };
+        return cachedConfig;
     }
 }
 
@@ -44,6 +53,7 @@ function writeConfig(config: NoteCreationConfig): void {
         fs.mkdirSync(configDir, { recursive: true });
     }
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    cachedConfig = { ...config };
 }
 
 /**
@@ -102,39 +112,14 @@ export function getNoteCreationAgentSuffix(): string {
  * Check if onboarding has been completed.
  */
 export function isOnboardingComplete(): boolean {
-    try {
-        if (!fs.existsSync(CONFIG_FILE)) {
-            return false;
-        }
-        const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
-        const config = JSON.parse(raw);
-        return config.onboardingComplete === true;
-    } catch {
-        return false;
-    }
+    return readConfig().onboardingComplete === true;
 }
 
 /**
  * Mark onboarding as complete.
  */
 export function markOnboardingComplete(): void {
-    const configDir = path.dirname(CONFIG_FILE);
-    if (!fs.existsSync(configDir)) {
-        fs.mkdirSync(configDir, { recursive: true });
-    }
-
-    let config: NoteCreationConfig;
-    try {
-        if (fs.existsSync(CONFIG_FILE)) {
-            const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
-            config = JSON.parse(raw);
-        } else {
-            config = { strictness: DEFAULT_STRICTNESS, configured: false };
-        }
-    } catch {
-        config = { strictness: DEFAULT_STRICTNESS, configured: false };
-    }
-
+    const config = readConfig();
     config.onboardingComplete = true;
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    writeConfig(config);
 }
