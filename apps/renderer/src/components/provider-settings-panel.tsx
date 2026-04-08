@@ -22,13 +22,6 @@ type RuntimeProviderFlavor =
   | "aigateway"
   | "ollama"
   | "openai-compatible"
-
-type ProviderId =
-  | RuntimeProviderFlavor
-  | "opencode"
-  | "opencode-go"
-  | "github-copilot"
-  | "github-models"
   | "deepseek"
   | "groq"
   | "mistral"
@@ -39,14 +32,21 @@ type ProviderId =
   | "amazon-bedrock"
   | "cohere"
   | "google-vertex"
-  | "cloudflare-workers-ai"
   | "fireworks-ai"
   | "deepinfra"
+  | "github-models"
+  | "cloudflare-workers-ai"
   | "lmstudio"
   | "zhipuai"
   | "moonshotai"
   | "siliconflow"
   | "requesty"
+
+type ProviderId =
+  | RuntimeProviderFlavor
+  | "opencode"
+  | "opencode-go"
+  | "github-copilot"
 
 type ProviderView = "overview" | "picker" | "detail"
 
@@ -181,172 +181,191 @@ const providerList: ProviderMeta[] = [
     id: "deepseek",
     name: "DeepSeek",
     description: "Reasoning and coding models from DeepSeek",
-    connectDescription: "DeepSeek is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your DeepSeek API key to connect your account and use DeepSeek models in Flazz.",
     icon: "deepseek",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "deepseek",
+    connectable: true,
   },
   {
     id: "groq",
     name: "Groq",
     description: "Ultra-fast inference for open models",
-    connectDescription: "Groq is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Groq API key to connect your account and use Groq models in Flazz.",
     icon: "groq",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "groq",
+    connectable: true,
   },
   {
     id: "mistral",
     name: "Mistral",
     description: "Mistral foundation and coding models",
-    connectDescription: "Mistral is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Mistral API key to connect your account and use Mistral models in Flazz.",
     icon: "mistral",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "mistral",
+    connectable: true,
   },
   {
     id: "xai",
     name: "xAI",
     description: "Grok models from xAI",
-    connectDescription: "xAI is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your xAI API key to connect your account and use xAI models in Flazz.",
     icon: "xai",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "xai",
+    connectable: true,
   },
   {
     id: "togetherai",
     name: "Together AI",
     description: "Hosted open models and custom endpoints",
-    connectDescription: "Together AI is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Together AI API key to connect your account and use Together AI models in Flazz.",
     icon: "togetherai",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "togetherai",
+    connectable: true,
   },
   {
     id: "perplexity",
     name: "Perplexity",
     description: "Search-native model APIs",
-    connectDescription: "Perplexity is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Perplexity API key to connect your account and use Perplexity models in Flazz.",
     icon: "perplexity",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "perplexity",
+    connectable: true,
   },
   {
     id: "azure",
     name: "Azure OpenAI",
     description: "Enterprise OpenAI deployments on Azure",
-    connectDescription: "Azure OpenAI is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Azure OpenAI API key, base URL, and deployment name to use Azure-hosted models in Flazz.",
     icon: "azure",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "azure",
+    connectable: true,
   },
   {
     id: "amazon-bedrock",
     name: "Amazon Bedrock",
     description: "Managed model access through AWS",
-    connectDescription: "Amazon Bedrock is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Use an Amazon Bedrock bearer token or your existing AWS credentials to connect Bedrock models in Flazz.",
     icon: "amazon-bedrock",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "amazon-bedrock",
+    connectable: true,
   },
   {
     id: "cohere",
     name: "Cohere",
     description: "Language and embedding models from Cohere",
-    connectDescription: "Cohere is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Cohere API key to connect your account and use Cohere models in Flazz.",
     icon: "cohere",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "cohere",
+    connectable: true,
   },
   {
     id: "github-models",
     name: "GitHub Models",
     description: "Multi-model playground via GitHub",
-    connectDescription: "GitHub Models is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your GitHub Models endpoint details to connect it through Flazz's OpenAI-compatible runtime.",
     icon: "github-models",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "github-models",
+    connectable: true,
   },
   {
     id: "google-vertex",
     name: "Google Vertex",
     description: "Vertex AI managed foundation models",
-    connectDescription: "Google Vertex is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Connect Google Vertex using your existing Google Cloud auth in the environment, then choose a model in Flazz.",
     icon: "google-vertex",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "google-vertex",
+    connectable: true,
   },
   {
     id: "cloudflare-workers-ai",
     name: "Cloudflare Workers AI",
     description: "Edge-hosted inference on Cloudflare",
-    connectDescription: "Cloudflare Workers AI is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Cloudflare Workers AI endpoint details to connect it through Flazz's OpenAI-compatible runtime.",
     icon: "cloudflare-workers-ai",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "cloudflare-workers-ai",
+    connectable: true,
   },
   {
     id: "fireworks-ai",
     name: "Fireworks AI",
     description: "Hosted inference for open and tuned models",
-    connectDescription: "Fireworks AI is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Fireworks API key to connect your account and use Fireworks AI models in Flazz.",
     icon: "fireworks-ai",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "fireworks-ai",
+    connectable: true,
   },
   {
     id: "deepinfra",
     name: "DeepInfra",
     description: "Hosted inference for open models",
-    connectDescription: "DeepInfra is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your DeepInfra API key to connect your account and use DeepInfra models in Flazz.",
     icon: "deepinfra",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "deepinfra",
+    connectable: true,
   },
   {
     id: "lmstudio",
     name: "LM Studio",
     description: "Serve local models from LM Studio",
-    connectDescription: "LM Studio is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your LM Studio local endpoint and model name to connect it through Flazz's OpenAI-compatible runtime.",
     icon: "lmstudio",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "lmstudio",
+    connectable: true,
   },
   {
     id: "zhipuai",
     name: "Zhipu AI",
     description: "GLM model access and Chinese-market endpoints",
-    connectDescription: "Zhipu AI is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Zhipu AI endpoint details to connect it through Flazz's OpenAI-compatible runtime.",
     icon: "zhipuai",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "zhipuai",
+    connectable: true,
   },
   {
     id: "moonshotai",
     name: "Moonshot AI",
     description: "Moonshot and Kimi model access",
-    connectDescription: "Moonshot AI is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Moonshot AI endpoint details to connect it through Flazz's OpenAI-compatible runtime.",
     icon: "moonshotai",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "moonshotai",
+    connectable: true,
   },
   {
     id: "siliconflow",
     name: "SiliconFlow",
     description: "Broad hosted catalog for open models",
-    connectDescription: "SiliconFlow is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your SiliconFlow endpoint details to connect it through Flazz's OpenAI-compatible runtime.",
     icon: "siliconflow",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "siliconflow",
+    connectable: true,
   },
   {
     id: "requesty",
     name: "Requesty",
     description: "Gateway routing for multiple AI providers",
-    connectDescription: "Requesty is shown to mirror OpenCode's provider catalog. Flazz runtime is not wired to it yet.",
+    connectDescription: "Enter your Requesty endpoint details to connect it through Flazz's OpenAI-compatible runtime.",
     icon: "requesty",
     group: "other",
-    connectable: false,
+    runtimeFlavor: "requesty",
+    connectable: true,
   },
   {
     id: "openai-compatible",
@@ -379,6 +398,7 @@ const providerMetaById = Object.fromEntries(providerList.map((provider) => [prov
 
 const defaultBaseURLs: Partial<Record<RuntimeProviderFlavor, string>> = {
   ollama: "http://localhost:11434",
+  lmstudio: "http://localhost:1234/v1",
   "openai-compatible": "http://localhost:1234/v1",
   aigateway: "https://ai-gateway.vercel.sh/v1",
 }
@@ -390,6 +410,25 @@ const initialProviderForms: Record<RuntimeProviderFlavor, ProviderFormState> = {
   openrouter: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
   aigateway: { apiKey: "", baseURL: defaultBaseURLs.aigateway ?? "", model: "", knowledgeGraphModel: "" },
   ollama: { apiKey: "", baseURL: defaultBaseURLs.ollama ?? "", model: "", knowledgeGraphModel: "" },
+  deepseek: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  groq: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  mistral: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  xai: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  togetherai: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  perplexity: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  azure: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  "amazon-bedrock": { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  cohere: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  "google-vertex": { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  "fireworks-ai": { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  deepinfra: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  "github-models": { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  "cloudflare-workers-ai": { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  lmstudio: { apiKey: "", baseURL: defaultBaseURLs.lmstudio ?? "", model: "", knowledgeGraphModel: "" },
+  zhipuai: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  moonshotai: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  siliconflow: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
+  requesty: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
   "openai-compatible": {
     apiKey: "",
     baseURL: defaultBaseURLs["openai-compatible"] ?? "",
@@ -431,9 +470,36 @@ function providerCardNote(provider: ProviderMeta, config?: ModelConfig) {
 
 function providerConnectionTag(provider: ProviderMeta, activeProvider?: RuntimeProviderFlavor) {
   if (provider.runtimeFlavor === "openai-compatible") return "Custom"
-  if (provider.runtimeFlavor === "ollama") return "Local"
+  if (provider.runtimeFlavor === "ollama" || provider.runtimeFlavor === "lmstudio") return "Local"
   if (provider.runtimeFlavor && provider.runtimeFlavor === activeProvider) return "Active"
   return provider.tag
+}
+
+function requiresApiKey(flavor: RuntimeProviderFlavor) {
+  return !["ollama", "lmstudio", "openai-compatible", "amazon-bedrock", "google-vertex"].includes(flavor)
+}
+
+function requiresBaseURL(flavor: RuntimeProviderFlavor) {
+  return [
+    "aigateway",
+    "ollama",
+    "openai-compatible",
+    "azure",
+    "github-models",
+    "cloudflare-workers-ai",
+    "lmstudio",
+    "zhipuai",
+    "moonshotai",
+    "siliconflow",
+    "requesty",
+  ].includes(flavor)
+}
+
+function apiKeyLabel(providerName: string, flavor: RuntimeProviderFlavor) {
+  if (flavor === "openai-compatible" || flavor === "lmstudio") return "API key (optional)"
+  if (flavor === "amazon-bedrock") return "API key (optional)"
+  if (flavor === "google-vertex") return "API key (usually not required)"
+  return `${providerName} API key`
 }
 
 export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
@@ -631,20 +697,11 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
       return
     }
 
-    const apiKeyRequired =
-      detailRuntimeFlavor === "openai" ||
-      detailRuntimeFlavor === "anthropic" ||
-      detailRuntimeFlavor === "google" ||
-      detailRuntimeFlavor === "openrouter" ||
-      detailRuntimeFlavor === "aigateway"
-    const baseUrlRequired =
-      detailRuntimeFlavor === "ollama" || detailRuntimeFlavor === "openai-compatible"
-
-    if (apiKeyRequired && !detailForm.apiKey.trim()) {
+    if (requiresApiKey(detailRuntimeFlavor) && !detailForm.apiKey.trim()) {
       setDetailError("API key is required")
       return
     }
-    if (baseUrlRequired && !detailForm.baseURL.trim()) {
+    if (requiresBaseURL(detailRuntimeFlavor) && !detailForm.baseURL.trim()) {
       setDetailError("Base URL is required")
       return
     }
@@ -849,7 +906,7 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
             {detailRuntimeFlavor !== "ollama" ? (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">
-                  {detailRuntimeFlavor === "openai-compatible" ? "API key (optional)" : `${detailProvider.name} API key`}
+                  {apiKeyLabel(detailProvider.name, detailRuntimeFlavor)}
                 </label>
                 <Input
                   type="password"
@@ -862,7 +919,7 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
               </div>
             ) : null}
 
-            {detailRuntimeFlavor === "aigateway" || detailRuntimeFlavor === "ollama" || detailRuntimeFlavor === "openai-compatible" ? (
+            {requiresBaseURL(detailRuntimeFlavor) ? (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Base URL</label>
                 <Input
@@ -870,8 +927,21 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
                   onChange={(event) => updateProviderForm(detailRuntimeFlavor, { baseURL: event.target.value })}
                   placeholder={defaultBaseURLs[detailRuntimeFlavor] ?? "https://"}
                   className="h-12"
-                  autoFocus={detailRuntimeFlavor === "ollama"}
+                  autoFocus={detailRuntimeFlavor === "ollama" || detailRuntimeFlavor === "lmstudio"}
                 />
+              </div>
+            ) : null}
+
+            {detailRuntimeFlavor === "google-vertex" ? (
+              <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                Google Vertex uses the Google Cloud credentials already available in your environment. Set up your
+                Google auth outside Flazz, then enter the model you want to use here.
+              </div>
+            ) : null}
+
+            {detailRuntimeFlavor === "amazon-bedrock" ? (
+              <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                Amazon Bedrock can use an API bearer token or your existing AWS credentials from the environment.
               </div>
             ) : null}
 
