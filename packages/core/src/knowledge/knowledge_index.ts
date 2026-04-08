@@ -230,7 +230,7 @@ function getFolderType(filePath: string): string {
  * Build a complete index of the knowledge base
  * Scans all notes recursively and extracts searchable fields using folder-based parsing
  */
-export function buildKnowledgeIndex(): KnowledgeIndex {
+export async function buildKnowledgeIndex(): Promise<KnowledgeIndex> {
     const index: KnowledgeIndex = {
         people: [],
         organizations: [],
@@ -243,9 +243,9 @@ export function buildKnowledgeIndex(): KnowledgeIndex {
     // Scan entire knowledge directory recursively
     const allFiles = scanDirectoryRecursive(KNOWLEDGE_DIR);
 
-    for (const filePath of allFiles) {
+    await Promise.all(allFiles.map(async (filePath) => {
         try {
-            const content = fs.readFileSync(filePath, 'utf-8');
+            const content = await fs.promises.readFile(filePath, 'utf-8');
             const folderType = getFolderType(filePath);
 
             // Use folder-based parsing
@@ -270,7 +270,7 @@ export function buildKnowledgeIndex(): KnowledgeIndex {
         } catch (error) {
             console.error(`Error parsing note ${filePath}:`, error);
         }
-    }
+    }));
 
     return index;
 }
