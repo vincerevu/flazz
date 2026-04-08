@@ -1,11 +1,11 @@
 import * as React from 'react'
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { workspace } from '@x/shared';
-import { RunEvent, ListRunsResponse } from '@x/shared/src/runs.js';
+import { ipc as ipcShared, workspace } from '@flazz/shared';
+import { RunEvent, ListRunsResponse } from '@flazz/shared/src/runs.js';
 import type { LanguageModelUsage, ToolUIPart } from 'ai';
 import './App.css'
 import z from 'zod';
-import { CheckIcon, LoaderIcon, PanelLeftIcon, Maximize2, Minimize2, ChevronLeftIcon, ChevronRightIcon, SquarePen, SearchIcon, HistoryIcon } from 'lucide-react';
+import { CheckIcon, HistoryIcon, LoaderIcon, Maximize2, Minimize2, SquarePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MarkdownEditor } from './components/markdown-editor';
 import { ChatSidebar } from './components/chat-sidebar';
@@ -14,7 +14,6 @@ import { ChatMessageAttachments } from '@/components/chat-message-attachments'
 import { GraphView, type GraphEdge, type GraphNode } from '@/components/graph-view';
 import { useDebounce } from './hooks/use-debounce';
 import { SidebarContentPanel } from '@/components/sidebar-content';
-import { SidebarSectionProvider } from '@/contexts/sidebar-context';
 import {
   Conversation,
   ConversationContent,
@@ -37,16 +36,9 @@ import { WebSearchResult } from '@/components/ai-elements/web-search-result';
 import { PermissionRequest } from '@/components/ai-elements/permission-request';
 import { AskHumanRequest } from '@/components/ai-elements/ask-human-request';
 import { Suggestions } from '@/components/ai-elements/suggestions';
-import { ToolPermissionRequestEvent, AskHumanRequestEvent } from '@x/shared/src/runs.js';
-import {
-  SidebarInset,
-  SidebarProvider,
-  useSidebar,
-} from "@/components/ui/sidebar"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Toaster } from "@/components/ui/sonner"
+import { ToolPermissionRequestEvent, AskHumanRequestEvent } from '@flazz/shared/src/runs.js';
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { stripKnowledgePrefix, toKnowledgePath, wikiLabel } from '@/lib/wiki-links'
-import { OnboardingModal } from '@/components/onboarding-modal'
 import { SearchDialog } from '@/components/search-dialog'
 import { BackgroundTaskDetail } from '@/components/background-task-detail'
 import { VersionHistoryPanel } from '@/components/version-history-panel'
@@ -69,13 +61,16 @@ import {
   parseAttachedFiles,
   toToolState,
 } from '@/lib/chat-conversation'
-import { AgentScheduleConfig } from '@x/shared/dist/agent-schedule.js'
-import { AgentScheduleState } from '@x/shared/dist/agent-schedule-state.js'
+import { AgentScheduleConfig } from '@flazz/shared/dist/agent-schedule.js'
+import { AgentScheduleState } from '@flazz/shared/dist/agent-schedule-state.js'
+import { useTheme } from '@/contexts/theme-context'
+import { RendererAppShell } from '@/components/app-shell/renderer-app-shell'
 import { toast } from "sonner"
 
 type DirEntry = z.infer<typeof workspace.DirEntry>
 type RunEventType = z.infer<typeof RunEvent>
 type ListRunsResponseType = z.infer<typeof ListRunsResponse>
+type DesktopWindowState = ipcShared.IPCChannels['app:getWindowState']['res']
 
 interface TreeNode extends DirEntry {
   children?: TreeNode[]
@@ -84,7 +79,6 @@ interface TreeNode extends DirEntry {
 
 const streamdownComponents = { pre: MarkdownPreOverride }
 
-const DEFAULT_SIDEBAR_WIDTH = 256
 const wikiLinkRegex = /\[\[([^[\]]+)\]\]/g
 const graphPalette = [
   { hue: 210, sat: 72, light: 52 },
@@ -97,13 +91,6 @@ const graphPalette = [
   { hue: 0, sat: 72, light: 52 },
 ]
 
-const MACOS_TRAFFIC_LIGHTS_RESERVED_PX = 16 + 12 * 3 + 8 * 2
-const TITLEBAR_BUTTON_PX = 32
-const TITLEBAR_BUTTON_GAP_PX = 4
-const TITLEBAR_HEADER_GAP_PX = 8
-const TITLEBAR_TOGGLE_MARGIN_LEFT_PX = 12
-const TITLEBAR_BUTTONS_COLLAPSED = 5
-const TITLEBAR_BUTTON_GAPS_COLLAPSED = 4
 const GRAPH_TAB_PATH = '__Flazz_graph_view__'
 
 const clampNumber = (value: number, min: number, max: number) =>
@@ -316,146 +303,10 @@ function viewStatesEqual(a: ViewState, b: ViewState): boolean {
   return true // both graph
 }
 
-/** Sidebar toggle + back/forward nav */
-function FixedSidebarToggle({
-  onNavigateBack,
-  onNavigateForward,
-  canNavigateBack,
-  canNavigateForward,
-  onNewChat,
-  onOpenSearch,
-  leftInsetPx,
-}: {
-  onNavigateBack: () => void
-  onNavigateForward: () => void
-  canNavigateBack: boolean
-  canNavigateForward: boolean
-  onNewChat: () => void
-  onOpenSearch: () => void
-  leftInsetPx: number
-}) {
-  const { toggleSidebar, state } = useSidebar()
-  const isCollapsed = state === "collapsed"
-  return (
-    <div className="fixed left-0 top-0 z-50 flex h-10 items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-      <div aria-hidden="true" className="h-10 shrink-0" style={{ width: leftInsetPx }} />
-      {/* Sidebar toggle */}
-      <button
-        type="button"
-        onClick={toggleSidebar}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-        style={{ marginLeft: TITLEBAR_TOGGLE_MARGIN_LEFT_PX }}
-        aria-label="Toggle Sidebar"
-      >
-        <PanelLeftIcon className="size-5" />
-      </button>
-      <button
-        type="button"
-        onClick={onNewChat}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-        style={{ marginLeft: TITLEBAR_BUTTON_GAP_PX }}
-        aria-label="New chat"
-      >
-        <SquarePen className="size-5" />
-      </button>
-      <button
-        type="button"
-        onClick={onOpenSearch}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-        style={{ marginLeft: TITLEBAR_BUTTON_GAP_PX }}
-        aria-label="Search"
-      >
-        <SearchIcon className="size-5" />
-      </button>
-      {/* Back / Forward navigation */}
-      {isCollapsed && (
-        <>
-          <button
-            type="button"
-            onClick={onNavigateBack}
-            disabled={!canNavigateBack}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
-            style={{ marginLeft: TITLEBAR_BUTTON_GAP_PX }}
-            aria-label="Go back"
-          >
-            <ChevronLeftIcon className="size-5" />
-          </button>
-          <button
-            type="button"
-            onClick={onNavigateForward}
-            disabled={!canNavigateForward}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
-            aria-label="Go forward"
-          >
-            <ChevronRightIcon className="size-5" />
-          </button>
-        </>
-      )}
-    </div>
-  )
-}
-
-/** Main content header that adjusts padding based on sidebar state */
-function ContentHeader({
-  children,
-  onNavigateBack,
-  onNavigateForward,
-  canNavigateBack,
-  canNavigateForward,
-  collapsedLeftPaddingPx,
-}: {
-  children: React.ReactNode
-  onNavigateBack?: () => void
-  onNavigateForward?: () => void
-  canNavigateBack?: boolean
-  canNavigateForward?: boolean
-  collapsedLeftPaddingPx?: number
-}) {
-  const { state } = useSidebar()
-  const isCollapsed = state === "collapsed"
-  return (
-    <header
-      className={cn(
-        "titlebar-drag-region flex h-10 shrink-0 items-stretch border-b border-border px-3 bg-sidebar transition-[padding] duration-200 ease-linear overflow-hidden",
-        // When the sidebar is collapsed the content area shifts left, so we need enough left padding
-        // to avoid overlapping the fixed traffic-lights/toggle/back/forward controls.
-        isCollapsed && !collapsedLeftPaddingPx && "pl-[196px]"
-      )}
-      style={isCollapsed && collapsedLeftPaddingPx ? { paddingLeft: collapsedLeftPaddingPx } : undefined}
-    >
-      {!isCollapsed && onNavigateBack && onNavigateForward ? (
-        <div className="titlebar-no-drag flex items-center gap-1 pr-2 shrink-0">
-          <button
-            type="button"
-            onClick={onNavigateBack}
-            disabled={!canNavigateBack}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
-            aria-label="Go back"
-          >
-            <ChevronLeftIcon className="size-5" />
-          </button>
-          <button
-            type="button"
-            onClick={onNavigateForward}
-            disabled={!canNavigateForward}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
-            aria-label="Go forward"
-          >
-            <ChevronRightIcon className="size-5" />
-          </button>
-        </div>
-      ) : null}
-      {onNavigateBack && onNavigateForward ? (
-        <div className="titlebar-no-drag self-stretch w-px bg-border/70" aria-hidden="true" />
-      ) : null}
-      {children}
-    </header>
-  )
-}
-
 function App() {
   type ShortcutPane = 'left' | 'right'
   type MarkdownHistoryHandlers = { undo: () => boolean; redo: () => boolean }
+  const { resolvedTheme } = useTheme()
 
   // File browser state (for Knowledge section)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
@@ -478,19 +329,51 @@ function App() {
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(true)
   const [isRightPaneMaximized, setIsRightPaneMaximized] = useState(false)
   const [activeShortcutPane, setActiveShortcutPane] = useState<ShortcutPane>('left')
-  const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac')
-  const collapsedLeftPaddingPx =
-    (isMac ? MACOS_TRAFFIC_LIGHTS_RESERVED_PX : 0) +
-    TITLEBAR_TOGGLE_MARGIN_LEFT_PX +
-    TITLEBAR_BUTTON_PX * TITLEBAR_BUTTONS_COLLAPSED +
-    TITLEBAR_BUTTON_GAP_PX * TITLEBAR_BUTTON_GAPS_COLLAPSED +
-    TITLEBAR_HEADER_GAP_PX
+  const [windowState, setWindowState] = useState<DesktopWindowState | null>(null)
+  const isMac = windowState?.platform === 'darwin' || (typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac'))
+  const supportsCustomTitlebar = windowState?.supportsCustomTitlebar ?? !isMac
+  const titlebarLogoSrc = resolvedTheme === 'dark' ? '/logo-white.png' : '/logo-black.png'
 
   // Keep the latest selected path in a ref (avoids stale async updates when switching rapidly)
   const selectedPathRef = useRef<string | null>(null)
   const editorPathRef = useRef<string | null>(null)
   const fileLoadRequestIdRef = useRef(0)
   const initialContentByPathRef = useRef<Map<string, string>>(new Map())
+
+  const handleWindowMinimize = useCallback(() => {
+    void window.ipc.invoke('app:minimizeWindow', null)
+  }, [])
+
+  const handleWindowToggleMaximize = useCallback(() => {
+    void window.ipc.invoke('app:toggleMaximizeWindow', null).then((nextState) => {
+      setWindowState(nextState)
+    })
+  }, [])
+
+  const handleWindowClose = useCallback(() => {
+    void window.ipc.invoke('app:closeWindow', null)
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    void window.ipc.invoke('app:getWindowState', null).then((nextState) => {
+      if (isMounted) {
+        setWindowState(nextState)
+      }
+    }).catch((error) => {
+      console.error('Failed to load window state', error)
+    })
+
+    const cleanup = window.ipc.on('app:windowStateChanged', (nextState) => {
+      setWindowState(nextState)
+    })
+
+    return () => {
+      isMounted = false
+      cleanup()
+    }
+  }, [])
 
   // Global navigation history (back/forward) across views (chat/file/graph/task)
   const historyRef = useRef<{ back: ViewState[]; forward: ViewState[] }>({ back: [], forward: [] })
@@ -674,8 +557,6 @@ function App() {
   // Workspace root for full paths
   const [workspaceRoot, setWorkspaceRoot] = useState<string>('')
 
-  // Onboarding state
-  const [showOnboarding, setShowOnboarding] = useState(false)
 
   // Search state
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -2644,29 +2525,6 @@ function App() {
     })
   }, [])
 
-  // Check onboarding status on mount
-  useEffect(() => {
-    async function checkOnboarding() {
-      try {
-        const result = await window.ipc.invoke('onboarding:getStatus', null)
-        setShowOnboarding(result.showOnboarding)
-      } catch (err) {
-        console.error('Failed to check onboarding status:', err)
-      }
-    }
-    checkOnboarding()
-  }, [])
-
-  // Handler for onboarding completion
-  const handleOnboardingComplete = useCallback(async () => {
-    try {
-      await window.ipc.invoke('onboarding:markComplete', null)
-      setShowOnboarding(false)
-    } catch (err) {
-      console.error('Failed to mark onboarding complete:', err)
-      setShowOnboarding(false)
-    }
-  }, [])
 
   const knowledgeActions = React.useMemo(() => ({
     createNote: async (parentPath: string = 'knowledge') => {
@@ -3092,16 +2950,24 @@ function App() {
   }, [fileTabs, selectedPath])
 
   return (
-    <TooltipProvider delayDuration={0}>
-      <SidebarSectionProvider defaultSection="tasks">
-        <div className="flex h-svh w-full overflow-hidden">
-          {/* Content sidebar with SidebarProvider for collapse functionality */}
-          <SidebarProvider
-            style={{
-              "--sidebar-width": `${DEFAULT_SIDEBAR_WIDTH}px`,
-            } as React.CSSProperties}
-          >
-            <SidebarContentPanel
+    <RendererAppShell
+      isMac={isMac}
+      supportsCustomTitlebar={supportsCustomTitlebar}
+      logoSrc={titlebarLogoSrc}
+      isWindowMaximized={windowState?.isMaximized ?? false}
+      shouldCollapseLeftPane={shouldCollapseLeftPane}
+      canNavigateBack={canNavigateBack}
+      canNavigateForward={canNavigateForward}
+      onNavigateBack={() => { void navigateBack() }}
+      onNavigateForward={() => { void navigateForward() }}
+      onWindowMinimize={handleWindowMinimize}
+      onWindowToggleMaximize={handleWindowToggleMaximize}
+      onWindowClose={handleWindowClose}
+      onNewChat={handleNewChatTab}
+      onOpenSearch={() => setIsSearchOpen(true)}
+      onActivatePrimaryPane={() => setActiveShortcutPane('left')}
+      leftSidebar={
+        <SidebarContentPanel
               tree={tree}
               selectedPath={selectedPath}
               expandedPaths={expandedPaths}
@@ -3175,25 +3041,10 @@ function App() {
               backgroundTasks={backgroundTasks}
               selectedBackgroundTask={selectedBackgroundTask}
             />
-            <SidebarInset
-              className={cn(
-                "overflow-hidden! min-h-0 min-w-0 transition-[max-width] duration-200 ease-linear",
-                shouldCollapseLeftPane && "pointer-events-none select-none"
-              )}
-              style={shouldCollapseLeftPane ? { maxWidth: 0 } : { maxWidth: '100%' }}
-              aria-hidden={shouldCollapseLeftPane}
-              onMouseDownCapture={() => setActiveShortcutPane('left')}
-              onFocusCapture={() => setActiveShortcutPane('left')}
-            >
-              {/* Header - also serves as titlebar drag region, adjusts padding when sidebar collapsed */}
-              <ContentHeader
-                onNavigateBack={() => { void navigateBack() }}
-                onNavigateForward={() => { void navigateForward() }}
-                canNavigateBack={canNavigateBack}
-                canNavigateForward={canNavigateForward}
-                collapsedLeftPaddingPx={collapsedLeftPaddingPx}
-              >
-                {(selectedPath || isGraphOpen) && fileTabs.length >= 1 ? (
+      }
+      headerContent={
+        <>
+          {(selectedPath || isGraphOpen) && fileTabs.length >= 1 ? (
                   <TabBar
                     tabs={fileTabs}
                     activeTabId={activeFileTabId ?? ''}
@@ -3301,9 +3152,11 @@ function App() {
                     </TooltipContent>
                   </Tooltip>
                 )}
-              </ContentHeader>
-
-              {isGraphOpen ? (
+        </>
+      }
+      mainContent={
+        <>
+          {isGraphOpen ? (
                 <div className="flex-1 min-h-0">
                   <GraphView
                     nodes={graphData.nodes}
@@ -3545,73 +3398,56 @@ function App() {
               </div>
               </FileCardProvider>
               )}
-            </SidebarInset>
-
-            {/* Chat sidebar - shown when viewing files/graph */}
-            {isRightPaneContext && (
-              <ChatSidebar
-                defaultWidth={460}
-                isOpen={isChatSidebarOpen}
-                isMaximized={isRightPaneMaximized}
-                chatTabs={chatTabs}
-                activeChatTabId={activeChatTabId}
-                getChatTabTitle={getChatTabTitle}
-                isChatTabProcessing={isChatTabProcessing}
-                onSwitchChatTab={switchChatTab}
-                onCloseChatTab={closeChatTab}
-                onNewChatTab={handleNewChatTabInSidebar}
-                onOpenFullScreen={toggleRightPaneMaximize}
-                conversation={conversation}
-                currentAssistantMessage={currentAssistantMessage}
-                chatTabStates={chatViewStateByTab}
-                isProcessing={isProcessing}
-                isStopping={isStopping}
-                onStop={handleStop}
-                onSubmit={handlePromptSubmit}
-                knowledgeFiles={knowledgeFiles}
-                recentFiles={recentWikiFiles}
-                visibleFiles={visibleKnowledgeFiles}
-                runId={runId}
-                presetMessage={presetMessage}
-                onPresetMessageConsumed={() => setPresetMessage(undefined)}
-                getInitialDraft={(tabId) => chatDraftsRef.current.get(tabId)}
-                onDraftChangeForTab={setChatDraftForTab}
-                pendingAskHumanRequests={pendingAskHumanRequests}
-                allPermissionRequests={allPermissionRequests}
-                permissionResponses={permissionResponses}
-                onPermissionResponse={handlePermissionResponse}
-                onAskHumanResponse={handleAskHumanResponse}
-                isToolOpenForTab={isToolOpenForTab}
-                onToolOpenChangeForTab={setToolOpenForTab}
-                onOpenKnowledgeFile={(path) => { navigateToFile(path) }}
-                onActivate={() => setActiveShortcutPane('right')}
-              />
-            )}
-            {/* Rendered last so its no-drag region paints over the sidebar drag region */}
-            <FixedSidebarToggle
-              onNavigateBack={() => { void navigateBack() }}
-              onNavigateForward={() => { void navigateForward() }}
-              canNavigateBack={canNavigateBack}
-              canNavigateForward={canNavigateForward}
-              onNewChat={handleNewChatTab}
-              onOpenSearch={() => setIsSearchOpen(true)}
-              leftInsetPx={isMac ? MACOS_TRAFFIC_LIGHTS_RESERVED_PX : 0}
-            />
-          </SidebarProvider>
-        </div>
+        </>
+      }
+      auxiliaryPane={isRightPaneContext ? (
+        <ChatSidebar
+          defaultWidth={460}
+          isOpen={isChatSidebarOpen}
+          isMaximized={isRightPaneMaximized}
+          chatTabs={chatTabs}
+          activeChatTabId={activeChatTabId}
+          getChatTabTitle={getChatTabTitle}
+          isChatTabProcessing={isChatTabProcessing}
+          onSwitchChatTab={switchChatTab}
+          onCloseChatTab={closeChatTab}
+          onNewChatTab={handleNewChatTabInSidebar}
+          onOpenFullScreen={toggleRightPaneMaximize}
+          conversation={conversation}
+          currentAssistantMessage={currentAssistantMessage}
+          chatTabStates={chatViewStateByTab}
+          isProcessing={isProcessing}
+          isStopping={isStopping}
+          onStop={handleStop}
+          onSubmit={handlePromptSubmit}
+          knowledgeFiles={knowledgeFiles}
+          recentFiles={recentWikiFiles}
+          visibleFiles={visibleKnowledgeFiles}
+          runId={runId}
+          presetMessage={presetMessage}
+          onPresetMessageConsumed={() => setPresetMessage(undefined)}
+          getInitialDraft={(tabId) => chatDraftsRef.current.get(tabId)}
+          onDraftChangeForTab={setChatDraftForTab}
+          pendingAskHumanRequests={pendingAskHumanRequests}
+          allPermissionRequests={allPermissionRequests}
+          permissionResponses={permissionResponses}
+          onPermissionResponse={handlePermissionResponse}
+          onAskHumanResponse={handleAskHumanResponse}
+          isToolOpenForTab={isToolOpenForTab}
+          onToolOpenChangeForTab={setToolOpenForTab}
+          onOpenKnowledgeFile={(path) => { navigateToFile(path) }}
+          onActivate={() => setActiveShortcutPane('right')}
+        />
+      ) : null}
+      dialogs={
         <SearchDialog
           open={isSearchOpen}
           onOpenChange={setIsSearchOpen}
           onSelectFile={navigateToFile}
           onSelectRun={(id) => { void navigateToView({ type: 'chat', runId: id }) }}
         />
-      </SidebarSectionProvider>
-      <Toaster />
-      <OnboardingModal
-        open={showOnboarding}
-        onComplete={handleOnboardingComplete}
-      />
-    </TooltipProvider>
+      }
+    />
   )
 }
 
