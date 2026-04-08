@@ -5,6 +5,7 @@
  */
 
 export { appIpc } from './app-ipc'
+export { agentScheduleIpc } from './agent-schedule-ipc'
 export { composioIpc } from './composio-ipc'
 export { knowledgeIpc } from './knowledge-ipc'
 export { modelsIpc } from './models-ipc'
