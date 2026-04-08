@@ -22,6 +22,9 @@ import { cn } from "@/lib/utils"
 import { useTheme } from "@/contexts/theme-context"
 import { ProviderSettingsPanel } from "@/components/provider-settings-panel"
 import { toast } from "sonner"
+import { workspaceIpc } from "@/services/workspace-ipc"
+import { modelsIpc } from "@/services/models-ipc"
+import { modelsActionsIpc } from "@/services/models-actions-ipc"
 
 type ConfigTab = "models" | "mcp" | "security" | "appearance"
 
@@ -204,9 +207,7 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
     async function loadCurrentConfig() {
       try {
         setConfigLoading(true)
-        const result = await window.ipc.invoke("workspace:readFile", {
-          path: "config/models.json",
-        })
+        const result = await workspaceIpc.readFile("config/models.json")
         const parsed = JSON.parse(result.data)
         if (parsed?.provider?.flavor && parsed?.model) {
           const flavor = parsed.provider.flavor as LlmProviderFlavor
@@ -239,7 +240,7 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
       try {
         setModelsLoading(true)
         setModelsError(null)
-        const result = await window.ipc.invoke("models:list", null)
+        const result = await modelsIpc.list()
         const catalog: Record<string, LlmModelOption[]> = {}
         for (const p of result.providers || []) {
           catalog[p.id] = p.models || []
@@ -287,9 +288,9 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
         model: activeConfig.model.trim(),
         knowledgeGraphModel: activeConfig.knowledgeGraphModel.trim() || undefined,
       }
-      const result = await window.ipc.invoke("models:test", providerConfig)
+      const result = await modelsActionsIpc.test(providerConfig)
       if (result.success) {
-        await window.ipc.invoke("models:saveConfig", providerConfig)
+        await modelsActionsIpc.saveConfig(providerConfig)
         setTestState({ status: "success" })
         toast.success("Model configuration saved")
       } else {
@@ -516,9 +517,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     setLoading(true)
     setError(null)
     try {
-      const result = await window.ipc.invoke("workspace:readFile", {
-        path: tabConfig.path,
-      })
+      const result = await workspaceIpc.readFile(tabConfig.path)
       const formattedContent = formatJson(result.data)
       setContent(formattedContent)
       setOriginalContent(formattedContent)
@@ -537,10 +536,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     setError(null)
     try {
       JSON.parse(content)
-      await window.ipc.invoke("workspace:writeFile", {
-        path: activeTabConfig.path,
-        data: content,
-      })
+      await workspaceIpc.writeFile(activeTabConfig.path, content)
       setOriginalContent(content)
     } catch (err) {
       if (err instanceof SyntaxError) {

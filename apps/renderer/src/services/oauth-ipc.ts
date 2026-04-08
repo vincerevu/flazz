@@ -4,6 +4,10 @@
  * Centralizes all window.ipc calls for OAuth/auth domain.
  */
 
+import type { IPCChannels } from '@flazz/shared/src/ipc.js'
+
+type OAuthDidConnectEvent = IPCChannels['oauth:didConnect']['req']
+
 export const oauthIpc = {
   getState() {
     return window.ipc.invoke('oauth:getState', null)
@@ -21,7 +25,7 @@ export const oauthIpc = {
     return window.ipc.invoke('oauth:list-providers', null)
   },
 
-  onDidConnect(handler: (event: { provider: string; success: boolean; error?: string }) => void) {
-    return window.ipc.on('oauth:didConnect', handler as (event: null) => void)
+  onDidConnect(handler: (event: OAuthDidConnectEvent) => void) {
+    return window.ipc.on('oauth:didConnect', handler)
   },
 }

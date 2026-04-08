@@ -11,6 +11,7 @@ import {
 import { useDebounce } from '@/hooks/use-debounce'
 import { useSidebarSection, type ActiveSection } from '@/contexts/sidebar-context'
 import { cn } from '@/lib/utils'
+import { searchIpc } from '@/services/search-ipc'
 
 interface SearchResult {
   type: 'knowledge' | 'chat'
@@ -64,7 +65,7 @@ export function SearchDialog({ open, onOpenChange, onSelectFile, onSelectRun }: 
     setIsSearching(true)
 
     const types = Array.from(activeTypes) as ('knowledge' | 'chat')[]
-    window.ipc.invoke('search:query', { query: debouncedQuery, limit: 20, types })
+    searchIpc.query(debouncedQuery, 20, types)
       .then((res) => {
         if (!cancelled) {
           setResults(res.results)

@@ -4,8 +4,12 @@
  * Centralizes all window.ipc calls for background service events.
  */
 
+import type { IPCChannels } from '@flazz/shared/src/ipc.js'
+
+type ServiceEvent = IPCChannels['services:events']['req']
+
 export const servicesIpc = {
-  onEvents(handler: (event: unknown) => void) {
-    return window.ipc.on('services:events', handler as (event: null) => void)
+  onEvents(handler: (event: ServiceEvent) => void) {
+    return window.ipc.on('services:events', handler)
   },
 }

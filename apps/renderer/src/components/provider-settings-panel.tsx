@@ -13,6 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
+import { workspaceIpc } from "@/services/workspace-ipc"
+import { modelsIpc } from "@/services/models-ipc"
+import { modelsActionsIpc } from "@/services/models-actions-ipc"
 
 type RuntimeProviderFlavor =
   | "openai"
@@ -486,7 +489,7 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
   const loadSettings = useCallback(async () => {
     setConfigLoading(true)
     try {
-      const runtimeResult = await window.ipc.invoke("workspace:readFile", { path: MODEL_CONFIG_PATH })
+      const runtimeResult = await workspaceIpc.readFile(MODEL_CONFIG_PATH)
       const parsedRuntime = JSON.parse(runtimeResult.data) as ModelConfig
       const runtimeConfig = isRuntimeProviderFlavor(parsedRuntime?.provider?.flavor) && parsedRuntime?.model
         ? parsedRuntime
@@ -500,7 +503,7 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
       }
 
       try {
-        const connectionsResult = await window.ipc.invoke("workspace:readFile", { path: CONNECTIONS_PATH })
+        const connectionsResult = await workspaceIpc.readFile(CONNECTIONS_PATH)
         const parsedConnections = JSON.parse(connectionsResult.data) as SavedProviderConnections
         if (parsedConnections && typeof parsedConnections === "object" && parsedConnections.providers) {
           const providers: Partial<Record<RuntimeProviderFlavor, ModelConfig>> = {}
@@ -548,7 +551,7 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
   const loadModels = useCallback(async () => {
     setModelsLoading(true)
     try {
-      const result = await window.ipc.invoke("models:list", null)
+      const result = await modelsIpc.list()
       const nextCatalog: Record<string, ModelOption[]> = {}
       for (const provider of result.providers || []) {
         nextCatalog[provider.id] = provider.models || []
@@ -650,11 +653,8 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
   }, [detailReturnView])
 
   const saveConnections = useCallback(async (nextConnections: SavedProviderConnections, nextRuntime: ModelConfig) => {
-    await window.ipc.invoke("workspace:writeFile", {
-      path: CONNECTIONS_PATH,
-      data: JSON.stringify(nextConnections, null, 2),
-    })
-    await window.ipc.invoke("models:saveConfig", nextRuntime)
+    await workspaceIpc.writeFile(CONNECTIONS_PATH, JSON.stringify(nextConnections, null, 2))
+    await modelsActionsIpc.saveConfig(nextRuntime)
     setConnections(nextConnections)
   }, [])
 
@@ -691,7 +691,7 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
     setDetailSaving(true)
     setDetailError(null)
     try {
-      const result = await window.ipc.invoke("models:test", nextRuntime)
+      const result = await modelsActionsIpc.test(nextRuntime)
       if (!result.success) {
         setDetailError(result.error || "Connection test failed")
         return

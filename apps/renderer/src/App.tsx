@@ -65,6 +65,8 @@ import { RendererAppShell } from '@/components/app-shell/renderer-app-shell'
 import { useChatRuntime } from '@/features/chat/use-chat-runtime'
 import { appIpc } from '@/services/app-ipc'
 import { runsIpc } from '@/services/runs-ipc'
+import { workspaceIpc } from '@/services/workspace-ipc'
+import { knowledgeIpc } from '@/services/knowledge-ipc'
 
 interface BackgroundTaskSchedule {
   type: 'cron' | 'window' | 'once'
@@ -1014,9 +1016,9 @@ const handleWindowMinimize = useCallback(() => {
                             const restorePath = versionHistoryPath.startsWith('knowledge/')
                               ? versionHistoryPath.slice('knowledge/'.length)
                               : versionHistoryPath
-                            await window.ipc.invoke('knowledge:restore', { path: restorePath, oid })
+                            await knowledgeIpc.restore(restorePath, oid)
                             // Reload file content
-                            const result = await window.ipc.invoke('workspace:readFile', { path: versionHistoryPath })
+                            const result = await workspaceIpc.readFile(versionHistoryPath)
                             handleEditorChange(versionHistoryPath, result.data)
                             setViewingHistoricalVersion(null)
                             setVersionHistoryPath(null)

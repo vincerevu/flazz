@@ -8,4 +8,8 @@ export const shellIpc = {
   readFileBase64(path: string) {
     return window.ipc.invoke('shell:readFileBase64', { path })
   },
+
+  openPath(path: string) {
+    return window.ipc.invoke('shell:openPath', { path })
+  },
 }

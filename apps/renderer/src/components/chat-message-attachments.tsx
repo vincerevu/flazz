@@ -18,6 +18,7 @@ import {
   getAttachmentTypeLabel,
 } from '@/lib/attachment-presentation'
 import { isImageMime, toFileUrl } from '@/lib/file-utils'
+import { shellIpc } from '@/services/shell-ipc'
 import { cn } from '@/lib/utils'
 
 function getAttachmentIcon(kind: AttachmentIconKind) {
@@ -53,7 +54,7 @@ function ImageAttachmentPreview({ attachment }: { attachment: MessageAttachment 
   const loadBase64 = useMemo(
     () => async () => {
       try {
-        const result = await window.ipc.invoke('shell:readFileBase64', { path: attachment.path })
+        const result = await shellIpc.readFileBase64(attachment.path)
         const mimeType = result.mimeType || attachment.mimeType || 'image/*'
         setSrc(`data:${mimeType};base64,${result.data}`)
       } catch {

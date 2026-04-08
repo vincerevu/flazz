@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useFileCard } from '@/contexts/file-card-context'
 import { useSidebarSection } from '@/contexts/sidebar-context'
 import { wikiLabel } from '@/lib/wiki-links'
+import { shellIpc } from '@/services/shell-ipc'
 
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.m4a', '.ogg', '.flac', '.aac'])
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'])
@@ -112,7 +113,7 @@ function AudioFileCard({ filePath }: { filePath: string }) {
     if (!audioRef.current) {
       setIsLoading(true)
       try {
-        const result = await window.ipc.invoke('shell:readFileBase64', { path: filePath })
+        const result = await shellIpc.readFileBase64(filePath)
         const dataUrl = `data:${result.mimeType};base64,${result.data}`
         const audio = new Audio(dataUrl)
         audio.addEventListener('ended', () => setIsPlaying(false))
@@ -139,7 +140,7 @@ function AudioFileCard({ filePath }: { filePath: string }) {
   }, [])
 
   const handleOpen = async () => {
-    await window.ipc.invoke('shell:openPath', { path: filePath })
+    await shellIpc.openPath(filePath)
   }
 
   return (
@@ -180,7 +181,7 @@ function SystemFileCard({ filePath }: { filePath: string }) {
   useEffect(() => {
     if (!isImage) return
     let cancelled = false
-    window.ipc.invoke('shell:readFileBase64', { path: filePath })
+    shellIpc.readFileBase64(filePath)
       .then((result) => {
         if (!cancelled) {
           setThumbnail(`data:${result.mimeType};base64,${result.data}`)
@@ -191,7 +192,7 @@ function SystemFileCard({ filePath }: { filePath: string }) {
   }, [filePath, isImage])
 
   const handleOpen = async () => {
-    await window.ipc.invoke('shell:openPath', { path: filePath })
+    await shellIpc.openPath(filePath)
   }
 
   return (

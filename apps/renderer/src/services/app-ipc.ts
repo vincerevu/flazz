@@ -4,8 +4,12 @@
  * Centralizes all window.ipc calls for Electron window management.
  */
 
+import type { IPCChannels } from '@flazz/shared/src/ipc.js'
+
+type WindowState = IPCChannels['app:getWindowState']['res']
+
 export const appIpc = {
-  getWindowState() {
+  getWindowState(): Promise<WindowState> {
     return window.ipc.invoke('app:getWindowState', null)
   },
 
@@ -21,7 +25,7 @@ export const appIpc = {
     return window.ipc.invoke('app:closeWindow', null)
   },
 
-  onWindowStateChanged(handler: (state: unknown) => void) {
-    return window.ipc.on('app:windowStateChanged', handler as (event: null) => void)
+  onWindowStateChanged(handler: (state: WindowState) => void) {
+    return window.ipc.on('app:windowStateChanged', handler)
   },
 }
