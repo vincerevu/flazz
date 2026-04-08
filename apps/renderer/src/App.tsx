@@ -1,15 +1,14 @@
 import * as React from 'react'
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { ipc as ipcShared, workspace } from '@flazz/shared';
-import { RunEvent, ListRunsResponse } from '@flazz/shared/src/runs.js';
-import type { LanguageModelUsage, ToolUIPart } from 'ai';
+import * as ipcShared from '@x/shared/src/ipc.js'
+import * as workspace from '@x/shared/src/workspace.js'
 import './App.css'
 import z from 'zod';
 import { CheckIcon, HistoryIcon, LoaderIcon, Maximize2, Minimize2, SquarePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MarkdownEditor } from './components/markdown-editor';
 import { ChatSidebar } from './components/chat-sidebar';
-import { ChatInputWithMentions, type StagedAttachment } from './components/chat-input-with-mentions';
+import { ChatInputWithMentions } from './components/chat-input-with-mentions';
 import { ChatMessageAttachments } from '@/components/chat-message-attachments'
 import { GraphView, type GraphEdge, type GraphNode } from '@/components/graph-view';
 import { useDebounce } from './hooks/use-debounce';
@@ -25,18 +24,12 @@ import {
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message';
-import {
-  type PromptInputMessage,
-  type FileMention,
-} from '@/components/ai-elements/prompt-input';
-
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import { WebSearchResult } from '@/components/ai-elements/web-search-result';
 import { PermissionRequest } from '@/components/ai-elements/permission-request';
 import { AskHumanRequest } from '@/components/ai-elements/ask-human-request';
 import { Suggestions } from '@/components/ai-elements/suggestions';
-import { ToolPermissionRequestEvent, AskHumanRequestEvent } from '@flazz/shared/src/runs.js';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { stripKnowledgePrefix, toKnowledgePath, wikiLabel } from '@/lib/wiki-links'
 import { SearchDialog } from '@/components/search-dialog'
@@ -46,13 +39,10 @@ import { FileCardProvider } from '@/contexts/file-card-context'
 import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
 import { TabBar, type ChatTab, type FileTab } from '@/components/tab-bar'
 import {
-  type ChatMessage,
   type ChatTabViewState,
   type ConversationItem,
-  type ToolCall,
   createEmptyChatTabViewState,
   getWebSearchCardData,
-  inferRunTitleFromMessage,
   isChatMessage,
   isErrorMessage,
   isToolCall,
@@ -61,15 +51,13 @@ import {
   parseAttachedFiles,
   toToolState,
 } from '@/lib/chat-conversation'
-import { AgentScheduleConfig } from '@flazz/shared/dist/agent-schedule.js'
-import { AgentScheduleState } from '@flazz/shared/dist/agent-schedule-state.js'
+import { AgentScheduleConfig } from '@x/shared/src/agent-schedule.js'
+import { AgentScheduleState } from '@x/shared/src/agent-schedule-state.js'
 import { useTheme } from '@/contexts/theme-context'
 import { RendererAppShell } from '@/components/app-shell/renderer-app-shell'
-import { toast } from "sonner"
+import { useChatRuntime } from '@/features/chat/use-chat-runtime'
 
 type DirEntry = z.infer<typeof workspace.DirEntry>
-type RunEventType = z.infer<typeof RunEvent>
-type ListRunsResponseType = z.infer<typeof ListRunsResponse>
 type DesktopWindowState = ipcShared.IPCChannels['app:getWindowState']['res']
 
 interface TreeNode extends DirEntry {
@@ -219,23 +207,6 @@ const getAncestorDirectoryPaths = (path: string): string[] => {
 }
 
 const isGraphTabPath = (path: string) => path === GRAPH_TAB_PATH
-
-const normalizeUsage = (usage?: Partial<LanguageModelUsage> | null): LanguageModelUsage | null => {
-  if (!usage) return null
-  const hasNumbers = Object.values(usage).some((value) => typeof value === 'number')
-  if (!hasNumbers) return null
-  const inputTokens = usage.inputTokens ?? 0
-  const outputTokens = usage.outputTokens ?? 0
-  const reasoningTokens = usage.reasoningTokens ?? 0
-  const totalTokens = usage.totalTokens ?? inputTokens + outputTokens + reasoningTokens
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    cachedInputTokens: usage.cachedInputTokens ?? 0,
-    reasoningTokens,
-  }
-}
 
 // Sort nodes (dirs first, then alphabetically)
 function sortNodes(nodes: TreeNode[]): TreeNode[] {
@@ -397,26 +368,8 @@ function App() {
     content: string
   } | null>(null)
 
-  // Chat state
-  const [, setMessage] = useState<string>('')
-  const [conversation, setConversation] = useState<ConversationItem[]>([])
-  const [currentAssistantMessage, setCurrentAssistantMessage] = useState<string>('')
-  const [, setModelUsage] = useState<LanguageModelUsage | null>(null)
-  const [runId, setRunId] = useState<string | null>(null)
-  const runIdRef = useRef<string | null>(null)
-  const loadRunRequestIdRef = useRef(0)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [processingRunIds, setProcessingRunIds] = useState<Set<string>>(new Set())
-  const processingRunIdsRef = useRef<Set<string>>(new Set())
-  const streamingBuffersRef = useRef<Map<string, { assistant: string }>>(new Map())
-  const [isStopping, setIsStopping] = useState(false)
-  const [stopClickedAt, setStopClickedAt] = useState<number | null>(null)
   const [agentId] = useState<string>('copilot')
   const [presetMessage, setPresetMessage] = useState<string | undefined>(undefined)
-
-  // Runs history state
-  type RunListItem = { id: string; title?: string; createdAt: string; agentId: string }
-  const [runs, setRuns] = useState<RunListItem[]>([])
 
   // Chat tab state
   const [chatTabs, setChatTabs] = useState<ChatTab[]>([{ id: 'default-chat-tab', runId: null }])
@@ -478,15 +431,6 @@ function App() {
     chatScrollTopByTabRef.current.set(tabId, container.scrollTop)
   }, [getChatScrollContainer])
 
-  const getChatTabTitle = useCallback((tab: ChatTab) => {
-    if (!tab.runId) return 'New chat'
-    return runs.find(r => r.id === tab.runId)?.title || '(Untitled chat)'
-  }, [runs])
-
-  const isChatTabProcessing = useCallback((tab: ChatTab) => {
-    return tab.runId ? processingRunIds.has(tab.runId) : false
-  }, [processingRunIds])
-
   // File tab state
   const [fileTabs, setFileTabs] = useState<FileTab[]>([])
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null)
@@ -500,36 +444,56 @@ function App() {
     return tab.path.split('/').pop()?.replace(/\.md$/i, '') || tab.path
   }, [])
 
-  // Pending requests state
-  const [, setPendingPermissionRequests] = useState<Map<string, z.infer<typeof ToolPermissionRequestEvent>>>(new Map())
-  const [pendingAskHumanRequests, setPendingAskHumanRequests] = useState<Map<string, z.infer<typeof AskHumanRequestEvent>>>(new Map())
-  // Track ALL permission requests (for rendering with response status)
-  const [allPermissionRequests, setAllPermissionRequests] = useState<Map<string, z.infer<typeof ToolPermissionRequestEvent>>>(new Map())
-  // Track permission responses (toolCallId -> response)
-  const [permissionResponses, setPermissionResponses] = useState<Map<string, 'approve' | 'deny'>>(new Map())
+  const {
+    runs,
+    loadRuns,
+    runId,
+    conversation,
+    currentAssistantMessage,
+    isProcessing,
+    isStopping,
+    processingRunIds,
+    pendingAskHumanRequests,
+    allPermissionRequests,
+    permissionResponses,
+    chatRuntimeSnapshot,
+    loadRun,
+    cancelPendingRunLoads,
+    resetChatRuntime,
+    restoreChatRuntime,
+    handlePromptSubmit,
+    handleStop,
+    handlePermissionResponse,
+    handleAskHumanResponse,
+  } = useChatRuntime({
+    agentId,
+    onActiveTabRunIdChange: (nextRunId) => {
+      setChatTabs((prev) => prev.map((tab) => (
+        tab.id === activeChatTabId
+          ? { ...tab, runId: nextRunId }
+          : tab
+      )))
+    },
+  })
+
+  const getChatTabTitle = useCallback((tab: ChatTab) => {
+    if (!tab.runId) return 'New chat'
+    return runs.find((run) => run.id === tab.runId)?.title || '(Untitled chat)'
+  }, [runs])
+
+  const isChatTabProcessing = useCallback((tab: ChatTab) => {
+    return tab.runId ? processingRunIds.has(tab.runId) : false
+  }, [processingRunIds])
 
   useEffect(() => {
     chatViewStateByTabRef.current = chatViewStateByTab
   }, [chatViewStateByTab])
 
   useEffect(() => {
-    const snapshot: ChatTabViewState = {
-      runId,
-      conversation,
-      currentAssistantMessage,
-      pendingAskHumanRequests: new Map(pendingAskHumanRequests),
-      allPermissionRequests: new Map(allPermissionRequests),
-      permissionResponses: new Map(permissionResponses),
-    }
-    setChatViewStateByTab((prev) => ({ ...prev, [activeChatTabId]: snapshot }))
+    setChatViewStateByTab((prev) => ({ ...prev, [activeChatTabId]: chatRuntimeSnapshot }))
   }, [
     activeChatTabId,
-    runId,
-    conversation,
-    currentAssistantMessage,
-    pendingAskHumanRequests,
-    allPermissionRequests,
-    permissionResponses,
+    chatRuntimeSnapshot,
   ])
 
   useEffect(() => {
@@ -604,11 +568,6 @@ function App() {
     })
   }, [selectedPath])
 
-  // Keep runIdRef in sync with runId state (for use in event handlers to avoid stale closures)
-  useEffect(() => {
-    runIdRef.current = runId
-  }, [runId])
-
   const setEditorCacheForPath = useCallback((path: string, content: string) => {
     editorContentByPathRef.current.set(path, content)
     setEditorContentByPath((prev) => {
@@ -640,34 +599,6 @@ function App() {
     editorContentRef.current = markdown
     setEditorContent(markdown)
   }, [setEditorCacheForPath])
-  // Keep processingRunIdsRef in sync for use in async callbacks
-  useEffect(() => {
-    processingRunIdsRef.current = processingRunIds
-  }, [processingRunIds])
-
-  // Sync active run streaming UI with background processing tracking.
-  // Depend on both runId and processingRunIds so we don't miss late/early event ordering.
-  useEffect(() => {
-    if (!runId) {
-      setIsProcessing(false)
-      setIsStopping(false)
-      setStopClickedAt(null)
-      setCurrentAssistantMessage('')
-      return
-    }
-    const isRunProcessing = processingRunIds.has(runId)
-    setIsProcessing(isRunProcessing)
-    if (isRunProcessing) {
-      const buffer = streamingBuffersRef.current.get(runId)
-      setCurrentAssistantMessage(buffer?.assistant ?? '')
-    } else {
-      setIsStopping(false)
-      setStopClickedAt(null)
-      setCurrentAssistantMessage('')
-      streamingBuffersRef.current.delete(runId)
-    }
-  }, [runId, processingRunIds])
-
   // Load directory tree
   const loadDirectory = useCallback(async () => {
     try {
@@ -969,32 +900,6 @@ function App() {
     }
   }, [selectedPath, versionHistoryPath])
 
-  // Load runs list (all pages)
-  const loadRuns = useCallback(async () => {
-    try {
-      const allRuns: RunListItem[] = []
-      let cursor: string | undefined = undefined
-
-      // Fetch all pages
-      do {
-        const result: ListRunsResponseType = await window.ipc.invoke('runs:list', { cursor })
-        allRuns.push(...result.runs)
-        cursor = result.nextCursor
-      } while (cursor)
-
-      // Filter for copilot runs only
-      const copilotRuns = allRuns.filter((run: RunListItem) => run.agentId === 'copilot')
-      setRuns(copilotRuns)
-    } catch (err) {
-      console.error('Failed to load runs:', err)
-    }
-  }, [])
-
-  // Load runs on mount
-  useEffect(() => {
-    loadRuns()
-  }, [loadRuns])
-
   // Load background tasks
   const loadBackgroundTasks = useCallback(async () => {
     try {
@@ -1052,805 +957,63 @@ function App() {
     }
   }, [backgroundTasks, loadBackgroundTasks])
 
-  // Load a specific run and populate conversation
-  const loadRun = useCallback(async (id: string) => {
-    const requestId = (loadRunRequestIdRef.current += 1)
-    try {
-      const run = await window.ipc.invoke('runs:fetch', { runId: id })
-      if (loadRunRequestIdRef.current !== requestId) return
-
-      // Parse the log events into conversation items
-      const items: ConversationItem[] = []
-      const toolCallMap = new Map<string, ToolCall>()
-
-      for (const event of run.log) {
-        switch (event.type) {
-          case 'message': {
-            const msg = event.message
-            if (msg.role === 'user' || msg.role === 'assistant') {
-              // Extract text content from message
-              let textContent = ''
-              let msgAttachments: ChatMessage['attachments'] = undefined
-              if (typeof msg.content === 'string') {
-                textContent = msg.content
-              } else if (Array.isArray(msg.content)) {
-                const contentParts = msg.content as Array<{
-                  type: string
-                  text?: string
-                  path?: string
-                  filename?: string
-                  mimeType?: string
-                  size?: number
-                  toolCallId?: string
-                  toolName?: string
-                  arguments?: ToolUIPart['input']
-                }>
-
-                textContent = contentParts
-                  .filter((part) => part.type === 'text')
-                  .map((part) => part.text || '')
-                  .join('')
-
-                const attachmentParts = contentParts.filter((part) => part.type === 'attachment' && part.path)
-                if (attachmentParts.length > 0) {
-                  msgAttachments = attachmentParts.map((part) => ({
-                    path: part.path!,
-                    filename: part.filename || part.path!.split('/').pop() || part.path!,
-                    mimeType: part.mimeType || 'application/octet-stream',
-                    size: part.size,
-                  }))
-                }
-
-                // Also extract tool-call parts from assistant messages
-                if (msg.role === 'assistant') {
-                  for (const part of contentParts) {
-                    if (part.type === 'tool-call' && part.toolCallId && part.toolName) {
-                      const toolCall: ToolCall = {
-                        id: part.toolCallId,
-                        name: part.toolName,
-                        input: normalizeToolInput(part.arguments),
-                        status: 'pending',
-                        timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
-                      }
-                      toolCallMap.set(toolCall.id, toolCall)
-                      items.push(toolCall)
-                    }
-                  }
-                }
-              }
-              if (textContent || msgAttachments) {
-                items.push({
-                  id: event.messageId,
-                  role: msg.role,
-                  content: textContent,
-                  attachments: msgAttachments,
-                  timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
-                })
-              }
-            }
-            break
-          }
-          case 'tool-invocation': {
-            // Update existing tool call status or create new one
-            const existingTool = event.toolCallId ? toolCallMap.get(event.toolCallId) : null
-            if (existingTool) {
-              existingTool.input = normalizeToolInput(event.input)
-              existingTool.status = 'running'
-            } else {
-              const toolCall: ToolCall = {
-                id: event.toolCallId || `tool-${Date.now()}-${Math.random()}`,
-                name: event.toolName,
-                input: normalizeToolInput(event.input),
-                status: 'running',
-                timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
-              }
-              toolCallMap.set(toolCall.id, toolCall)
-              items.push(toolCall)
-            }
-            break
-          }
-          case 'tool-result': {
-            const existingTool = event.toolCallId ? toolCallMap.get(event.toolCallId) : null
-            if (existingTool) {
-              existingTool.result = event.result
-              existingTool.status = 'completed'
-            }
-            break
-          }
-          case 'error': {
-            items.push({
-              id: `error-${Date.now()}-${Math.random()}`,
-              kind: 'error',
-              message: event.error,
-              timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
-            })
-            break
-          }
-          case 'llm-stream-event': {
-            // We don't need to reconstruct streaming events for history
-            // Reasoning is captured in the final message
-            break
-          }
-        }
-      }
-      if (loadRunRequestIdRef.current !== requestId) return
-
-      // Track permission requests and responses from history
-      const allPermissionRequests = new Map<string, z.infer<typeof ToolPermissionRequestEvent>>()
-      const permResponseMap = new Map<string, 'approve' | 'deny'>()
-      const askHumanRequests = new Map<string, z.infer<typeof AskHumanRequestEvent>>()
-      const respondedAskHumanIds = new Set<string>()
-
-      for (const event of run.log) {
-        if (event.type === 'tool-permission-request') {
-          allPermissionRequests.set(event.toolCall.toolCallId, event)
-        } else if (event.type === 'tool-permission-response') {
-          permResponseMap.set(event.toolCallId, event.response)
-        } else if (event.type === 'ask-human-request') {
-          askHumanRequests.set(event.toolCallId, event)
-        } else if (event.type === 'ask-human-response') {
-          respondedAskHumanIds.add(event.toolCallId)
-        }
-      }
-      if (loadRunRequestIdRef.current !== requestId) return
-
-      // Separate pending vs responded permission requests
-      const pendingPerms = new Map<string, z.infer<typeof ToolPermissionRequestEvent>>()
-      for (const [id, req] of allPermissionRequests.entries()) {
-        if (!permResponseMap.has(id)) {
-          pendingPerms.set(id, req)
-        }
-      }
-
-      const pendingAsks = new Map<string, z.infer<typeof AskHumanRequestEvent>>()
-      for (const [id, req] of askHumanRequests.entries()) {
-        if (!respondedAskHumanIds.has(id)) {
-          pendingAsks.set(id, req)
-        }
-      }
-      if (loadRunRequestIdRef.current !== requestId) return
-
-      // Set the conversation and runId
-      setConversation(items)
-      setRunId(id)
-      setMessage('')
-      setPendingPermissionRequests(pendingPerms)
-      setPendingAskHumanRequests(pendingAsks)
-      setAllPermissionRequests(allPermissionRequests)
-      setPermissionResponses(permResponseMap)
-    } catch (err) {
-      console.error('Failed to load run:', err)
-    }
-  }, [])
-
-  const getStreamingBuffer = useCallback((id: string) => {
-    const existing = streamingBuffersRef.current.get(id)
-    if (existing) return existing
-    const next = { assistant: '' }
-    streamingBuffersRef.current.set(id, next)
-    return next
-  }, [])
-
-  const appendStreamingBuffer = useCallback((id: string, delta: string) => {
-    if (!delta) return
-    const buffer = getStreamingBuffer(id)
-    buffer.assistant += delta
-  }, [getStreamingBuffer])
-
-  const clearStreamingBuffer = useCallback((id: string) => {
-    streamingBuffersRef.current.delete(id)
-  }, [])
-
-  const handleRunEvent = useCallback((event: RunEventType) => {
-    const activeRunId = runIdRef.current
-    const isActiveRun = event.runId === activeRunId
-
-    console.log('Run event:', event.type, event)
-
-    switch (event.type) {
-      case 'run-processing-start':
-        setProcessingRunIds(prev => {
-          const next = new Set(prev)
-          next.add(event.runId)
-          return next
-        })
-        if (!isActiveRun) return
-        setIsProcessing(true)
-        setModelUsage(null)
-        break
-
-      case 'run-processing-end':
-        setProcessingRunIds(prev => {
-          const next = new Set(prev)
-          next.delete(event.runId)
-          return next
-        })
-        void loadRuns()
-        clearStreamingBuffer(event.runId)
-        if (!isActiveRun) return
-        setIsProcessing(false)
-        setIsStopping(false)
-        setStopClickedAt(null)
-        break
-
-      case 'start':
-        setProcessingRunIds(prev => {
-          if (prev.has(event.runId)) return prev
-          const next = new Set(prev)
-          next.add(event.runId)
-          return next
-        })
-        if (!isActiveRun) return
-        setIsProcessing(true)
-        setCurrentAssistantMessage('')
-        setModelUsage(null)
-        break
-
-      case 'llm-stream-event':
-        {
-          const llmEvent = event.event
-          // Fallback: if processing-start is missed/out-of-order, stream activity still means run is active.
-          setProcessingRunIds(prev => {
-            if (prev.has(event.runId)) return prev
-            const next = new Set(prev)
-            next.add(event.runId)
-            return next
-          })
-          if (!isActiveRun) {
-            if (llmEvent.type === 'text-delta' && llmEvent.delta) {
-              appendStreamingBuffer(event.runId, llmEvent.delta)
-            }
-            return
-          }
-          setIsProcessing(true)
-          if (llmEvent.type === 'text-delta' && llmEvent.delta) {
-            appendStreamingBuffer(event.runId, llmEvent.delta)
-            setCurrentAssistantMessage(prev => prev + llmEvent.delta)
-          } else if (llmEvent.type === 'tool-call') {
-            setConversation(prev => [...prev, {
-              id: llmEvent.toolCallId || `tool-${Date.now()}`,
-              name: llmEvent.toolName || 'tool',
-              input: normalizeToolInput(llmEvent.input as ToolUIPart['input']),
-              status: 'running',
-              timestamp: Date.now(),
-            }])
-          } else if (llmEvent.type === 'finish-step') {
-            const nextUsage = normalizeUsage(llmEvent.usage)
-            if (nextUsage) {
-              setModelUsage(nextUsage)
-            }
-          }
-        }
-        break
-
-      case 'message':
-        {
-          const msg = event.message
-          if (msg.role === 'user' && typeof msg.content === 'string') {
-            const inferredTitle = inferRunTitleFromMessage(msg.content)
-            if (inferredTitle) {
-              setRuns(prev => prev.map(run => (
-                run.id === event.runId && run.title !== inferredTitle
-                  ? { ...run, title: inferredTitle }
-                  : run
-              )))
-            }
-          }
-          if (!isActiveRun) {
-            if (msg.role === 'assistant') {
-              clearStreamingBuffer(event.runId)
-            }
-            return
-          }
-          if (msg.role === 'assistant') {
-            setCurrentAssistantMessage(currentMsg => {
-              if (currentMsg) {
-                setConversation(prev => {
-                  const exists = prev.some(m =>
-                    m.id === event.messageId && 'role' in m && m.role === 'assistant'
-                  )
-                  if (exists) return prev
-                  return [...prev, {
-                    id: event.messageId,
-                    role: 'assistant',
-                    content: currentMsg,
-                    timestamp: Date.now(),
-                  }]
-                })
-              }
-              return ''
-            })
-            clearStreamingBuffer(event.runId)
-          }
-        }
-        break
-
-      case 'tool-invocation':
-        {
-          if (!isActiveRun) return
-          const parsedInput = normalizeToolInput(event.input)
-          setConversation(prev => {
-            let matched = false
-            const next = prev.map(item => {
-              if (
-                isToolCall(item)
-                && (event.toolCallId ? item.id === event.toolCallId : item.name === event.toolName)
-              ) {
-                matched = true
-                return { ...item, input: parsedInput, status: 'running' as const }
-              }
-              return item
-            })
-            if (!matched) {
-              next.push({
-                id: event.toolCallId ?? `tool-${Date.now()}`,
-                name: event.toolName,
-                input: parsedInput,
-                status: 'running',
-                timestamp: Date.now(),
-              })
-            }
-            return next
-          })
-          break
-        }
-
-      case 'tool-result':
-        {
-          if (!isActiveRun) return
-          setConversation(prev => {
-            let matched = false
-            const next = prev.map(item => {
-              if (
-                isToolCall(item)
-                && (event.toolCallId ? item.id === event.toolCallId : item.name === event.toolName)
-              ) {
-                matched = true
-                return {
-                  ...item,
-                  result: event.result as ToolUIPart['output'],
-                  status: 'completed' as const,
-                }
-              }
-              return item
-            })
-            if (!matched) {
-              next.push({
-                id: event.toolCallId ?? `tool-${Date.now()}`,
-                name: event.toolName,
-                input: {},
-                result: event.result as ToolUIPart['output'],
-                status: 'completed',
-                timestamp: Date.now(),
-              })
-            }
-            return next
-          })
-          break
-        }
-
-      case 'tool-permission-request': {
-        if (!isActiveRun) return
-        const key = event.toolCall.toolCallId
-        setPendingPermissionRequests(prev => {
-          const next = new Map(prev)
-          next.set(key, event)
-          return next
-        })
-        setAllPermissionRequests(prev => {
-          const next = new Map(prev)
-          next.set(key, event)
-          return next
-        })
-        break
-      }
-
-      case 'tool-permission-response': {
-        if (!isActiveRun) return
-        setPendingPermissionRequests(prev => {
-          const next = new Map(prev)
-          next.delete(event.toolCallId)
-          return next
-        })
-        setPermissionResponses(prev => {
-          const next = new Map(prev)
-          next.set(event.toolCallId, event.response)
-          return next
-        })
-        break
-      }
-
-      case 'ask-human-request': {
-        if (!isActiveRun) return
-        const key = event.toolCallId
-        setPendingAskHumanRequests(prev => {
-          const next = new Map(prev)
-          next.set(key, event)
-          return next
-        })
-        break
-      }
-
-      case 'ask-human-response': {
-        if (!isActiveRun) return
-        setPendingAskHumanRequests(prev => {
-          const next = new Map(prev)
-          next.delete(event.toolCallId)
-          return next
-        })
-        break
-      }
-
-      case 'run-stopped':
-        setProcessingRunIds(prev => {
-          const next = new Set(prev)
-          next.delete(event.runId)
-          return next
-        })
-        clearStreamingBuffer(event.runId)
-        if (!isActiveRun) return
-        setIsProcessing(false)
-        setIsStopping(false)
-        setStopClickedAt(null)
-        // Clear pending requests since they've been aborted
-        setPendingPermissionRequests(new Map())
-        setPendingAskHumanRequests(new Map())
-        // Flush any streaming content as a message
-        setCurrentAssistantMessage(currentMsg => {
-          if (currentMsg) {
-            setConversation(prev => [...prev, {
-              id: `assistant-stopped-${Date.now()}`,
-              role: 'assistant',
-              content: currentMsg,
-              timestamp: Date.now(),
-            }])
-          }
-          return ''
-        })
-        break
-
-      case 'error':
-        setProcessingRunIds(prev => {
-          const next = new Set(prev)
-          next.delete(event.runId)
-          return next
-        })
-        clearStreamingBuffer(event.runId)
-        if (!isActiveRun) return
-        setIsProcessing(false)
-        setIsStopping(false)
-        setStopClickedAt(null)
-        setConversation(prev => [...prev, {
-          id: `error-${Date.now()}`,
-          kind: 'error',
-          message: event.error,
-          timestamp: Date.now(),
-        }])
-        toast.error(event.error.split('\n')[0] || 'Model error')
-        console.error('Run error:', event.error)
-        break
-    }
-  }, [appendStreamingBuffer, clearStreamingBuffer, loadRuns])
-
-  // Listen to run events - use refs/callbacks to avoid stale closure issues.
-  useEffect(() => {
-    const cleanup = window.ipc.on('runs:events', ((event: unknown) => {
-      handleRunEvent(event as RunEventType)
-    }) as (event: null) => void)
-    return cleanup
-  }, [handleRunEvent])
-
-  const handlePromptSubmit = async (
-    message: PromptInputMessage,
-    mentions?: FileMention[],
-    stagedAttachments: StagedAttachment[] = []
-  ) => {
-    if (isProcessing) return
-
-    const { text } = message
-    const userMessage = text.trim()
-    const hasAttachments = stagedAttachments.length > 0
-    if (!userMessage && !hasAttachments) return
-
-    setMessage('')
-
-    const userMessageId = `user-${Date.now()}`
-    const displayAttachments: ChatMessage['attachments'] = hasAttachments
-      ? stagedAttachments.map((attachment) => ({
-          path: attachment.path,
-          filename: attachment.filename,
-          mimeType: attachment.mimeType,
-          size: attachment.size,
-          thumbnailUrl: attachment.thumbnailUrl,
-        }))
-      : undefined
-    setConversation((prev) => [...prev, {
-      id: userMessageId,
-      role: 'user',
-      content: userMessage,
-      attachments: displayAttachments,
-      timestamp: Date.now(),
-    }])
-
-    try {
-      let currentRunId = runId
-      let isNewRun = false
-      let newRunCreatedAt: string | null = null
-      if (!currentRunId) {
-        const run = await window.ipc.invoke('runs:create', {
-          agentId,
-        })
-        currentRunId = run.id
-        newRunCreatedAt = run.createdAt
-        setRunId(currentRunId)
-        // Update active chat tab's runId to the new run
-        setChatTabs((prev) => prev.map((tab) => (
-          tab.id === activeChatTabId
-            ? { ...tab, runId: currentRunId }
-            : tab
-        )))
-        isNewRun = true
-      }
-
-      let titleSource = userMessage
-
-      if (hasAttachments) {
-        type ContentPart =
-          | { type: 'text'; text: string }
-          | {
-              type: 'attachment'
-              path: string
-              filename: string
-              mimeType: string
-              size?: number
-            }
-
-        const contentParts: ContentPart[] = []
-
-        if (mentions && mentions.length > 0) {
-          for (const mention of mentions) {
-            contentParts.push({
-              type: 'attachment',
-              path: mention.path,
-              filename: mention.displayName || mention.path.split('/').pop() || mention.path,
-              mimeType: 'text/markdown',
-            })
-          }
-        }
-
-        for (const attachment of stagedAttachments) {
-          contentParts.push({
-            type: 'attachment',
-            path: attachment.path,
-            filename: attachment.filename,
-            mimeType: attachment.mimeType,
-            size: attachment.size,
-          })
-        }
-
-        if (userMessage) {
-          contentParts.push({ type: 'text', text: userMessage })
-        } else {
-          titleSource = stagedAttachments[0]?.filename ?? ''
-        }
-
-        // Shared IPC payload types can lag until package rebuilds; runtime validation still enforces schema.
-        const attachmentPayload = contentParts as unknown as string
-        await window.ipc.invoke('runs:createMessage', {
-          runId: currentRunId,
-          message: attachmentPayload,
-        })
-      } else {
-        // Legacy path: plain string with optional XML-formatted @mentions.
-        let formattedMessage = userMessage
-        if (mentions && mentions.length > 0) {
-          const attachedFiles = await Promise.all(
-            mentions.map(async (mention) => {
-              try {
-                const result = await window.ipc.invoke('workspace:readFile', { path: mention.path })
-                return { path: mention.path, content: result.data as string }
-              } catch (err) {
-                console.error('Failed to read mentioned file:', mention.path, err)
-                return { path: mention.path, content: `[Error reading file: ${mention.path}]` }
-              }
-            })
-          )
-
-          if (attachedFiles.length > 0) {
-            const filesXml = attachedFiles
-              .map((file) => `<file path="${file.path}">\n${file.content}\n</file>`)
-              .join('\n')
-            formattedMessage = `<attached-files>\n${filesXml}\n</attached-files>\n\n${userMessage}`
-          }
-        }
-
-        await window.ipc.invoke('runs:createMessage', {
-          runId: currentRunId,
-          message: formattedMessage,
-        })
-
-        titleSource = formattedMessage
-      }
-
-      if (isNewRun) {
-        const inferredTitle = inferRunTitleFromMessage(titleSource)
-        setRuns((prev) => {
-          const withoutCurrent = prev.filter((run) => run.id !== currentRunId)
-          return [{
-            id: currentRunId!,
-            title: inferredTitle,
-            createdAt: newRunCreatedAt ?? new Date().toISOString(),
-            agentId,
-          }, ...withoutCurrent]
-        })
-      }
-    } catch (error) {
-      console.error('Failed to send message:', error)
-    }
-  }
-
-  const handleStop = useCallback(async () => {
-    if (!runId) return
-    const now = Date.now()
-    const isForce = isStopping && stopClickedAt !== null && (now - stopClickedAt) < 2000
-
-    setStopClickedAt(now)
-    setIsStopping(true)
-
-    try {
-      await window.ipc.invoke('runs:stop', { runId, force: isForce })
-    } catch (error) {
-      console.error('Failed to stop run:', error)
-    }
-  }, [runId, isStopping, stopClickedAt])
-
-  const handlePermissionResponse = useCallback(async (
-    toolCallId: string,
-    subflow: string[],
-    response: 'approve' | 'deny',
-    scope?: 'once' | 'session' | 'always',
-  ) => {
-    if (!runId) return
-
-    // Optimistically update the UI immediately
-    setPermissionResponses(prev => {
-      const next = new Map(prev)
-      next.set(toolCallId, response)
-      return next
-    })
-    setPendingPermissionRequests(prev => {
-      const next = new Map(prev)
-      next.delete(toolCallId)
-      return next
-    })
-
-    try {
-      await window.ipc.invoke('runs:authorizePermission', {
-        runId,
-        authorization: { subflow, toolCallId, response, scope }
-      })
-    } catch (error) {
-      console.error('Failed to authorize permission:', error)
-      // Revert the optimistic update on error
-      setPermissionResponses(prev => {
-        const next = new Map(prev)
-        next.delete(toolCallId)
-        return next
-      })
-    }
-  }, [runId])
-
-  const handleAskHumanResponse = useCallback(async (toolCallId: string, subflow: string[], response: string) => {
-    if (!runId) return
-    try {
-      await window.ipc.invoke('runs:provideHumanInput', {
-        runId,
-        reply: { subflow, toolCallId, response }
-      })
-    } catch (error) {
-      console.error('Failed to provide human input:', error)
-    }
-  }, [runId])
-
   const handleNewChat = useCallback(() => {
-    // Invalidate any in-flight run loads (rapid switching can otherwise "pop" old conversations back in)
-    loadRunRequestIdRef.current += 1
-    setConversation([])
-    setCurrentAssistantMessage('')
-    setRunId(null)
-    setMessage('')
-    setModelUsage(null)
-    setIsProcessing(false)
-    setPendingPermissionRequests(new Map())
-    setPendingAskHumanRequests(new Map())
-    setAllPermissionRequests(new Map())
-    setPermissionResponses(new Map())
+    resetChatRuntime()
     setSelectedBackgroundTask(null)
     setChatViewStateByTab(prev => ({
       ...prev,
       [activeChatTabIdRef.current]: createEmptyChatTabViewState(),
     }))
-  }, [])
+  }, [resetChatRuntime])
 
   // Chat tab operations
   const applyChatTab = useCallback((tab: ChatTab) => {
     if (tab.runId) {
-      loadRun(tab.runId)
+      void loadRun(tab.runId)
     } else {
-      loadRunRequestIdRef.current += 1
-      setConversation([])
-      setCurrentAssistantMessage('')
-      setRunId(null)
-      setMessage('')
-      setModelUsage(null)
-      setIsProcessing(false)
-      setPendingPermissionRequests(new Map())
-      setPendingAskHumanRequests(new Map())
-      setAllPermissionRequests(new Map())
-      setPermissionResponses(new Map())
+      resetChatRuntime()
     }
-  }, [loadRun])
+  }, [loadRun, resetChatRuntime])
 
   const restoreChatTabState = useCallback((tabId: string, fallbackRunId: string | null): boolean => {
     const cached = chatViewStateByTabRef.current[tabId]
     if (!cached) return false
-    // Ignore stale cache snapshots that don't match the tab's current run binding.
-    if (cached.runId !== fallbackRunId) return false
-
-    const resolvedRunId = fallbackRunId
-    setRunId(resolvedRunId)
-    setConversation(cached.conversation)
-    setCurrentAssistantMessage(cached.currentAssistantMessage)
-
-    const pendingPermissions = new Map<string, z.infer<typeof ToolPermissionRequestEvent>>()
-    for (const [toolCallId, request] of cached.allPermissionRequests.entries()) {
-      if (!cached.permissionResponses.has(toolCallId)) {
-        pendingPermissions.set(toolCallId, request)
-      }
-    }
-    setPendingPermissionRequests(pendingPermissions)
-    setPendingAskHumanRequests(new Map(cached.pendingAskHumanRequests))
-    setAllPermissionRequests(new Map(cached.allPermissionRequests))
-    setPermissionResponses(new Map(cached.permissionResponses))
-    setIsProcessing(Boolean(resolvedRunId && processingRunIdsRef.current.has(resolvedRunId)))
-    return true
-  }, [])
+    return restoreChatRuntime(cached, fallbackRunId)
+  }, [restoreChatRuntime])
 
   const openChatInNewTab = useCallback((targetRunId: string) => {
     const existingTab = chatTabs.find(t => t.runId === targetRunId)
     if (existingTab) {
-      // Cancel stale in-flight loads from previously focused tabs.
-      loadRunRequestIdRef.current += 1
+      cancelPendingRunLoads()
       setActiveChatTabId(existingTab.id)
       const restored = restoreChatTabState(existingTab.id, existingTab.runId)
-      if (processingRunIdsRef.current.has(targetRunId) || !restored) {
-        loadRun(targetRunId)
+      if (processingRunIds.has(targetRunId) || !restored) {
+        void loadRun(targetRunId)
       }
       return
     }
     const id = newChatTabId()
     setChatTabs(prev => [...prev, { id, runId: targetRunId }])
     setActiveChatTabId(id)
-    loadRun(targetRunId)
-  }, [chatTabs, loadRun, restoreChatTabState])
+    void loadRun(targetRunId)
+  }, [cancelPendingRunLoads, chatTabs, loadRun, processingRunIds, restoreChatTabState])
 
   const switchChatTab = useCallback((tabId: string) => {
     const tab = chatTabs.find(t => t.id === tabId)
     if (!tab) return
     if (tabId === activeChatTabId) return
     saveChatScrollForTab(activeChatTabId)
-    // Cancel stale in-flight loads from previously focused tabs.
-    loadRunRequestIdRef.current += 1
+    cancelPendingRunLoads()
     setActiveChatTabId(tabId)
     const restored = restoreChatTabState(tabId, tab.runId)
-    if (tab.runId && processingRunIdsRef.current.has(tab.runId)) {
-      loadRun(tab.runId)
+    if (tab.runId && processingRunIds.has(tab.runId)) {
+      void loadRun(tab.runId)
       return
     }
     if (!restored) {
       applyChatTab(tab)
     }
-  }, [chatTabs, activeChatTabId, applyChatTab, loadRun, restoreChatTabState, saveChatScrollForTab])
+  }, [activeChatTabId, applyChatTab, cancelPendingRunLoads, chatTabs, loadRun, processingRunIds, restoreChatTabState, saveChatScrollForTab])
 
   const closeChatTab = useCallback((tabId: string) => {
     if (chatTabs.length <= 1) return
@@ -1877,17 +1040,16 @@ function App() {
     if (tabId === activeChatTabId && nextTabs.length > 0) {
       const newIdx = Math.min(idx, nextTabs.length - 1)
       const newActiveTab = nextTabs[newIdx]
-      // Cancel stale in-flight loads from the closing tab.
-      loadRunRequestIdRef.current += 1
+      cancelPendingRunLoads()
       setActiveChatTabId(newActiveTab.id)
       const restored = restoreChatTabState(newActiveTab.id, newActiveTab.runId)
-      if (newActiveTab.runId && processingRunIdsRef.current.has(newActiveTab.runId)) {
-        loadRun(newActiveTab.runId)
+      if (newActiveTab.runId && processingRunIds.has(newActiveTab.runId)) {
+        void loadRun(newActiveTab.runId)
       } else if (!restored) {
         applyChatTab(newActiveTab)
       }
     }
-  }, [chatTabs, activeChatTabId, applyChatTab, loadRun, restoreChatTabState, saveChatScrollForTab])
+  }, [activeChatTabId, applyChatTab, cancelPendingRunLoads, chatTabs, loadRun, processingRunIds, restoreChatTabState, saveChatScrollForTab])
 
   useEffect(() => {
     let cleanupScrollListener: (() => void) | undefined
@@ -2911,21 +2073,7 @@ function App() {
     return null
   }
 
-  const activeChatTabState = React.useMemo<ChatTabViewState>(() => ({
-    runId,
-    conversation,
-    currentAssistantMessage,
-    pendingAskHumanRequests,
-    allPermissionRequests,
-    permissionResponses,
-  }), [
-    runId,
-    conversation,
-    currentAssistantMessage,
-    pendingAskHumanRequests,
-    allPermissionRequests,
-    permissionResponses,
-  ])
+  const activeChatTabState = chatRuntimeSnapshot
   const emptyChatTabState = React.useMemo<ChatTabViewState>(() => createEmptyChatTabViewState(), [])
   const getChatTabStateForRender = useCallback((tabId: string): ChatTabViewState => {
     if (tabId === activeChatTabId) return activeChatTabState

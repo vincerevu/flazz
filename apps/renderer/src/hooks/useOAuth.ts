@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from '@/lib/toast';
 
+type OAuthStateConfigEntry = {
+  connected: boolean;
+  error?: string | null;
+};
+
 /**
  * Hook for managing OAuth connection state for a specific provider
  */
@@ -13,7 +18,7 @@ export function useOAuth(provider: string) {
     try {
       setIsLoading(true);
       const result = await window.ipc.invoke('oauth:getState', null);
-      const config = result.config || {};
+      const config = (result.config ?? {}) as Record<string, OAuthStateConfigEntry>;
       setIsConnected(config[provider]?.connected ?? false);
     } catch (error) {
       console.error('Failed to check connection status:', error);
@@ -109,7 +114,7 @@ export function useConnectedProviders() {
     try {
       setIsLoading(true);
       const result = await window.ipc.invoke('oauth:getState', null);
-      const config = result.config || {};
+      const config = (result.config ?? {}) as Record<string, OAuthStateConfigEntry>;
       const connected = Object.entries(config)
         .filter(([, value]) => value?.connected)
         .map(([key]) => key);

@@ -89,6 +89,11 @@ import { toast } from "@/lib/toast"
 import { ServiceEvent } from "@x/shared/src/service-events.js"
 import z from "zod"
 
+type OAuthStateConfigEntry = {
+  connected: boolean
+  error?: string | null
+}
+
 interface TreeNode {
   path: string
   name: string
@@ -406,7 +411,7 @@ export function SidebarContentPanel({
     const refreshOauthError = async () => {
       try {
         const result = await window.ipc.invoke('oauth:getState', null)
-        const config = result.config || {}
+        const config = (result.config ?? {}) as Record<string, OAuthStateConfigEntry>
         const hasError = Object.values(config).some((entry) => Boolean(entry?.error))
         if (mounted) {
           setHasOauthError(hasError)

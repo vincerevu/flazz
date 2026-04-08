@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AlertTriangleIcon, CheckCircleIcon, CheckIcon, ChevronDownIcon, XCircleIcon, XIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { ToolCallPart } from "@x/shared/dist/message.js";
+import { ToolCallPart } from "@x/shared/src/message.js";
 import z from "zod";
 
 export type PermissionRequestProps = ComponentProps<"div"> & {

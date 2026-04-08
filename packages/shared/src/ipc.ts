@@ -21,6 +21,45 @@ const ipcSchemas = {
       electron: z.string(),
     }),
   },
+  'app:getWindowState': {
+    req: z.null(),
+    res: z.object({
+      isMaximized: z.boolean(),
+      isFullscreen: z.boolean(),
+      platform: z.string(),
+      supportsCustomTitlebar: z.boolean(),
+    }),
+  },
+  'app:minimizeWindow': {
+    req: z.null(),
+    res: z.object({
+      success: z.literal(true),
+    }),
+  },
+  'app:toggleMaximizeWindow': {
+    req: z.null(),
+    res: z.object({
+      isMaximized: z.boolean(),
+      isFullscreen: z.boolean(),
+      platform: z.string(),
+      supportsCustomTitlebar: z.boolean(),
+    }),
+  },
+  'app:closeWindow': {
+    req: z.null(),
+    res: z.object({
+      success: z.literal(true),
+    }),
+  },
+  'app:windowStateChanged': {
+    req: z.object({
+      isMaximized: z.boolean(),
+      isFullscreen: z.boolean(),
+      platform: z.string(),
+      supportsCustomTitlebar: z.boolean(),
+    }),
+    res: z.null(),
+  },
   'workspace:getRoot': {
     req: z.null(),
     res: z.object({
