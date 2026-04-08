@@ -585,7 +585,8 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
 
                 // Ensure search directory is within workspace
                 const resolvedSearchDir = path.resolve(searchDir);
-                if (!resolvedSearchDir.startsWith(WorkDir)) {
+                const rootDir = path.resolve(WorkDir);
+                if (resolvedSearchDir !== rootDir && !resolvedSearchDir.startsWith(rootDir + path.sep)) {
                     return { error: 'Search directory must be within workspace' };
                 }
 
@@ -634,7 +635,8 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
 
                 // Ensure target path is within workspace
                 const resolvedTargetPath = path.resolve(targetPath);
-                if (!resolvedTargetPath.startsWith(WorkDir)) {
+                const rootDir = path.resolve(WorkDir);
+                if (resolvedTargetPath !== rootDir && !resolvedTargetPath.startsWith(rootDir + path.sep)) {
                     return { error: 'Search path must be within workspace' };
                 }
 
@@ -1052,18 +1054,14 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
                 const rootDir = path.resolve(WorkDir);
                 const workingDir = cwd ? path.resolve(rootDir, cwd) : rootDir;
 
-                // TODO: Re-enable this check
-                // const rootPrefix = rootDir.endsWith(path.sep)
-                //     ? rootDir
-                //     : `${rootDir}${path.sep}`;
-                // if (workingDir !== rootDir && !workingDir.startsWith(rootPrefix)) {
-                //     return {
-                //         success: false,
-                //         message: 'Invalid cwd: must be within workspace root.',
-                //         command,
-                //         workingDir,
-                //     };
-                // }
+                if (workingDir !== rootDir && !workingDir.startsWith(rootDir + path.sep)) {
+                    return {
+                        success: false,
+                        message: 'Invalid cwd: must be within workspace root.',
+                        command,
+                        workingDir,
+                    };
+                }
 
                 // Use abortable version when we have a signal
                 if (ctx?.signal) {
