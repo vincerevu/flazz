@@ -11,7 +11,6 @@ import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
-import "katex/dist/katex.min.css";
 import { Shimmer } from "./shimmer";
 
 type ReasoningContextValue = {
@@ -173,17 +172,13 @@ export const ReasoningContent = memo(
     >
       <Streamdown
         remarkPlugins={[
-          // @ts-ignore - remark-math types
+          // @ts-ignore
           require('remark-math'),
         ]}
         rehypePlugins={[
-          // @ts-ignore - rehype-katex types
+          // @ts-ignore
           [require('rehype-katex'), { output: 'mathml' }],
         ]}
-        components={{
-          math: ({ children }) => <div className="my-2 overflow-x-auto">{children}</div>,
-          inlineMath: ({ children }) => <span className="inline-block">{children}</span>,
-        }}
         {...props}
       >
         {children}

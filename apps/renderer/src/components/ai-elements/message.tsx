@@ -22,7 +22,6 @@ import {
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
-import "katex/dist/katex.min.css";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -321,17 +320,13 @@ export const MessageResponse = memo(
         className
       )}
       remarkPlugins={[
-        // @ts-ignore - remark-math types
+        // @ts-ignore
         require('remark-math'),
       ]}
       rehypePlugins={[
-        // @ts-ignore - rehype-katex types
+        // @ts-ignore
         [require('rehype-katex'), { output: 'mathml' }],
       ]}
-      components={{
-        math: ({ children }) => <div className="my-2 overflow-x-auto">{children}</div>,
-        inlineMath: ({ children }) => <span className="inline-block">{children}</span>,
-      }}
       {...props}
     />
   ),
