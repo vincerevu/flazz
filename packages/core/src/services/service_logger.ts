@@ -73,11 +73,11 @@ export class ServiceLogger {
         this.stream = fs.createWriteStream(LOG_FILE, { flags: "a", encoding: "utf8" });
     }
 
-    async log(event: ServiceEventInput & { correlationId?: string; [key: string]: any }): Promise<void> {
+    async log(event: ServiceEventInput & { correlationId?: string; [key: string]: unknown }): Promise<void> {
         const payload = {
             ...event,
             ts: new Date().toISOString(),
-        } as ServiceEventType & { correlationId?: string; [key: string]: any };
+        } as ServiceEventType & { correlationId?: string; [key: string]: unknown };
         const line = JSON.stringify(payload) + "\n";
         const bytes = Buffer.byteLength(line, "utf8");
 

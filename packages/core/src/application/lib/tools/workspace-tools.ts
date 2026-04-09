@@ -408,7 +408,7 @@ export const workspaceTools = {
                         count: matches.length,
                         tool: 'ripgrep',
                     };
-                } catch (rgError) {
+                } catch (_rgError) { // eslint-disable-line @typescript-eslint/no-unused-vars
                     // Fallback to basic grep if ripgrep not available or failed
                     const grepArgs = [
                         '-rn',

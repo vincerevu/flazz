@@ -1,4 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { skillCatalog } from "./skills/index.js";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { WorkDir as BASE_DIR } from "../../config/config.js";
 import { getRuntimeContext, getRuntimeContextPrompt } from "./runtime-context.js";
 

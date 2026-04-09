@@ -148,13 +148,16 @@ async function readFileContents(filePaths: string[]): Promise<{ path: string; co
  * Wait for a run to complete by listening for run-processing-end event
  */
 async function waitForRunCompletion(runId: string): Promise<void> {
-    return new Promise(async (resolve) => {
-        const unsubscribe = await bus.subscribe('*', async (event) => {
-            if (event.type === 'run-processing-end' && event.runId === runId) {
-                unsubscribe();
-                resolve();
-            }
-        });
+    return new Promise((resolve) => {
+        const checkAndResolve = async () => {
+            const unsub = await bus.subscribe('*', async (event) => {
+                if (event.type === 'run-processing-end' && event.runId === runId) {
+                    unsub();
+                    resolve();
+                }
+            });
+        };
+        void checkAndResolve();
     });
 }
 

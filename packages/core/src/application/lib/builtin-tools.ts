@@ -1,7 +1,7 @@
 import { z, ZodType } from "zod";
 import { workspaceTools, shellTools, mcpTools, researchTools, integrationTools, agentTools } from "./tools/index.js";
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 export const BuiltinToolsSchema = z.record(z.string(), z.object({
     description: z.string(),
     inputSchema: z.custom<ZodType>(),

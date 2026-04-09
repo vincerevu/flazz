@@ -5,6 +5,12 @@ import { RunEvent } from "@flazz/shared/dist/runs.js";
 import { isBlocked } from "../../application/lib/command-executor.js";
 import { AgentState } from "./agent-state.js";
 
+// We define a minimal interface for the logger based on its usage in this file
+interface LoopLogger {
+    log(message?: unknown, ...optionalParams: unknown[]): void;
+    error(message?: unknown, ...optionalParams: unknown[]): void;
+}
+
 export async function* handlePermissionAndHumanRequests({
     message,
     agent,
@@ -22,7 +28,7 @@ export async function* handlePermissionAndHumanRequests({
     idGenerator: { next: () => Promise<string> };
     emitLog: (level: "info" | "warn" | "error", message: string, extra?: Record<string, unknown>) => void;
     processEvent: (event: z.infer<typeof RunEvent>) => AsyncGenerator<z.infer<typeof RunEvent>, void, unknown>;
-    loopLogger: any;
+    loopLogger: LoopLogger;
 }): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
     if (message.content instanceof Array) {
         for (const part of message.content) {

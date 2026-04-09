@@ -2,7 +2,7 @@ import { shell, BrowserWindow } from 'electron';
 import { createAuthServer } from './auth-server.js';
 import * as oauthClient from '@flazz/core/dist/auth/oauth-client.js';
 import { getProviderConfig, getAvailableProviders } from '@flazz/core/dist/auth/providers.js';
-// @ts-ignore
+// @ts-expect-error: TS5097
 import type { Configuration } from '@panva/oauth4webapi';
 import container from '@flazz/core/dist/di/container.js';
 import { IOAuthRepo } from '@flazz/core/dist/auth/repo.js';
@@ -272,7 +272,7 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
                     const config = await this.getProviderConfiguration(provider);
 
                     const existingScopes = tokens.scopes;
-                    const refreshedTokens = await oauthClient.refreshTokens(config, tokens.refresh_token, existingScopes);
+                    await oauthClient.refreshTokens(config, tokens.refresh_token, existingScopes);
                     await oauthRepo.upsert(provider, { tokens });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Token refresh failed';

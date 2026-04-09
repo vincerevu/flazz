@@ -390,6 +390,7 @@ export function analyzeEmailsAndRecommend(): AnalysisResult {
     let reason: string;
 
     const totalHumanSenders = lowWouldCreate;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const noiseRatio = uniqueSenders.size > 0
         ? (newsletterSenders.size + automatedSenders.size) / uniqueSenders.size
         : 0;
