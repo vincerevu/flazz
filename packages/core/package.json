@@ -24,7 +24,7 @@
     "build:tsc": "tsc",
     "build": "run-s clean build:tsc",
     "dev": "tsc -w",
-    "test": "pnpm build && node --test dist/**/*.test.js"
+    "test": "pnpm build && node --input-type=module -e \"import { globSync } from 'glob'; import { spawnSync } from 'node:child_process'; const files = globSync('dist/**/*.test.js'); process.exit(files.length ? (spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' }).status ?? 1) : 0)\""
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "3.0.93",

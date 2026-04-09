@@ -10,90 +10,35 @@ import {
   viewStatesEqual,
   type ViewState,
 } from './features/knowledge/types'
-import { wikiLabel } from '@/lib/wiki-links'
 import { getBaseName } from './features/knowledge/utils/wiki-logic'
-import { WikiLink, FileCard } from './features/knowledge/components/streamdown-components'
 
 import { CheckIcon, HistoryIcon, LoaderIcon, Maximize2, Minimize2, SquarePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MarkdownEditor } from './components/markdown-editor';
 import { ChatSidebar } from './components/chat-sidebar';
-import { ChatInputWithMentions } from './components/chat-input-with-mentions';
-import { ChatMessageAttachments } from '@/components/chat-message-attachments'
 import { GraphView } from '@/components/graph-view';
 import { SidebarContentPanel } from '@/components/sidebar-content';
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ScrollPositionPreserver,
-} from '@/components/ai-elements/conversation';
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from '@/components/ai-elements/message';
-import { Shimmer } from '@/components/ai-elements/shimmer';
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
-import { WebSearchResult } from '@/components/ai-elements/web-search-result';
-import { PermissionRequest } from '@/components/ai-elements/permission-request';
-import { AskHumanRequest } from '@/components/ai-elements/ask-human-request';
-import { Suggestions } from '@/components/ai-elements/suggestions';
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { SearchDialog } from '@/components/search-dialog'
 import { BackgroundTaskDetail } from '@/components/background-task-detail'
 import { VersionHistoryPanel } from '@/components/version-history-panel'
-import { FileCardProvider } from '@/contexts/file-card-context'
-import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
 import { TabBar, type ChatTab, type FileTab } from '@/components/tab-bar'
 import {
   type ChatTabViewState,
-  type ConversationItem,
   createEmptyChatTabViewState,
-  getWebSearchCardData,
-  isChatMessage,
-  isErrorMessage,
   isToolCall,
-  normalizeToolInput,
-  normalizeToolOutput,
-  parseAttachedFiles,
-  toToolState,
 } from '@/lib/chat-conversation'
 
 import { useTheme } from '@/contexts/theme-context'
 import { RendererAppShell } from '@/components/app-shell/renderer-app-shell'
 import { useChatRuntime } from '@/features/chat/use-chat-runtime'
-import { appIpc } from '@/services/app-ipc'
 import { runsIpc } from '@/services/runs-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
 import { knowledgeIpc } from '@/services/knowledge-ipc'
-import { agentScheduleIpc } from '@/services/agent-schedule-ipc'
-
-type BackgroundTaskSchedule =
-  | { type: 'cron'; expression: string }
-  | { type: 'window'; cron: string; startTime: string; endTime: string }
-  | { type: 'once'; runAt: string }
-
-interface DesktopWindowState {
-  isMaximized: boolean
-  isFullscreen: boolean
-  platform: string
-  supportsCustomTitlebar: boolean
-  workspaceRoot?: string
-}
-
-interface AgentSchedule {
-  name: string
-  description?: string
-  startingMessage?: string
-  schedule: BackgroundTaskSchedule
-  enabled: boolean
-  status?: 'running' | 'scheduled' | 'finished' | 'failed' | 'triggered'
-  nextRunAt?: string | null
-  lastRunAt?: string | null
-  lastError?: string | null
-  runCount?: number
-}
+import { useDesktopWindow } from '@/features/app/use-desktop-window'
+import { useAppKeyboardShortcuts } from '@/features/app/use-app-keyboard-shortcuts'
+import { useBackgroundTasks } from '@/features/background-tasks/use-background-tasks'
+import { ChatMainPanel } from '@/features/chat/components/chat-main-panel'
 
 function App() {
   type ShortcutPane = 'left' | 'right'
@@ -102,47 +47,24 @@ function App() {
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(true)
   const [isRightPaneMaximized, setIsRightPaneMaximized] = useState(false)
   const [activeShortcutPane, setActiveShortcutPane] = useState<ShortcutPane>('left')
-  const [windowState, setWindowState] = useState<DesktopWindowState | null>(null)
+  const {
+    windowState,
+    handleWindowMinimize,
+    handleWindowToggleMaximize,
+    handleWindowClose,
+  } = useDesktopWindow()
   const isMac = windowState?.platform === 'darwin' || (typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac'))
   const supportsCustomTitlebar = windowState?.supportsCustomTitlebar ?? !isMac
   const titlebarLogoSrc = resolvedTheme === 'dark' ? '/logo-white.png' : '/logo-black.png'
 
   // --- Search Dialog ---
   const [isSearchOpen, setIsSearchOpen] = useState(false)
-  
-  const [backgroundTasks, setBackgroundTasks] = useState<AgentSchedule[]>([])
-  const [selectedBackgroundTask, setSelectedBackgroundTask] = useState<string | null>(null)
-
-  const loadBackgroundTasks = useCallback(async () => {
-    try {
-      const config = await agentScheduleIpc.getConfig()
-      const state = await agentScheduleIpc.getState()
-
-      const merged: AgentSchedule[] = Object.entries(config.agents).map(([name, entry]) => {
-        const agentState = state.agents[name]
-        return {
-          name,
-          description: entry.description,
-          startingMessage: entry.startingMessage,
-          schedule: entry.schedule,
-          enabled: entry.enabled ?? true,
-          status: agentState?.status,
-          nextRunAt: agentState?.nextRunAt,
-          lastRunAt: agentState?.lastRunAt,
-          lastError: agentState?.lastError,
-          runCount: agentState?.runCount,
-        }
-      })
-
-      setBackgroundTasks(merged)
-    } catch (err) {
-      console.error('Failed to load background tasks:', err)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadBackgroundTasks()
-  }, [loadBackgroundTasks])
+  const {
+    backgroundTasks,
+    selectedBackgroundTask,
+    setSelectedBackgroundTask,
+    handleToggleBackgroundTask,
+  } = useBackgroundTasks()
 
   // --- Navigation & History ---
   const historyRef = useRef<{ back: ViewState[]; forward: ViewState[] }>({ back: [], forward: [] })
@@ -244,47 +166,11 @@ function App() {
   } = useVersionHistory()
 
 
-const handleWindowMinimize = useCallback(() => {
-    void appIpc.minimizeWindow()
-  }, [])
-
-  const handleWindowToggleMaximize = useCallback(() => {
-    void appIpc.toggleMaximizeWindow().then((nextState) => {
-      setWindowState(nextState)
-    })
-  }, [])
-
-  const handleWindowClose = useCallback(() => {
-    void appIpc.closeWindow()
-  }, [])
-
-  useEffect(() => {
-    let isMounted = true
-
-    void appIpc.getWindowState().then((nextState) => {
-      if (isMounted) {
-        setWindowState(nextState)
-      }
-    }).catch((error) => {
-      console.error('Failed to load window state', error)
-    })
-
-    const cleanup = appIpc.onWindowStateChanged((nextState) => {
-      setWindowState(nextState)
-    })
-
-    return () => {
-      isMounted = false
-      cleanup()
-    }
-  }, [])
-
   // --- Chat State ---
   const chatDraftsRef = useRef<Map<string, string>>(new Map())
   const [activeChatTabId, setActiveChatTabId] = useState<string>('default-chat')
   const [chatTabs, setChatTabs] = useState<ChatTab[]>([{ id: 'default-chat', runId: null }])
   const [chatViewStateByTab, setChatViewStateByTab] = useState<Record<string, ChatTabViewState>>({})
-  const chatViewStateByTabRef = useRef<Record<string, ChatTabViewState>>({})
   const [toolOpenByTab, setToolOpenByTab] = useState<Record<string, Record<string, boolean>>>({})
   const [agentId] = useState<string>('copilot')
   const [presetMessage, setPresetMessage] = useState<string | undefined>(undefined)
@@ -357,13 +243,6 @@ const handleWindowMinimize = useCallback(() => {
     navigateToView({ type: 'file', path })
   }, [refreshTree, navigateToView])
 
-  const streamdownComponents = useMemo(() => ({
-    WikiLink,
-    FileCard,
-    pre: MarkdownPreOverride,
-  }), [])
-
-
   const {
     runs,
     loadRuns,
@@ -431,10 +310,6 @@ const handleWindowMinimize = useCallback(() => {
     if (isGraphTabPath(tab.path)) return 'Graph'
     return getBaseName(tab.path)
   }, [])
-
-  useEffect(() => {
-    chatViewStateByTabRef.current = chatViewStateByTab
-  }, [chatViewStateByTab])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -521,238 +396,26 @@ const handleWindowMinimize = useCallback(() => {
     setExpandedFrom(null)
   }, [expandedFrom, navigate])
 
-  const handleToggleBackgroundTask = useCallback(async (name: string, enabled: boolean) => {
-    const task = backgroundTasks.find(t => t.name === name)
-    if (!task) return
-
-    try {
-      await agentScheduleIpc.updateAgent(name, {
-        schedule: task.schedule,
-        enabled,
-        startingMessage: task.startingMessage,
-        description: task.description,
-      })
-      await loadBackgroundTasks()
-    } catch (err) {
-      console.error('Failed to toggle background task:', err)
-    }
-  }, [backgroundTasks, loadBackgroundTasks])
-
-
-  // Keyboard shortcut: Cmd+K / Ctrl+K to open search
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault()
-        setIsSearchOpen(true)
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  // Route undo/redo to the active markdown tab only (prevents cross-tab browser undo behavior).
-  useEffect(() => {
-    const handleHistoryKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod || e.altKey) return
-
-      const key = e.key.toLowerCase()
-      const wantsUndo = key === 'z' && !e.shiftKey
-      const wantsRedo = (key === 'z' && e.shiftKey) || (!isMac && key === 'y')
-      if (!wantsUndo && !wantsRedo) return
-
-      if (!selectedPath || !selectedPath.endsWith('.md') || !activeFileTabId) return
-
-      const target = e.target as EventTarget | null
-      if (target instanceof HTMLElement) {
-        const inTipTapEditor = Boolean(target.closest('.tiptap-editor'))
-        const inOtherTextInput = (
-          target instanceof HTMLInputElement
-          || target instanceof HTMLTextAreaElement
-          || target.isContentEditable
-        ) && !inTipTapEditor
-        if (inOtherTextInput) return
-      }
-
-      const handlers = fileHistoryHandlersRef.current.get(activeFileTabId)
-      if (!handlers) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      if (wantsUndo) {
-        handlers.undo()
-      } else {
-        handlers.redo()
-      }
-    }
-
-    document.addEventListener('keydown', handleHistoryKeyDown, true)
-    return () => document.removeEventListener('keydown', handleHistoryKeyDown, true)
-  }, [activeFileTabId, isMac, selectedPath, fileHistoryHandlersRef])
-
-  // Keyboard shortcuts for tab management
-  useEffect(() => {
-    const handleTabKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod) return
-      const rightPaneAvailable = Boolean((selectedPath || isGraphOpen) && isChatSidebarOpen)
-      const targetPane: ShortcutPane = rightPaneAvailable
-        ? (isRightPaneMaximized ? 'right' : activeShortcutPane)
-        : 'left'
-      const inFileView = targetPane === 'left' && Boolean(selectedPath || isGraphOpen)
-      const selectedKnowledgePath = isGraphOpen ? GRAPH_TAB_PATH : selectedPath
-      const targetFileTabId = activeFileTabId ?? (
-        selectedKnowledgePath
-          ? (fileTabs.find((tab) => tab.path === selectedKnowledgePath)?.id ?? null)
-          : null
-      )
-
-      // Cmd+W — close active tab
-      if (e.key === 'w') {
-        e.preventDefault()
-        if (inFileView && targetFileTabId) {
-          closeFileTab(targetFileTabId)
-        } else {
-          closeChatTab(activeChatTabId)
-        }
-        return
-      }
-
-      // Cmd+1..9 — switch to tab N (Cmd+9 always goes to last tab)
-      if (/^[1-9]$/.test(e.key)) {
-        e.preventDefault()
-        const n = parseInt(e.key, 10)
-        if (inFileView) {
-          const idx = e.key === '9' ? fileTabs.length - 1 : n - 1
-          const tab = fileTabs[idx]
-          if (tab) switchFileTab(tab.id)
-        } else {
-          const idx = e.key === '9' ? chatTabs.length - 1 : n - 1
-          const tab = chatTabs[idx]
-          if (tab) switchChatTab(tab.id)
-        }
-        return
-      }
-
-      // Cmd+Shift+] — next tab, Cmd+Shift+[ — previous tab
-      if (e.shiftKey && (e.key === ']' || e.key === '[')) {
-        e.preventDefault()
-        const direction = e.key === ']' ? 1 : -1
-        if (inFileView) {
-          const currentIdx = fileTabs.findIndex(t => t.id === targetFileTabId)
-          if (currentIdx === -1) return
-          const nextIdx = (currentIdx + direction + fileTabs.length) % fileTabs.length
-          switchFileTab(fileTabs[nextIdx].id)
-        } else {
-          const currentIdx = chatTabs.findIndex(t => t.id === activeChatTabId)
-          if (currentIdx === -1) return
-          const nextIdx = (currentIdx + direction + chatTabs.length) % chatTabs.length
-          switchChatTab(chatTabs[nextIdx].id)
-        }
-        return
-      }
-    }
-    document.addEventListener('keydown', handleTabKeyDown)
-    return () => document.removeEventListener('keydown', handleTabKeyDown)
-  }, [selectedPath, isGraphOpen, isChatSidebarOpen, isRightPaneMaximized, activeShortcutPane, chatTabs, fileTabs, activeChatTabId, activeFileTabId, closeChatTab, closeFileTab, switchChatTab, switchFileTab])
+  useAppKeyboardShortcuts({
+    isMac,
+    setIsSearchOpen,
+    selectedPath,
+    isGraphOpen,
+    activeFileTabId,
+    fileHistoryHandlersRef,
+    isChatSidebarOpen,
+    isRightPaneMaximized,
+    activeShortcutPane,
+    fileTabs,
+    chatTabs,
+    activeChatTabId,
+    closeFileTab,
+    closeChatTab,
+    switchFileTab,
+    switchChatTab,
+  })
 
 
-
-  const renderConversationItem = (item: ConversationItem, tabId: string) => {
-    if (isChatMessage(item)) {
-      if (item.role === 'user') {
-        if (item.attachments && item.attachments.length > 0) {
-          return (
-            <Message key={item.id} from={item.role}>
-              <MessageContent className="group-[.is-user]:bg-transparent group-[.is-user]:px-0 group-[.is-user]:py-0 group-[.is-user]:rounded-none">
-                <ChatMessageAttachments attachments={item.attachments} />
-              </MessageContent>
-              {item.content && (
-                <MessageContent>{item.content}</MessageContent>
-              )}
-            </Message>
-          )
-        }
-        const { message, files } = parseAttachedFiles(item.content)
-        return (
-          <Message key={item.id} from={item.role}>
-            <MessageContent>
-              {files.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {files.map((filePath, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full"
-                    >
-                      @{wikiLabel(filePath)}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {message}
-            </MessageContent>
-          </Message>
-        )
-      }
-      return (
-        <Message key={item.id} from={item.role}>
-          <MessageContent>
-            <MessageResponse components={streamdownComponents}>{item.content}</MessageResponse>
-          </MessageContent>
-        </Message>
-      )
-    }
-
-    if (isToolCall(item)) {
-      const webSearchData = getWebSearchCardData(item)
-      if (webSearchData) {
-        return (
-          <WebSearchResult
-            key={item.id}
-            query={webSearchData.query}
-            results={webSearchData.results}
-            status={item.status}
-            title={webSearchData.title}
-          />
-        )
-      }
-      const errorText = item.status === 'error' ? 'Tool error' : ''
-      const output = normalizeToolOutput(item.result, item.status)
-      const input = normalizeToolInput(item.input)
-      return (
-        <Tool
-          key={item.id}
-          open={isToolOpenForTab(tabId, item.id)}
-          onOpenChange={(open) => setToolOpenForTab(tabId, item.id, open)}
-        >
-          <ToolHeader
-            title={item.name}
-            type={`tool-${item.name}`}
-            state={toToolState(item.status)}
-          />
-          <ToolContent>
-            <ToolInput input={input} />
-            {output !== null ? (
-              <ToolOutput output={output} errorText={errorText} />
-            ) : null}
-          </ToolContent>
-        </Tool>
-      )
-    }
-
-    if (isErrorMessage(item)) {
-      return (
-        <Message key={item.id} from="assistant">
-          <MessageContent className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
-            <pre className="whitespace-pre-wrap font-mono text-xs">{item.message}</pre>
-          </MessageContent>
-        </Message>
-      )
-    }
-
-    return null
-  }
 
   const selectedTask = selectedBackgroundTask
     ? backgroundTasks.find(t => t.name === selectedBackgroundTask)
@@ -1093,135 +756,28 @@ const handleWindowMinimize = useCallback(() => {
                   />
                 </div>
               ) : (
-              <FileCardProvider onOpenKnowledgeFile={(path) => { navigateToFile(path) }}>
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="relative min-h-0 flex-1">
-                  {chatTabs.map((tab) => {
-                    const isActive = tab.id === activeChatTabId
-                    const tabState = getChatTabStateForRender(tab.id)
-                    const tabHasConversation = tabState.conversation.length > 0 || tabState.currentAssistantMessage
-                    const tabConversationContentClassName = tabHasConversation
-                      ? "mx-auto w-full max-w-4xl pb-28"
-                      : "mx-auto w-full max-w-4xl min-h-full items-center justify-center pb-0"
-                    return (
-                      <div
-                        key={tab.id}
-                        className={cn(
-                          'min-h-0 h-full flex-col',
-                          isActive
-                            ? 'flex'
-                            : 'pointer-events-none invisible absolute inset-0 flex'
-                        )}
-                        data-chat-tab-panel={tab.id}
-                        aria-hidden={!isActive}
-                      >
-                        <Conversation className="relative flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-                          <ScrollPositionPreserver />
-                          <ConversationContent className={tabConversationContentClassName}>
-                            {!tabHasConversation ? (
-                              <ConversationEmptyState className="h-auto">
-                                <div className="text-2xl font-semibold tracking-tight text-foreground/80 sm:text-3xl md:text-4xl">
-                                  What are we working on?
-                                </div>
-                              </ConversationEmptyState>
-                            ) : (
-                              <>
-                                {tabState.conversation.map(item => {
-                                  const rendered = renderConversationItem(item, tab.id)
-                                  if (isToolCall(item)) {
-                                    const permRequest = tabState.allPermissionRequests.get(item.id)
-                                    if (permRequest) {
-                                      const response = tabState.permissionResponses.get(item.id) || null
-                                      return (
-                                        <div key={item.id} className="contents">
-                                          {rendered}
-                                          <PermissionRequest
-                                            toolCall={permRequest.toolCall}
-                                            onApprove={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve')}
-                                            onApproveSession={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'session')}
-                                            onApproveAlways={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'always')}
-                                            onDeny={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'deny')}
-                                            isProcessing={isActive && isProcessing}
-                                            response={response}
-                                          />
-                                        </div>
-                                      )
-                                    }
-                                  }
-                                  return rendered
-                                })}
-
-                                {Array.from(tabState.pendingAskHumanRequests.values()).map((request) => (
-                                  <AskHumanRequest
-                                    key={request.toolCallId}
-                                    query={request.query}
-                                    onResponse={(response) => handleAskHumanResponse(request.toolCallId, request.subflow, response)}
-                                    isProcessing={isActive && isProcessing}
-                                  />
-                                ))}
-
-                                {tabState.currentAssistantMessage && (
-                                  <Message from="assistant">
-                                    <MessageContent>
-                                      <MessageResponse components={streamdownComponents}>{tabState.currentAssistantMessage}</MessageResponse>
-                                    </MessageContent>
-                                  </Message>
-                                )}
-
-                                {isActive && isProcessing && !tabState.currentAssistantMessage && (
-                                  <Message from="assistant">
-                                    <MessageContent>
-                                      <Shimmer duration={1}>Thinking...</Shimmer>
-                                    </MessageContent>
-                                  </Message>
-                                )}
-                              </>
-                            )}
-                          </ConversationContent>
-                        </Conversation>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <div className="sticky bottom-0 z-10 bg-background pb-12 pt-0 shadow-lg">
-                  <div className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-linear-to-t from-background to-transparent" />
-                  <div className="mx-auto w-full max-w-4xl px-4">
-                    {!hasConversation && (
-                      <Suggestions onSelect={setPresetMessage} className="mb-3 justify-center" />
-                    )}
-                    {chatTabs.map((tab) => {
-                      const isActive = tab.id === activeChatTabId
-                      const tabState = getChatTabStateForRender(tab.id)
-                      return (
-                        <div
-                          key={tab.id}
-                          className={isActive ? 'block' : 'hidden'}
-                          data-chat-input-panel={tab.id}
-                          aria-hidden={!isActive}
-                        >
-                          <ChatInputWithMentions
-                            knowledgeFiles={knowledgeFiles}
-                            recentFiles={recentWikiFiles}
-                            visibleFiles={visibleKnowledgeFiles}
-                            onSubmit={handlePromptSubmit}
-                            onStop={handleStop}
-                            isProcessing={isActive && isProcessing}
-                            isStopping={isActive && isStopping}
-                            isActive={isActive}
-                            presetMessage={isActive ? presetMessage : undefined}
-                            onPresetMessageConsumed={isActive ? () => setPresetMessage(undefined) : undefined}
-                            runId={tabState.runId}
-                            initialDraft={undefined} // Handled by persistence now
-                            onDraftChange={(text) => setChatDraftForTab(tab.id, text)}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-              </FileCardProvider>
+              <ChatMainPanel
+                chatTabs={chatTabs}
+                activeChatTabId={activeChatTabId}
+                getChatTabStateForRender={getChatTabStateForRender}
+                hasConversation={hasConversation}
+                isProcessing={isProcessing}
+                isStopping={isStopping}
+                handleStop={handleStop}
+                handlePromptSubmit={handlePromptSubmit}
+                knowledgeFiles={knowledgeFiles}
+                recentWikiFiles={recentWikiFiles}
+                visibleKnowledgeFiles={visibleKnowledgeFiles}
+                presetMessage={presetMessage}
+                onSelectSuggestion={setPresetMessage}
+                onPresetMessageConsumed={() => setPresetMessage(undefined)}
+                setChatDraftForTab={setChatDraftForTab}
+                isToolOpenForTab={isToolOpenForTab}
+                setToolOpenForTab={setToolOpenForTab}
+                handlePermissionResponse={handlePermissionResponse}
+                handleAskHumanResponse={handleAskHumanResponse}
+                navigateToFile={navigateToFile}
+              />
               )}
         </>
       }
