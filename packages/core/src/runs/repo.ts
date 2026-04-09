@@ -5,7 +5,7 @@ import path from "path";
 import fsp from "fs/promises";
 import fs from "fs";
 import readline from "readline";
-import { Run, RunEvent, StartEvent, CreateRunOptions, ListRunsResponse, MessageEvent } from "@flazz/shared/dist/runs.js";
+import { Run, RunEvent, StartEvent, CreateRunOptions, ListRunsResponse, MessageEvent } from "@flazz/shared";
 
 export interface IRunsRepo {
     create(options: z.infer<typeof CreateRunOptions>): Promise<z.infer<typeof Run>>;

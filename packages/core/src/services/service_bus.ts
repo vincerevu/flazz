@@ -1,4 +1,4 @@
-import type { ServiceEventType } from "@flazz/shared/dist/service-events.js";
+import type { ServiceEventType } from "@flazz/shared";
 
 type ServiceEventHandler = (event: ServiceEventType) => Promise<void> | void;
 

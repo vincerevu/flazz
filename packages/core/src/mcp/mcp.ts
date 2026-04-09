@@ -4,7 +4,7 @@ import { IMcpConfigRepo } from "./repo.js";
 import {
     ListToolsResponse,
     McpServerList,
-} from "@flazz/shared/dist/mcp.js";
+} from "@flazz/shared";
 import { McpClientAdapter, DefaultMcpClientAdapter } from "./adapter.js";
 
 const clients: Record<string, McpClientAdapter> = {};

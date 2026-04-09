@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import { glob } from "node:fs/promises";
 import path from "path";
 import z from "zod";
-import { Agent } from "@flazz/shared/dist/agent.js";
+import { Agent } from "@flazz/shared";
 import { parse, stringify } from "yaml";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

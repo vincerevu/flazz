@@ -11,6 +11,10 @@
         "default": "./dist/index.js"
       },
       "./src/*": "./src/*",
+      "./dist/*.js": {
+        "types": "./dist/*.d.ts",
+        "default": "./dist/*.js"
+      },
       "./dist/*": {
         "types": "./dist/*.d.ts",
         "default": "./dist/*.js"

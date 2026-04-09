@@ -1,5 +1,5 @@
 import { WorkDir } from "../config/config.js";
-import { AgentScheduleState, AgentScheduleStateEntry } from "@flazz/shared/dist/agent-schedule-state.js";
+import { AgentScheduleState, AgentScheduleStateEntry } from "@flazz/shared";
 import fs from "fs/promises";
 import path from "path";
 import z from "zod";

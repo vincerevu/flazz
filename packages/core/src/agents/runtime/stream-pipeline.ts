@@ -1,8 +1,8 @@
 import { ModelMessage } from "ai";
 import { z } from "zod";
-import { Agent } from "@flazz/shared/dist/agent.js";
-import { AssistantContentPart, AssistantMessage, Message, MessageList, ProviderOptions, ToolCallPart } from "@flazz/shared/dist/message.js";
-import { LlmStepStreamEvent } from "@flazz/shared/dist/llm-step-events.js";
+import { Agent } from "@flazz/shared";
+import { AssistantContentPart, AssistantMessage, Message, MessageList, ProviderOptions, ToolCallPart } from "@flazz/shared";
+import { LlmStepStreamEvent } from "@flazz/shared";
 import { IMonotonicallyIncreasingIdGenerator } from "../../application/lib/id-gen.js";
 import { LanguageModel, stepCountIs, streamText, ToolSet } from "ai";
 

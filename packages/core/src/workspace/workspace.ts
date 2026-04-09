@@ -3,7 +3,7 @@ import type { Stats } from 'node:fs';
 import path from 'node:path';
 import { workspace } from '@flazz/shared';
 import { z } from 'zod';
-import { RemoveOptions, WriteFileOptions, WriteFileResult } from '@flazz/shared/dist/workspace.js';
+import { RemoveOptions, WriteFileOptions, WriteFileResult } from '@flazz/shared';
 import { WorkDir } from '../config/config.js';
 import { rewriteWikiLinksForRenamedKnowledgeFile } from './wiki-link-rewrite.js';
 import { commitAll } from '../knowledge/version_history.js';

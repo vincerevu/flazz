@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { Agent } from "@flazz/shared/dist/agent.js";
-import { AssistantMessage, MessageList, ToolCallPart, ToolMessage } from "@flazz/shared/dist/message.js";
-import { AskHumanRequestEvent, RunEvent, ToolPermissionRequestEvent } from "@flazz/shared/dist/runs.js";
+import { Agent } from "@flazz/shared";
+import { AssistantMessage, MessageList, ToolCallPart, ToolMessage } from "@flazz/shared";
+import { AskHumanRequestEvent, RunEvent, ToolPermissionRequestEvent } from "@flazz/shared";
 import { extractCommandNames } from "../../application/lib/command-executor.js";
 
 export class AgentState {

@@ -1,5 +1,5 @@
 import { WorkDir } from "../config/config.js";
-import { McpServerConfig, McpServerDefinition } from "@flazz/shared/dist/mcp.js";
+import { McpServerConfig, McpServerDefinition } from "@flazz/shared";
 import fs from "fs/promises";
 import path from "path";
 import z from "zod";

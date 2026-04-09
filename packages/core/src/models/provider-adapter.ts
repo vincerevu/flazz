@@ -1,6 +1,6 @@
 import { generateText } from "ai";
 import z from "zod";
-import { LlmProvider } from "@flazz/shared/dist/models.js";
+import { LlmProvider } from "@flazz/shared";
 
 type ProviderConfig = z.infer<typeof LlmProvider>;
 type RuntimeLanguageModel = Parameters<typeof generateText>[0]["model"];

@@ -1,10 +1,10 @@
 import { jsonSchema } from "ai";
 import { z } from "zod";
-import { Agent, ToolAttachment } from "@flazz/shared/dist/agent.js";
-import { ToolCallPart, ToolMessage } from "@flazz/shared/dist/message.js";
+import { Agent, ToolAttachment } from "@flazz/shared";
+import { ToolCallPart, ToolMessage } from "@flazz/shared";
 import { tool, Tool, ToolSet } from "ai";
 import { BuiltinTools } from "../../application/lib/builtin-tools.js";
-import { RunEvent } from "@flazz/shared/dist/runs.js";
+import { RunEvent } from "@flazz/shared";
 import { execTool } from "../../application/lib/exec-tool.js";
 import { IAbortRegistry } from "../../runs/abort-registry.js";
 import { loadAgent } from "../runtime.js";

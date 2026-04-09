@@ -1,4 +1,4 @@
-import { Agent, ToolAttachment } from "@flazz/shared/dist/agent.js";
+import { Agent, ToolAttachment } from "@flazz/shared";
 import z from "zod";
 import { CopilotInstructions } from "./instructions.js";
 import { BuiltinTools } from "../lib/builtin-tools.js";

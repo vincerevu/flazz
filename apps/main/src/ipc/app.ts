@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { isOnboardingComplete, markOnboardingComplete } from '@flazz/core/dist/config/note_creation_config.js';
 import type { InvokeHandlers } from '../ipc.js';
-import type { IPCChannels } from '@flazz/shared/dist/ipc.js';
+import type { IPCChannels } from '@flazz/shared';
 
 export function getVersions(): {
   chrome: string;

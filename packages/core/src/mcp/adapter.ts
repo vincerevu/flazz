@@ -3,9 +3,9 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { ListToolsResponse } from "@flazz/shared/dist/mcp.js";
+import { ListToolsResponse } from "@flazz/shared";
 import z from "zod";
-import { McpServerDefinition } from "@flazz/shared/dist/mcp.js";
+import { McpServerDefinition } from "@flazz/shared";
 
 export interface McpClientAdapter {
     connect(serverName: string, config: z.infer<typeof McpServerDefinition>): Promise<void>;

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { Agent } from "@flazz/shared/dist/agent.js";
-import { AssistantMessage } from "@flazz/shared/dist/message.js";
-import { RunEvent } from "@flazz/shared/dist/runs.js";
+import { Agent } from "@flazz/shared";
+import { AssistantMessage } from "@flazz/shared";
+import { RunEvent } from "@flazz/shared";
 import { isBlocked } from "../../application/lib/command-executor.js";
 import { AgentState } from "./agent-state.js";
 

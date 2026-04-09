@@ -1,4 +1,4 @@
-import { LlmProvider } from "@flazz/shared/dist/models.js";
+import { LlmProvider } from "@flazz/shared";
 import { z } from "zod";
 
 export type ToolExecutionMode = "full" | "disabled";
