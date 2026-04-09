@@ -1,17 +1,7 @@
-import { ipcMain, BrowserWindow, shell } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { ipc } from '@flazz/shared';
-import path from 'node:path';
-import os from 'node:os';
-import {
-  connectProvider,
-  disconnectProvider,
-  listProviders,
-} from './oauth-handler.js';
 import { watcher as watcherCore, workspace } from '@flazz/core';
 import { workspace as workspaceShared } from '@flazz/shared';
-import { WorkDir } from '@flazz/core/dist/config/config.js';
-import * as mcpCore from '@flazz/core/dist/mcp/mcp.js';
-import * as runsCore from '@flazz/core/dist/runs/runs.js';
 import { bus } from '@flazz/core/dist/runs/bus.js';
 import { serviceBus } from '@flazz/core/dist/services/service_bus.js';
 import type { FSWatcher } from 'chokidar';
@@ -19,20 +9,20 @@ import fs from 'node:fs/promises';
 import z from 'zod';
 import { RunEvent } from '@flazz/shared/dist/runs.js';
 import { ServiceEvent } from '@flazz/shared/dist/service-events.js';
-import container from '@flazz/core/dist/di/container.js';
-import { listOnboardingModels } from '@flazz/core/dist/models/models-dev.js';
-import { testModelConnection } from '@flazz/core/dist/models/models.js';
-import type { IModelConfigRepo } from '@flazz/core/dist/models/repo.js';
-import type { IOAuthRepo } from '@flazz/core/dist/auth/repo.js';
-import { IGranolaConfigRepo } from '@flazz/core/dist/knowledge/granola/repo.js';
-import { triggerSync as triggerGranolaSync } from '@flazz/core/dist/knowledge/granola/sync.js';
-import { isOnboardingComplete, markOnboardingComplete } from '@flazz/core/dist/config/note_creation_config.js';
-import * as composioHandler from './composio-handler.js';
-import { IAgentScheduleRepo } from '@flazz/core/dist/agent-schedule/repo.js';
-import { IAgentScheduleStateRepo } from '@flazz/core/dist/agent-schedule/state-repo.js';
-import { triggerRun as triggerAgentScheduleRun } from '@flazz/core/dist/agent-schedule/runner.js';
-import { search } from '@flazz/core/dist/search/search.js';
 import { versionHistory } from '@flazz/core';
+import {
+  registerWorkspaceHandlers,
+  registerShellHandlers,
+  registerRunsHandlers,
+  registerModelsHandlers,
+  registerSearchHandlers,
+  registerAuthHandlers,
+  registerIntegrationHandlers,
+  registerScheduleHandlers,
+  registerKnowledgeHandlers,
+  registerAppHandlers
+} from './ipc/index.js';
+import { getWindowState } from './ipc/app.js';
 
 type InvokeChannels = ipc.InvokeChannels;
 type IPCChannels = ipc.IPCChannels;
@@ -49,7 +39,7 @@ type InvokeHandler<K extends InvokeChannels> = (
  * Type-safe handler registration map
  * Ensures all invoke channels have handlers
  */
-type InvokeHandlers = {
+export type InvokeHandlers = {
   [K in InvokeChannels]: InvokeHandler<K>;
 };
 
@@ -83,34 +73,6 @@ export function registerIpcHandlers(handlers: InvokeHandlers) {
 // ============================================================================
 // Electron-Specific Utilities
 // ============================================================================
-
-/**
- * Get application versions (Electron-specific)
- */
-function getVersions(): {
-  chrome: string;
-  node: string;
-  electron: string;
-} {
-  return {
-    chrome: process.versions.chrome,
-    node: process.versions.node,
-    electron: process.versions.electron,
-  };
-}
-
-function getWindowState(win: BrowserWindow | null): IPCChannels['app:getWindowState']['res'] {
-  return {
-    isMaximized: win?.isMaximized() ?? false,
-    isFullscreen: win?.isFullScreen() ?? false,
-    platform: process.platform,
-    supportsCustomTitlebar: process.platform !== 'darwin',
-  };
-}
-
-function getEventWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
-  return BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow();
-}
 
 export function emitWindowStateChanged(win: BrowserWindow): void {
   if (win.isDestroyed() || !win.webContents) {
@@ -321,262 +283,18 @@ export function setupIpcHandlers() {
   // Forward knowledge commit events to renderer for panel refresh
   versionHistory.onCommit(() => emitKnowledgeCommitEvent());
 
-  registerIpcHandlers({
-    'app:getVersions': async () => {
-      // args is null for this channel (no request payload)
-      return getVersions();
-    },
-    'app:getWindowState': async (event) => {
-      return getWindowState(getEventWindow(event));
-    },
-    'app:minimizeWindow': async (event) => {
-      getEventWindow(event)?.minimize();
-      return { success: true };
-    },
-    'app:toggleMaximizeWindow': async (event) => {
-      const win = getEventWindow(event);
-      if (!win) {
-        return getWindowState(null);
-      }
+  const handlers: Partial<InvokeHandlers> = {};
 
-      if (win.isMaximized()) {
-        win.unmaximize();
-      } else {
-        win.maximize();
-      }
+  registerAppHandlers(handlers);
+  registerWorkspaceHandlers(handlers);
+  registerShellHandlers(handlers);
+  registerRunsHandlers(handlers);
+  registerModelsHandlers(handlers);
+  registerSearchHandlers(handlers);
+  registerAuthHandlers(handlers);
+  registerIntegrationHandlers(handlers);
+  registerScheduleHandlers(handlers);
+  registerKnowledgeHandlers(handlers);
 
-      return getWindowState(win);
-    },
-    'app:closeWindow': async (event) => {
-      getEventWindow(event)?.close();
-      return { success: true };
-    },
-    'workspace:getRoot': async () => {
-      return workspace.getRoot();
-    },
-    'workspace:exists': async (_, args) => {
-      return workspace.exists(args.path);
-    },
-    'workspace:stat': async (_event, args) => {
-      return workspace.stat(args.path);
-    },
-    'workspace:readdir': async (_event, args) => {
-      return workspace.readdir(args.path, args.opts);
-    },
-    'workspace:readFile': async (_event, args) => {
-      return workspace.readFile(args.path, args.encoding);
-    },
-    'workspace:writeFile': async (_event, args) => {
-      return workspace.writeFile(args.path, args.data, args.opts);
-    },
-    'workspace:mkdir': async (_event, args) => {
-      return workspace.mkdir(args.path, args.recursive);
-    },
-    'workspace:rename': async (_event, args) => {
-      return workspace.rename(args.from, args.to, args.overwrite);
-    },
-    'workspace:copy': async (_event, args) => {
-      return workspace.copy(args.from, args.to, args.overwrite);
-    },
-    'workspace:remove': async (_event, args) => {
-      return workspace.remove(args.path, args.opts);
-    },
-    'mcp:listTools': async (_event, args) => {
-      return mcpCore.listTools(args.serverName, args.cursor);
-    },
-    'mcp:executeTool': async (_event, args) => {
-      return { result: await mcpCore.executeTool(args.serverName, args.toolName, args.input) };
-    },
-    'runs:create': async (_event, args) => {
-      return runsCore.createRun(args);
-    },
-    'runs:createMessage': async (_event, args) => {
-      return { messageId: await runsCore.createMessage(args.runId, args.message) };
-    },
-    'runs:authorizePermission': async (_event, args) => {
-      await runsCore.authorizePermission(args.runId, args.authorization);
-      return { success: true };
-    },
-    'runs:provideHumanInput': async (_event, args) => {
-      await runsCore.replyToHumanInputRequest(args.runId, args.reply);
-      return { success: true };
-    },
-    'runs:stop': async (_event, args) => {
-      await runsCore.stop(args.runId, args.force);
-      return { success: true };
-    },
-    'runs:fetch': async (_event, args) => {
-      return runsCore.fetchRun(args.runId);
-    },
-    'runs:list': async (_event, args) => {
-      return runsCore.listRuns(args.cursor);
-    },
-    'runs:delete': async (_event, args) => {
-      await runsCore.deleteRun(args.runId);
-      return { success: true };
-    },
-    'models:list': async () => {
-      return await listOnboardingModels();
-    },
-    'models:test': async (_event, args) => {
-      return await testModelConnection(args.provider, args.model);
-    },
-    'models:saveConfig': async (_event, args) => {
-      const repo = container.resolve<IModelConfigRepo>('modelConfigRepo');
-      await repo.setConfig(args);
-      return { success: true };
-    },
-    'oauth:connect': async (_event, args) => {
-      return await connectProvider(args.provider, args.clientId?.trim());
-    },
-    'oauth:disconnect': async (_event, args) => {
-      return await disconnectProvider(args.provider);
-    },
-    'oauth:list-providers': async () => {
-      return listProviders();
-    },
-    'oauth:getState': async () => {
-      const repo = container.resolve<IOAuthRepo>('oauthRepo');
-      const config = await repo.getClientFacingConfig();
-      return { config };
-    },
-    'granola:getConfig': async () => {
-      const repo = container.resolve<IGranolaConfigRepo>('granolaConfigRepo');
-      const config = await repo.getConfig();
-      return { enabled: config.enabled };
-    },
-    'granola:setConfig': async (_event, args) => {
-      const repo = container.resolve<IGranolaConfigRepo>('granolaConfigRepo');
-      await repo.setConfig({ enabled: args.enabled });
-
-      // Trigger sync immediately when enabled
-      if (args.enabled) {
-        triggerGranolaSync();
-      }
-
-      return { success: true };
-    },
-    'onboarding:getStatus': async () => {
-      // Show onboarding if it hasn't been completed yet
-      const complete = isOnboardingComplete();
-      return { showOnboarding: !complete };
-    },
-    'onboarding:markComplete': async () => {
-      markOnboardingComplete();
-      return { success: true };
-    },
-    // Composio integration handlers
-    'composio:is-configured': async () => {
-      return composioHandler.isConfigured();
-    },
-    'composio:set-api-key': async (_event, args) => {
-      return composioHandler.setApiKey(args.apiKey);
-    },
-    'composio:initiate-connection': async (_event, args) => {
-      return composioHandler.initiateConnection(args.toolkitSlug);
-    },
-    'composio:get-connection-status': async (_event, args) => {
-      return composioHandler.getConnectionStatus(args.toolkitSlug);
-    },
-    'composio:sync-connection': async (_event, args) => {
-      return composioHandler.syncConnection(args.toolkitSlug, args.connectedAccountId);
-    },
-    'composio:disconnect': async (_event, args) => {
-      return composioHandler.disconnect(args.toolkitSlug);
-    },
-    'composio:list-connected': async () => {
-      return composioHandler.listConnected();
-    },
-    'composio:execute-action': async (_event, args) => {
-      return composioHandler.executeAction(args.actionSlug, args.toolkitSlug, args.input);
-    },
-    // Agent schedule handlers
-    'agent-schedule:getConfig': async () => {
-      const repo = container.resolve<IAgentScheduleRepo>('agentScheduleRepo');
-      try {
-        return await repo.getConfig();
-      } catch {
-        // Return empty config if file doesn't exist
-        return { agents: {} };
-      }
-    },
-    'agent-schedule:getState': async () => {
-      const repo = container.resolve<IAgentScheduleStateRepo>('agentScheduleStateRepo');
-      try {
-        return await repo.getState();
-      } catch {
-        // Return empty state if file doesn't exist
-        return { agents: {} };
-      }
-    },
-    'agent-schedule:updateAgent': async (_event, args) => {
-      const repo = container.resolve<IAgentScheduleRepo>('agentScheduleRepo');
-      await repo.upsert(args.agentName, args.entry);
-      // Trigger the runner to pick up the change immediately
-      triggerAgentScheduleRun();
-      return { success: true };
-    },
-    'agent-schedule:deleteAgent': async (_event, args) => {
-      const repo = container.resolve<IAgentScheduleRepo>('agentScheduleRepo');
-      const stateRepo = container.resolve<IAgentScheduleStateRepo>('agentScheduleStateRepo');
-      await repo.delete(args.agentName);
-      await stateRepo.deleteAgentState(args.agentName);
-      return { success: true };
-    },
-    // Shell integration handlers
-    'shell:openPath': async (_event, args) => {
-      let filePath = args.path;
-      if (filePath.startsWith('~')) {
-        filePath = path.join(os.homedir(), filePath.slice(1));
-      } else if (!path.isAbsolute(filePath)) {
-        // Workspace-relative path — resolve against the Flazz workspace
-        filePath = path.join(WorkDir, filePath);
-      }
-      const error = await shell.openPath(filePath);
-      return { error: error || undefined };
-    },
-    'shell:readFileBase64': async (_event, args) => {
-      let filePath = args.path;
-      if (filePath.startsWith('~')) {
-        filePath = path.join(os.homedir(), filePath.slice(1));
-      } else if (!path.isAbsolute(filePath)) {
-        // Workspace-relative path — resolve against the Flazz workspace
-        filePath = path.join(WorkDir, filePath);
-      }
-      const stat = await fs.stat(filePath);
-      if (stat.size > 10 * 1024 * 1024) {
-        throw new Error('File too large (>10MB)');
-      }
-      const buffer = await fs.readFile(filePath);
-      const ext = path.extname(filePath).toLowerCase();
-      const mimeMap: Record<string, string> = {
-        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-        '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-        '.bmp': 'image/bmp', '.ico': 'image/x-icon',
-        '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
-        '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac',
-        '.pdf': 'application/pdf', '.json': 'application/json',
-        '.txt': 'text/plain', '.md': 'text/markdown',
-      };
-      const mimeType = mimeMap[ext] || 'application/octet-stream';
-      return { data: buffer.toString('base64'), mimeType, size: stat.size };
-    },
-    // Knowledge version history handlers
-    'knowledge:history': async (_event, args) => {
-      const commits = await versionHistory.getFileHistory(args.path);
-      return { commits };
-    },
-    'knowledge:fileAtCommit': async (_event, args) => {
-      const content = await versionHistory.getFileAtCommit(args.path, args.oid);
-      return { content };
-    },
-    'knowledge:restore': async (_event, args) => {
-      await versionHistory.restoreFile(args.path, args.oid);
-      return { ok: true };
-    },
-    // Search handler
-    'search:query': async (_event, args) => {
-      return search(args.query, args.limit, args.types);
-    },
-  });
+  registerIpcHandlers(handlers as InvokeHandlers);
 }
