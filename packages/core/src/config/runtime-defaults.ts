@@ -8,7 +8,7 @@ export const WorkDir = path.join(homedir(), "Flazz");
 
 // Get the directory of this file (for locating bundled assets)
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+export const __dirname = path.dirname(__filename);
 
 function ensureDirs() {
     const ensure = (p: string) => { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); };

@@ -20,6 +20,17 @@ export class PrefixLogger {
         }
     }
 
+    error(...args: unknown[]) {
+        const timestamp = new Date().toISOString();
+        const prefix = '[' + this.prefix + ']';
+
+        if (this.parent) {
+            this.parent.error(prefix, ...args);
+        } else {
+            console.error(timestamp, prefix, ...args);
+        }
+    }
+
     child(childPrefix: string): PrefixLogger {
         return new PrefixLogger(childPrefix, this);
     }

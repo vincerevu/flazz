@@ -1,4 +1,4 @@
-import { jsonSchema, ModelMessage } from "ai";
+import { ModelMessage } from "ai";
 import { z } from "zod";
 import { Agent } from "@flazz/shared/dist/agent.js";
 import { AssistantContentPart, AssistantMessage, Message, MessageList, ProviderOptions, ToolCallPart } from "@flazz/shared/dist/message.js";

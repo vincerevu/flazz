@@ -15,7 +15,7 @@ const OAuthConfigSchema = z.object({
   providers: z.record(z.string(), ProviderConnectionSchema),
 });
 
-const ClientFacingConfigSchema = z.record(z.string(), z.object({
+export const ClientFacingConfigSchema = z.record(z.string(), z.object({
   connected: z.boolean(),
   error: z.string().nullable().optional(),
 }));

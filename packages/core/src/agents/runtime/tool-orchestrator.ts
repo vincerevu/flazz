@@ -8,6 +8,7 @@ import { RunEvent } from "@flazz/shared/dist/runs.js";
 import { execTool } from "../../application/lib/exec-tool.js";
 import { IAbortRegistry } from "../../runs/abort-registry.js";
 import { loadAgent } from "../runtime.js";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { AgentState } from "./agent-state.js";
 
 export const MappedToolCall = z.object({

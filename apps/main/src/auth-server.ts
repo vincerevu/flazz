@@ -38,8 +38,8 @@ export function createAuthServer(
       const url = new URL(req.url, `http://localhost:${port}`);
       
       if (url.pathname === OAUTH_CALLBACK_PATH) {
-        const code = url.searchParams.get('code');
-        const state = url.searchParams.get('state');
+
+
         const error = url.searchParams.get('error');
 
         if (error) {

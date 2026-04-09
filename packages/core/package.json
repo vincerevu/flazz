@@ -20,7 +20,7 @@
     "build:tsc": "tsc",
     "build": "run-s clean build:tsc",
     "dev": "tsc -w",
-    "test": "node --experimental-strip-types --test src/**/*.test.ts"
+    "test": "pnpm build && node --test dist/**/*.test.js"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "3.0.93",

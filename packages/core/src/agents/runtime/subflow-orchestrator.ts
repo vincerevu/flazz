@@ -1,4 +1,5 @@
 import { z } from "zod";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Agent } from "@flazz/shared/dist/agent.js";
 import { ToolCallPart, ToolMessage } from "@flazz/shared/dist/message.js";
 import { RunEvent } from "@flazz/shared/dist/runs.js";
@@ -24,13 +25,14 @@ export async function* handleSubflowDelegation({
     subflowState: AgentState;
     runId: string;
     signal: AbortSignal;
-    abortRegistry: any;
+    abortRegistry: unknown;
     emitLog: (level: "info" | "warn" | "error", message: string, extra?: Record<string, unknown>) => void;
     processEvent: (event: z.infer<typeof RunEvent>) => AsyncGenerator<z.infer<typeof RunEvent>, void, unknown>;
     idGenerator: { next: () => Promise<string> };
-    streamAgentFn: any;
-    messageQueue: any;
-    modelConfigRepo: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    streamAgentFn: (args: any) => AsyncGenerator<z.infer<typeof RunEvent>, void, unknown>;
+    messageQueue: unknown;
+    modelConfigRepo: unknown;
     activeCorrelationId: string;
 }): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
     emitLog("info", "tool call start", { toolCallId, toolName: toolCall.toolName, arguments: toolCall.arguments });

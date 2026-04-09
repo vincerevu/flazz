@@ -121,7 +121,7 @@ export class DefaultComposioAdapter implements ComposioAdapter {
             };
             composioAccountsRepo.saveAccount(account);
 
-            let cleanupTimeout: NodeJS.Timeout;
+            let cleanupTimeout: NodeJS.Timeout | undefined = undefined;
             const { server } = await createAuthServer(8081, async () => {
                 try {
                     const accountStatus = await composioClient.getConnectedAccount(connectedAccountId);
