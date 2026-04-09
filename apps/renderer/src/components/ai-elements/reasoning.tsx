@@ -11,6 +11,7 @@ import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
+import "katex/dist/katex.min.css";
 import { Shimmer } from "./shimmer";
 
 type ReasoningContextValue = {
@@ -170,7 +171,15 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Streamdown {...props}>{children}</Streamdown>
+      <Streamdown
+        components={{
+          math: ({ children }) => <div className="my-2 overflow-x-auto">{children}</div>,
+          inlineMath: ({ children }) => <span className="inline-block">{children}</span>,
+        }}
+        {...props}
+      >
+        {children}
+      </Streamdown>
     </CollapsibleContent>
   )
 );

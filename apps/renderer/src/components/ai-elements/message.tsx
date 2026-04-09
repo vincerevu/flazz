@@ -22,6 +22,7 @@ import {
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
+import "katex/dist/katex.min.css";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -319,6 +320,10 @@ export const MessageResponse = memo(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      components={{
+        math: ({ children }) => <div className="my-2 overflow-x-auto">{children}</div>,
+        inlineMath: ({ children }) => <span className="inline-block">{children}</span>,
+      }}
       {...props}
     />
   ),
