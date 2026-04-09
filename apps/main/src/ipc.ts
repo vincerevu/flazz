@@ -1,3 +1,4 @@
+import type { BackgroundService } from "@flazz/core/dist/services/background_service.js";
 import { ipcMain, BrowserWindow } from 'electron';
 import { ipc } from '@flazz/shared';
 import { watcher as watcherCore, workspace } from '@flazz/core';
@@ -186,7 +187,7 @@ function handleWorkspaceChange(event: z.infer<typeof workspaceShared.WorkspaceCh
  * 
  * Safe to call multiple times - guards against duplicate watchers.
  */
-export async function startWorkspaceWatcher(): Promise<void> {
+async function startWorkspaceWatcher(): Promise<void> {
   if (watcher) {
     // Watcher already running - safe to ignore subsequent calls
     return;
@@ -198,7 +199,7 @@ export async function startWorkspaceWatcher(): Promise<void> {
 /**
  * Stop workspace watcher
  */
-export function stopWorkspaceWatcher(): void {
+function stopWorkspaceWatcher(): void {
   if (watcher) {
     watcher.close();
     watcher = null;
@@ -238,7 +239,7 @@ export function emitOAuthEvent(event: { provider: string; success: boolean; erro
 }
 
 let runsWatcher: (() => void) | null = null;
-export async function startRunsWatcher(): Promise<void> {
+async function startRunsWatcher(): Promise<void> {
   if (runsWatcher) {
     return;
   }
@@ -248,7 +249,7 @@ export async function startRunsWatcher(): Promise<void> {
 }
 
 let servicesWatcher: (() => void) | null = null;
-export async function startServicesWatcher(): Promise<void> {
+async function startServicesWatcher(): Promise<void> {
   if (servicesWatcher) {
     return;
   }
@@ -257,14 +258,14 @@ export async function startServicesWatcher(): Promise<void> {
   });
 }
 
-export function stopRunsWatcher(): void {
+function stopRunsWatcher(): void {
   if (runsWatcher) {
     runsWatcher();
     runsWatcher = null;
   }
 }
 
-export function stopServicesWatcher(): void {
+function stopServicesWatcher(): void {
   if (servicesWatcher) {
     servicesWatcher();
     servicesWatcher = null;
@@ -298,3 +299,34 @@ export function setupIpcHandlers() {
 
   registerIpcHandlers(handlers as InvokeHandlers);
 }
+
+
+export const workspaceWatcherService: BackgroundService = {
+    name: 'WorkspaceWatcher',
+    async start(): Promise<void> {
+        await startWorkspaceWatcher();
+    },
+    async stop(): Promise<void> {
+        stopWorkspaceWatcher();
+    }
+};
+
+export const runsWatcherService: BackgroundService = {
+    name: 'RunsWatcher',
+    async start(): Promise<void> {
+        await startRunsWatcher();
+    },
+    async stop(): Promise<void> {
+        stopRunsWatcher();
+    }
+};
+
+export const servicesWatcherService: BackgroundService = {
+    name: 'ServicesWatcher',
+    async start(): Promise<void> {
+        await startServicesWatcher();
+    },
+    async stop(): Promise<void> {
+        stopServicesWatcher();
+    }
+};

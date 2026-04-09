@@ -1,3 +1,4 @@
+import type { BackgroundService } from "../services/background_service.js";
 import fs from 'fs';
 import path from 'path';
 import { WorkDir } from '../config/config.js';
@@ -631,31 +632,47 @@ async function syncMeetings() {
     }
 }
 
-/**
- * Main sync loop
- */
-export async function init() {
-    console.log('[Fireflies] Starting Fireflies Sync...');
-    console.log(`[Fireflies] Will sync every ${SYNC_INTERVAL_MS / 1000} seconds.`);
-    console.log(`[Fireflies] Syncing transcripts from the last ${LOOKBACK_DAYS} days.`);
+let isRunning = false;
 
-    while (true) {
-        try {
-            // Check if credentials are available
-            const hasCredentials = await FirefliesClientFactory.hasValidCredentials();
-            
-            if (!hasCredentials) {
-                console.log('[Fireflies] OAuth credentials not available. Sleeping...');
-            } else {
-                // Perform sync
-                await syncMeetings();
+export const firefliesSyncService: BackgroundService = {
+    name: 'Firefliessyncservice',
+    async start(): Promise<void> {
+        if (isRunning) return;
+        isRunning = true;
+
+        console.log("Starting Firefliessyncservice (TS)...");
+
+        // Initial small delay to let other things boot up
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Start background loop
+        (async () => {
+            while (isRunning) {
+                try {
+                    // Check if credentials are available
+                    const hasCredentials = await FirefliesClientFactory.hasValidCredentials();
+
+                    if (!hasCredentials) {
+                        console.log('[Fireflies] OAuth credentials not available. Sleeping...');
+                    } else {
+                        // Perform sync
+                        await syncMeetings();
+                    }
+                } catch (error) {
+                    console.error("Error in main loop:", error);
+                }
+
+                if (!isRunning) break;
+                // Sleep for N minutes before next check (can be interrupted by triggerSync)
+                console.log(`Sleeping...`);
+                await interruptibleSleep(SYNC_INTERVAL_MS);
             }
-        } catch (error) {
-            console.error('[Fireflies] Error in main loop:', error);
+        })();
+    },
+    async stop(): Promise<void> {
+        isRunning = false;
+        if (wakeResolve) {
+            wakeResolve();
         }
-
-        // Sleep before next check (can be interrupted by triggerSync)
-        console.log(`[Fireflies] Sleeping for ${SYNC_INTERVAL_MS / 1000} seconds...`);
-        await interruptibleSleep(SYNC_INTERVAL_MS);
     }
-}
+};

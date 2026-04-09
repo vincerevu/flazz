@@ -1,3 +1,4 @@
+import type { BackgroundService } from "../services/background_service.js";
 import fs from 'fs';
 import path from 'path';
 import { WorkDir } from '../config/config.js';
@@ -634,29 +635,6 @@ async function processAllSources(): Promise<void> {
 }
 
 /**
- * Main entry point - runs as independent service monitoring all source folders
- */
-export async function init() {
-    console.log('[GraphBuilder] Starting Knowledge Graph Builder Service...');
-    console.log(`[GraphBuilder] Monitoring folders: ${SOURCE_FOLDERS.join(', ')}, knowledge/Voice Memos`);
-    console.log(`[GraphBuilder] Will check for new content every ${SYNC_INTERVAL_MS / 1000} seconds`);
-
-    // Initial run
-    await processAllSources();
-
-    // Set up periodic processing
-    while (true) {
-        await new Promise(resolve => setTimeout(resolve, SYNC_INTERVAL_MS));
-
-        try {
-            await processAllSources();
-        } catch (error) {
-            console.error('[GraphBuilder] Error in main loop:', error);
-        }
-    }
-}
-
-/**
  * Reset the knowledge graph state - forces reprocessing of all files on next run
  * Useful for debugging or when you want to rebuild everything from scratch
  */
@@ -665,3 +643,61 @@ export function resetGraphState(): void {
     resetState();
     console.log('State reset complete. All files will be reprocessed on next build.');
 }
+
+let wakeResolve: (() => void) | null = null;
+function interruptibleSleep(ms: number): Promise<void> {
+    return new Promise(resolve => {
+        const timeout = setTimeout(() => {
+            wakeResolve = null;
+            resolve();
+        }, ms);
+        wakeResolve = () => {
+            clearTimeout(timeout);
+            resolve();
+        };
+    });
+}
+
+let isRunning = false;
+
+export const graphBuilderService: BackgroundService = {
+    name: 'GraphBuilder',
+    async start(): Promise<void> {
+        if (isRunning) return;
+        isRunning = true;
+
+        console.log('[GraphBuilder] Starting Knowledge Graph Builder Service...');
+        console.log(`[GraphBuilder] Monitoring folders: ${SOURCE_FOLDERS.join(', ')}, knowledge/Voice Memos`);
+        console.log(`[GraphBuilder] Will check for new content every ${SYNC_INTERVAL_MS / 1000} seconds`);
+
+        // Initial run
+        if (isRunning) {
+            try {
+                await processAllSources();
+            } catch (error) {
+                console.error('[GraphBuilder] Error in initial run:', error);
+            }
+        }
+
+        // Start background loop
+        (async () => {
+            while (isRunning) {
+                await interruptibleSleep(SYNC_INTERVAL_MS);
+
+                if (!isRunning) break;
+
+                try {
+                    await processAllSources();
+                } catch (error) {
+                    console.error('[GraphBuilder] Error in main loop:', error);
+                }
+            }
+        })();
+    },
+    async stop(): Promise<void> {
+        isRunning = false;
+        if (wakeResolve) {
+            wakeResolve();
+        }
+    }
+};

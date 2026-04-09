@@ -1,3 +1,4 @@
+import type { BackgroundService } from "../services/background_service.js";
 import { CronExpressionParser } from "cron-parser";
 import container from "../di/container.js";
 import { IAgentScheduleRepo } from "./repo.js";
@@ -320,16 +321,36 @@ async function pollAndRun(): Promise<void> {
  * Initialize the background agent runner service.
  * Polls every minute to check for agents that need to run.
  */
-export async function init(): Promise<void> {
-    console.log("[AgentRunner] Starting background agent runner service");
 
-    while (true) {
-        try {
-            await pollAndRun();
-        } catch (error) {
-            console.error("[AgentRunner] Error in main loop:", error);
+
+let isRunning = false;
+
+export const agentRunnerService: BackgroundService = {
+    name: 'AgentRunner',
+    async start(): Promise<void> {
+        if (isRunning) return;
+        isRunning = true;
+
+        console.log("[AgentRunner] Starting background agent runner service");
+
+        // Start background loop
+        (async () => {
+            while (isRunning) {
+                try {
+                    await pollAndRun();
+                } catch (error) {
+                    console.error("[AgentRunner] Error in main loop:", error);
+                }
+
+                if (!isRunning) break;
+                await interruptibleSleep(POLL_INTERVAL_MS);
+            }
+        })();
+    },
+    async stop(): Promise<void> {
+        isRunning = false;
+        if (wakeResolve) {
+            wakeResolve();
         }
-
-        await interruptibleSleep(POLL_INTERVAL_MS);
     }
-}
+};
