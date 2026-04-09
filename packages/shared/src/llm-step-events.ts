@@ -31,6 +31,23 @@ export const LlmStepStreamTextEndEvent = BaseEvent.extend({
     type: z.literal("text-end"),
 });
 
+export const LlmStepStreamToolInputStartEvent = BaseEvent.extend({
+    type: z.literal("tool-input-start"),
+    toolCallId: z.string(),
+    toolName: z.string(),
+});
+
+export const LlmStepStreamToolInputDeltaEvent = BaseEvent.extend({
+    type: z.literal("tool-input-delta"),
+    toolCallId: z.string(),
+    delta: z.string(),
+});
+
+export const LlmStepStreamToolInputEndEvent = BaseEvent.extend({
+    type: z.literal("tool-input-end"),
+    toolCallId: z.string(),
+});
+
 export const LlmStepStreamToolCallEvent = BaseEvent.extend({
     type: z.literal("tool-call"),
     toolCallId: z.string(),
@@ -76,6 +93,9 @@ export const LlmStepStreamEvent = z.union([
     LlmStepStreamTextStartEvent,
     LlmStepStreamTextDeltaEvent,
     LlmStepStreamTextEndEvent,
+    LlmStepStreamToolInputStartEvent,
+    LlmStepStreamToolInputDeltaEvent,
+    LlmStepStreamToolInputEndEvent,
     LlmStepStreamToolCallEvent,
     LlmStepStreamFinishStepEvent,
     LlmStepStreamFinishEvent,
