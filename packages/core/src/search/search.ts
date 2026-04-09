@@ -9,8 +9,10 @@ type SearchType = 'knowledge' | 'chat';
  * @param types - optional filter to search only specific types (default: both)
  */
 export async function search(query: string, limit = 20, types?: SearchType[]): Promise<{ results: SearchResult[] }> {
+  console.time('search-query');
   const trimmed = query.trim();
   if (!trimmed) {
+    console.timeEnd('search-query');
     return { results: [] };
   }
 
@@ -26,5 +28,6 @@ export async function search(query: string, limit = 20, types?: SearchType[]): P
   ]);
 
   const results = [...knowledgeResults, ...chatResults].slice(0, limit);
+  console.timeEnd('search-query');
   return { results };
 }

@@ -154,6 +154,8 @@ serviceRegistry.register(granolaSyncService);
 serviceRegistry.register(graphBuilderService);
 serviceRegistry.register(agentRunnerService);
 
+console.time('app-startup');
+
 app.whenReady().then(async () => {
   // Register custom protocol before creating window (for production builds)
   if (app.isPackaged) {
@@ -177,6 +179,8 @@ app.whenReady().then(async () => {
   setupIpcHandlers();
 
   createWindow();
+
+  console.timeEnd('app-startup');
 
   await serviceRegistry.startAll();
 
