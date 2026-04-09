@@ -1,6 +1,6 @@
 import { exec, execSync, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
-import { getSecurityAllowList } from '../../config/security.js';
+import { getSecurityAllowList } from '../../config/system-policy.js';
 import { getExecutionShell } from '../assistant/runtime-context.js';
 
 const execPromise = promisify(exec);

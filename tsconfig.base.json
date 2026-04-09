@@ -3,6 +3,14 @@
         "strict": true,
         "skipLibCheck": true,
         "baseUrl": ".",
+        "paths": {
+            "@flazz/shared": ["packages/shared/dist/index.d.ts"],
+            "@flazz/shared/src/*": ["packages/shared/src/*"],
+            "@flazz/shared/dist/*": ["packages/shared/dist/*"],
+            "@flazz/core": ["packages/core/dist/index.d.ts"],
+            "@flazz/core/src/*": ["packages/core/src/*"],
+            "@flazz/core/dist/*": ["packages/core/dist/*"]
+        },
         "target": "ES2022",
         "module": "NodeNext",
         "moduleResolution": "NodeNext"

@@ -9,12 +9,25 @@ import { IAbortRegistry } from "./abort-registry.js";
 import { IRunsLock } from "./lock.js";
 import { forceCloseAllMcpClients } from "../mcp/mcp.js";
 import { extractCommandNames } from "../application/lib/command-executor.js";
-import { addToSecurityConfig } from "../config/security.js";
+import { addToSecurityConfig } from "../config/system-policy.js";
+
+const emitRunLog = (level: "info" | "warn" | "error", message: string, runId: string, extra?: Record<string, unknown>) => {
+    const payload = {
+        ts: new Date().toISOString(),
+        level,
+        service: 'runs-manager',
+        runId,
+        message,
+        ...extra,
+    };
+    console.log(JSON.stringify(payload));
+};
 
 export async function createRun(opts: z.infer<typeof CreateRunOptions>): Promise<z.infer<typeof Run>> {
     const repo = container.resolve<IRunsRepo>('runsRepo');
     const bus = container.resolve<IBus>('bus');
     const run = await repo.create(opts);
+    emitRunLog("info", "run created", run.id, { agentId: opts.agentId });
     await bus.publish(run.log[0]);
     return run;
 }
@@ -22,6 +35,7 @@ export async function createRun(opts: z.infer<typeof CreateRunOptions>): Promise
 export async function createMessage(runId: string, message: UserMessageContentType): Promise<string> {
     const queue = container.resolve<IMessageQueue>('messageQueue');
     const id = await queue.enqueue(runId, message);
+    emitRunLog("info", "message enqueued", runId, { messageId: id });
     const runtime = container.resolve<IAgentRuntime>('agentRuntime');
     runtime.trigger(runId);
     return id;
@@ -87,6 +101,7 @@ export async function stop(runId: string, force: boolean = false): Promise<void>
     }
     // Note: The run-stopped event is emitted by AgentRuntime.trigger() when it detects the abort.
     // This avoids duplicate events and ensures proper sequencing.
+    emitRunLog("info", "run stopped", runId, { force });
 }
 
 export async function deleteRun(runId: string): Promise<void> {
@@ -97,6 +112,7 @@ export async function deleteRun(runId: string): Promise<void> {
     try {
         const repo = container.resolve<IRunsRepo>('runsRepo');
         await repo.delete(runId);
+        emitRunLog("info", "run deleted", runId);
     } finally {
         await runsLock.release(runId);
     }

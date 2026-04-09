@@ -1,6 +1,7 @@
 import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
+import crypto from "crypto";
 import { WorkDir } from "../config/config.js";
 import { IdGen } from "../application/lib/id-gen.js";
 import type { ServiceEventType } from "@flazz/shared/dist/service-events.js";
@@ -16,6 +17,7 @@ const MAX_LOG_BYTES = 10 * 1024 * 1024;
 
 export type ServiceRunContext = {
     runId: string;
+    correlationId: string;
     service: ServiceNameType;
     startedAt: number;
 };
@@ -71,11 +73,11 @@ export class ServiceLogger {
         this.stream = fs.createWriteStream(LOG_FILE, { flags: "a", encoding: "utf8" });
     }
 
-    async log(event: ServiceEventInput): Promise<void> {
+    async log(event: ServiceEventInput & { correlationId?: string; [key: string]: any }): Promise<void> {
         const payload = {
             ...event,
             ts: new Date().toISOString(),
-        } as ServiceEventType;
+        } as ServiceEventType & { correlationId?: string; [key: string]: any };
         const line = JSON.stringify(payload) + "\n";
         const bytes = Buffer.byteLength(line, "utf8");
 
@@ -99,19 +101,22 @@ export class ServiceLogger {
         message: string;
         trigger?: "timer" | "manual" | "startup";
         config?: Record<string, unknown>;
+        correlationId?: string;
     }): Promise<ServiceRunContext> {
         const runId = `${opts.service}_${await this.idGen.next()}`;
+        const correlationId = opts.correlationId ?? crypto.randomUUID();
         const startedAt = Date.now();
         await this.log({
             type: "run_start",
             service: opts.service,
             runId,
+            correlationId,
             level: "info",
             message: opts.message,
             trigger: opts.trigger,
             config: opts.config,
         });
-        return { runId, service: opts.service, startedAt };
+        return { runId, correlationId, service: opts.service, startedAt };
     }
 }
 

@@ -5,7 +5,9 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:tsc": "tsc -b",
+    "build:vite": "vite build",
+    "build": "run-s build:tsc build:vite",
     "lint": "eslint .",
     "preview": "vite preview"
   },

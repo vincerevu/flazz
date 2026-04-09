@@ -1,9 +1,9 @@
 import path from "path";
 import fs from "fs";
 import fsPromises from "fs/promises";
-import { WorkDir } from "./config.js";
+import { WorkDir } from "./runtime-defaults.js";
 
-export const SECURITY_CONFIG_PATH = path.join(WorkDir, "config", "security.json");
+export const SECURITY_CONFIG_PATH = path.join(WorkDir, "config", "system-policy.json");
 
 const DEFAULT_ALLOW_LIST = [
     "cat",

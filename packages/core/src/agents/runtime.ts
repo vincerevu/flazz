@@ -1,6 +1,7 @@
 import { jsonSchema, ModelMessage } from "ai";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { WorkDir } from "../config/config.js";
 import { getNoteCreationStrictness } from "../config/note_creation_config.js";
 import { Agent, ToolAttachment } from "@flazz/shared/dist/agent.js";
@@ -96,7 +97,16 @@ export class AgentRuntime implements IAgentRuntime {
                 for (const event of run.log) {
                     state.ingest(event);
                 }
+                const correlationId = crypto.randomUUID();
                 try {
+                    console.log(JSON.stringify({
+                        ts: new Date().toISOString(),
+                        level: "info",
+                        service: "agent-runtime",
+                        runId,
+                        correlationId,
+                        message: "Run processing started",
+                    }));
                     for await (const event of streamAgent({
                         state,
                         idGenerator: this.idGenerator,
@@ -105,6 +115,7 @@ export class AgentRuntime implements IAgentRuntime {
                         modelConfigRepo: this.modelConfigRepo,
                         signal,
                         abortRegistry: this.abortRegistry,
+                        correlationId,
                     })) {
                         eventCount++;
                         if (event.type !== "llm-stream-event") {
@@ -908,6 +919,7 @@ export async function* streamAgent({
     modelConfigRepo,
     signal,
     abortRegistry,
+    correlationId,
 }: {
     state: AgentState,
     idGenerator: IMonotonicallyIncreasingIdGenerator;
@@ -916,8 +928,23 @@ export async function* streamAgent({
     modelConfigRepo: IModelConfigRepo;
     signal: AbortSignal;
     abortRegistry: IAbortRegistry;
+    correlationId?: string;
 }): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
+    const activeCorrelationId = correlationId ?? crypto.randomUUID();
     const logger = new PrefixLogger(`run-${runId}-${state.agentName}`);
+
+    const emitLog = (level: "info" | "warn" | "error", message: string, extra?: Record<string, unknown>) => {
+        const payload = {
+            ts: new Date().toISOString(),
+            level,
+            service: 'agent-runtime',
+            runId,
+            correlationId: activeCorrelationId,
+            message,
+            ...extra,
+        };
+        console.log(JSON.stringify(payload));
+    };
 
     async function* processEvent(event: z.infer<typeof RunEvent>): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
         state.ingest(event);
@@ -998,6 +1025,7 @@ export async function* streamAgent({
                 break;
             }
             _logger.log('executing tool');
+            emitLog("info", "tool call start", { toolCallId, toolName: toolCall.toolName, arguments: toolCall.arguments });
             yield* processEvent({
                 runId,
                 type: "tool-invocation",
@@ -1017,6 +1045,7 @@ export async function* streamAgent({
                     modelConfigRepo,
                     signal,
                     abortRegistry,
+                    correlationId: activeCorrelationId,
                 })) {
                     yield* processEvent({
                         ...event,
@@ -1027,9 +1056,15 @@ export async function* streamAgent({
                     result = subflowState.finalResponse();
                 }
             } else {
-                result = await execTool(agent.tools![toolCall.toolName], toolCall.arguments, { runId, signal, abortRegistry });
+                try {
+                    result = await execTool(agent.tools![toolCall.toolName], toolCall.arguments, { runId, signal, abortRegistry });
+                } catch (err) {
+                    emitLog("error", "tool call error", { toolCallId, toolName: toolCall.toolName, error: err instanceof Error ? err.message : String(err) });
+                    throw err;
+                }
             }
             const resultPayload = result === undefined ? null : result;
+            emitLog("info", "tool call end", { toolCallId, toolName: toolCall.toolName, result: resultPayload });
             const resultMsg: z.infer<typeof ToolMessage> = {
                 role: "tool",
                 content: JSON.stringify(resultPayload),
@@ -1128,6 +1163,7 @@ export async function* streamAgent({
             });
             if (event.type === "error") {
                 streamError = event.error;
+                emitLog("error", "provider error", { error: streamError, messages: state.messages.length });
                 yield* processEvent({
                     runId,
                     type: "error",
@@ -1182,6 +1218,7 @@ export async function* streamAgent({
                         // if command is blocked, then seek permission
                         if (isBlocked(part.arguments.command, state.sessionAllowedCommands)) {
                             loopLogger.log('emitting tool-permission-request, toolCallId:', part.toolCallId);
+                            emitLog("info", "permission request", { toolCallId: part.toolCallId, command: part.arguments.command });
                             yield* processEvent({
                                 runId,
                                 type: "tool-permission-request",

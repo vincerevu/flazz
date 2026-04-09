@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { limitEventItems, MAX_EVENT_ITEMS } from './limit_event_items.ts';
+import { limitEventItems, MAX_EVENT_ITEMS } from './limit_event_items.js';
 
 test('limitEventItems', async (t) => {
     await t.test('should return all items and truncated false when items length is less than max', () => {
