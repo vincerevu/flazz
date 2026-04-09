@@ -8,7 +8,7 @@
     "build:tsc": "tsc -b",
     "build:vite": "vite build",
     "build": "run-s build:tsc build:vite",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "eslint .",
     "preview": "vite preview"
   },
