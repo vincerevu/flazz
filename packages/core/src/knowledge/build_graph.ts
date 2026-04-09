@@ -130,30 +130,37 @@ function getUnprocessedVoiceMemos(state: GraphState): string[] {
  * Read content for specific files
  */
 async function readFileContents(filePaths: string[]): Promise<{ path: string; content: string }[]> {
-    const files: { path: string; content: string }[] = [];
+    const results = await Promise.all(
+        filePaths.map(async (filePath) => {
+            try {
+                const content = await fs.promises.readFile(filePath, 'utf-8');
+                return { path: filePath, content };
+            } catch (error) {
+                console.error(`Error reading file ${filePath}:`, error);
+                return null;
+            }
+        })
+    );
 
-    for (const filePath of filePaths) {
-        try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            files.push({ path: filePath, content });
-        } catch (error) {
-            console.error(`Error reading file ${filePath}:`, error);
-        }
-    }
-
-    return files;
+    return results.filter((result): result is { path: string; content: string } => result !== null);
 }
 
 /**
  * Wait for a run to complete by listening for run-processing-end event
  */
 async function waitForRunCompletion(runId: string): Promise<void> {
-    return new Promise(async (resolve) => {
-        const unsubscribe = await bus.subscribe('*', async (event) => {
+    return new Promise((resolve) => {
+        let unsubscribe: (() => void) | undefined;
+
+        bus.subscribe('*', async (event) => {
             if (event.type === 'run-processing-end' && event.runId === runId) {
-                unsubscribe();
+                if (unsubscribe) {
+                    unsubscribe();
+                }
                 resolve();
             }
+        }).then((unsub) => {
+            unsubscribe = unsub;
         });
     });
 }
