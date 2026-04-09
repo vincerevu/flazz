@@ -1,3 +1,4 @@
+import type { BackgroundService } from "../services/background_service.js";
 import fs from 'fs';
 import path from 'path';
 import { google, calendar_v3 as cal, drive_v3 as drive } from 'googleapis';
@@ -343,27 +344,48 @@ async function performSync(syncDir: string, lookbackDays: number) {
     }
 }
 
-export async function init() {
-    console.log("Starting Google Calendar & Notes Sync (TS)...");
-    console.log(`Will sync every ${SYNC_INTERVAL_MS / 1000} seconds.`);
+let isRunning = false;
 
-    while (true) {
-        try {
-            // Check if credentials are available with required scopes
-            const hasCredentials = await GoogleClientFactory.hasValidCredentials(REQUIRED_SCOPES);
+export const calendarSyncService: BackgroundService = {
+    name: 'CalendarSync',
+    async start(): Promise<void> {
+        if (isRunning) return;
+        isRunning = true;
 
-            if (!hasCredentials) {
-                console.log("Google OAuth credentials not available or missing required Calendar/Drive scopes. Sleeping...");
-            } else {
-                // Perform one sync
-                await performSync(SYNC_DIR, LOOKBACK_DAYS);
+        console.log("Starting Google Calendar & Notes Sync (TS)...");
+        console.log(`Will sync every ${SYNC_INTERVAL_MS / 1000} seconds.`);
+
+        // Initial small delay to let other things boot up
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Start background loop
+        (async () => {
+            while (isRunning) {
+                try {
+                    // Check if credentials are available with required scopes
+                    const hasCredentials = await GoogleClientFactory.hasValidCredentials(REQUIRED_SCOPES);
+
+                    if (!hasCredentials) {
+                        console.log("Google OAuth credentials not available or missing required Calendar/Drive scopes. Sleeping...");
+                    } else {
+                        // Perform one sync
+                        await performSync(SYNC_DIR, LOOKBACK_DAYS);
+                    }
+                } catch (error) {
+                    console.error("Error in main loop:", error);
+                }
+
+                if (!isRunning) break;
+                // Sleep for N minutes before next check (can be interrupted by triggerSync)
+                console.log(`Sleeping for ${SYNC_INTERVAL_MS / 1000} seconds...`);
+                await interruptibleSleep(SYNC_INTERVAL_MS);
             }
-        } catch (error) {
-            console.error("Error in main loop:", error);
+        })();
+    },
+    async stop(): Promise<void> {
+        isRunning = false;
+        if (wakeResolve) {
+            wakeResolve();
         }
-
-        // Sleep for N minutes before next check (can be interrupted by triggerSync)
-        console.log(`Sleeping for ${SYNC_INTERVAL_MS / 1000} seconds...`);
-        await interruptibleSleep(SYNC_INTERVAL_MS);
     }
-}
+};

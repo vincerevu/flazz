@@ -3,22 +3,19 @@ import path from "node:path";
 import {
   emitWindowStateChanged,
   setupIpcHandlers,
-  startRunsWatcher,
-  startServicesWatcher,
-  startWorkspaceWatcher,
-  stopRunsWatcher,
-  stopServicesWatcher,
-  stopWorkspaceWatcher
 } from "./ipc.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname } from "node:path";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
-import { init as initGmailSync } from "@flazz/core/dist/knowledge/sync_gmail.js";
-import { init as initCalendarSync } from "@flazz/core/dist/knowledge/sync_calendar.js";
-import { init as initFirefliesSync } from "@flazz/core/dist/knowledge/sync_fireflies.js";
-import { init as initGranolaSync } from "@flazz/core/dist/knowledge/granola/sync.js";
-import { init as initGraphBuilder } from "@flazz/core/dist/knowledge/build_graph.js";
-import { init as initAgentRunner } from "@flazz/core/dist/agent-schedule/runner.js";
+
+import { ServiceRegistry } from "@flazz/core/dist/services/service_registry.js";
+import { gmailSyncService } from "@flazz/core/dist/knowledge/sync_gmail.js";
+import { calendarSyncService } from "@flazz/core/dist/knowledge/sync_calendar.js";
+import { firefliesSyncService } from "@flazz/core/dist/knowledge/sync_fireflies.js";
+import { granolaSyncService } from "@flazz/core/dist/knowledge/granola/sync.js";
+import { graphBuilderService } from "@flazz/core/dist/knowledge/build_graph.js";
+import { agentRunnerService } from "@flazz/core/dist/agent-schedule/runner.js";
+import { workspaceWatcherService, runsWatcherService, servicesWatcherService } from "./ipc.js";
 import { initConfigs } from "@flazz/core/dist/config/initConfigs.js";
 import started from "electron-squirrel-startup";
 
@@ -145,6 +142,18 @@ function createWindow() {
   }
 }
 
+
+const serviceRegistry = new ServiceRegistry();
+serviceRegistry.register(workspaceWatcherService);
+serviceRegistry.register(runsWatcherService);
+serviceRegistry.register(servicesWatcherService);
+serviceRegistry.register(gmailSyncService);
+serviceRegistry.register(calendarSyncService);
+serviceRegistry.register(firefliesSyncService);
+serviceRegistry.register(granolaSyncService);
+serviceRegistry.register(graphBuilderService);
+serviceRegistry.register(agentRunnerService);
+
 app.whenReady().then(async () => {
   // Register custom protocol before creating window (for production builds)
   if (app.isPackaged) {
@@ -169,36 +178,7 @@ app.whenReady().then(async () => {
 
   createWindow();
 
-  // Start workspace watcher as a main-process service
-  // Watcher runs independently and catches ALL filesystem changes:
-  // - Changes made via IPC handlers (workspace:writeFile, etc.)
-  // - External changes (terminal, git, other editors)
-  // Only starts once (guarded in startWorkspaceWatcher)
-  startWorkspaceWatcher();
-
-  // start runs watcher
-  startRunsWatcher();
-
-  // start services watcher
-  startServicesWatcher();
-
-  // start gmail sync
-  initGmailSync();
-
-  // start calendar sync
-  initCalendarSync();
-
-  // start fireflies sync
-  initFirefliesSync();
-
-  // start granola sync
-  initGranolaSync();
-
-  // start knowledge graph builder
-  initGraphBuilder();
-
-  // start background agent runner (scheduled agents)
-  initAgentRunner();
+  await serviceRegistry.startAll();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -214,8 +194,5 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  // Clean up watcher on app quit
-  stopWorkspaceWatcher();
-  stopRunsWatcher();
-  stopServicesWatcher();
+  serviceRegistry.stopAll();
 });

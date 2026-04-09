@@ -1,3 +1,4 @@
+import type { BackgroundService } from "../../services/background_service.js";
 import fs from 'fs';
 import path from 'path';
 import { homedir } from 'os';
@@ -495,20 +496,42 @@ async function syncNotes(): Promise<void> {
 
 // --- Main Loop ---
 
-export async function init(): Promise<void> {
-    console.log('[Granola] Starting Granola Sync...');
-    console.log(`[Granola] Will sync every ${SYNC_INTERVAL_MS / 60000} minutes.`);
-    console.log(`[Granola] Notes will be saved to: ${SYNC_DIR}`);
 
-    while (true) {
-        try {
-            await syncNotes();
-        } catch (error) {
-            console.error('[Granola] Error in sync loop:', error);
+
+let isRunning = false;
+
+export const granolaSyncService: BackgroundService = {
+    name: 'GranolaSync',
+    async start(): Promise<void> {
+        if (isRunning) return;
+        isRunning = true;
+
+        console.log('[Granola] Starting Granola Sync...');
+        console.log(`[Granola] Will sync every ${SYNC_INTERVAL_MS / 60000} minutes.`);
+        console.log(`[Granola] Notes will be saved to: ${SYNC_DIR}`);
+
+        // Initial small delay to let other things boot up
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Start background loop
+        (async () => {
+            while (isRunning) {
+                try {
+                    await syncNotes();
+                } catch (error) {
+                    console.error('[Granola] Error in sync loop:', error);
+                }
+
+                if (!isRunning) break;
+                console.log(`[Granola] Sleeping for ${SYNC_INTERVAL_MS / 60000} minutes...`);
+                await interruptibleSleep(SYNC_INTERVAL_MS);
+            }
+        })();
+    },
+    async stop(): Promise<void> {
+        isRunning = false;
+        if (wakeResolve) {
+            wakeResolve();
         }
-
-        // Sleep before next check (can be interrupted by triggerSync)
-        console.log(`[Granola] Sleeping for ${SYNC_INTERVAL_MS / 60000} minutes...`);
-        await interruptibleSleep(SYNC_INTERVAL_MS);
     }
-}
+};
