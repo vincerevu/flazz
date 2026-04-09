@@ -27,6 +27,17 @@ const __dirname = dirname(__filename);
 // run this as early in the main process as possible
 if (started) app.quit();
 
+// Global error handlers to prevent app crashes
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error);
+  // Don't exit - let the app continue running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit - let the app continue running
+});
+
 // Path resolution differs between development and production:
 const preloadPath = app.isPackaged
   ? path.join(__dirname, "../preload/dist/preload.js")

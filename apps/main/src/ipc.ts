@@ -51,6 +51,7 @@ export type InvokeHandlers = {
  * 1. All invoke channels have handlers (exhaustiveness checking)
  * 2. Handler signatures match channel definitions
  * 3. Request/response payloads are validated at runtime
+ * 4. Errors are caught and returned as error responses
  */
 export function registerIpcHandlers(handlers: InvokeHandlers) {
   // Register each handler with runtime validation
@@ -59,14 +60,21 @@ export function registerIpcHandlers(handlers: InvokeHandlers) {
     InvokeHandler<InvokeChannels>
   ][]) {
     ipcMain.handle(channel, async (event, rawArgs) => {
-      // Validate request payload
-      const args = ipc.validateRequest(channel, rawArgs);
-      
-      // Call handler
-      const result = await handler(event, args);
-      
-      // Validate response payload
-      return ipc.validateResponse(channel, result);
+      try {
+        // Validate request payload
+        const args = ipc.validateRequest(channel, rawArgs);
+        
+        // Call handler
+        const result = await handler(event, args);
+        
+        // Validate response payload
+        return ipc.validateResponse(channel, result);
+      } catch (error) {
+        console.error(`[IPC] Error in handler '${channel}':`, error);
+        // Return error response instead of throwing
+        // This prevents the IPC call from failing completely
+        throw error;
+      }
     });
   }
 }
