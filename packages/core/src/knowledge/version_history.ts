@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import git from 'isomorphic-git';
-import { WorkDir } from '../config/config.js';
+import { WorkDir } from '../config/config.ts';
 
 const KNOWLEDGE_DIR = path.join(WorkDir, 'knowledge');
 
