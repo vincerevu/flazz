@@ -1,7 +1,7 @@
 import { exec, execSync, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
-import { getSecurityAllowList } from '../../config/security.js';
-import { getExecutionShell } from '../assistant/runtime-context.js';
+import { getSecurityAllowList } from '../../config/system-policy.ts';
+import { getExecutionShell } from '../assistant/runtime-context.ts';
 
 const execPromise = promisify(exec);
 const COMMAND_SPLIT_REGEX = /(?:\|\||&&|;|\||\n|`|\$\(|\(|\))/;

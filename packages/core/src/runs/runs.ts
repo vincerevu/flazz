@@ -9,7 +9,7 @@ import { IAbortRegistry } from "./abort-registry.js";
 import { IRunsLock } from "./lock.js";
 import { forceCloseAllMcpClients } from "../mcp/mcp.js";
 import { extractCommandNames } from "../application/lib/command-executor.js";
-import { addToSecurityConfig } from "../config/security.js";
+import { addToSecurityConfig } from "../config/system-policy.js";
 
 const emitRunLog = (level: "info" | "warn" | "error", message: string, runId: string, extra?: Record<string, unknown>) => {
     const payload = {
