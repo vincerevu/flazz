@@ -320,6 +320,14 @@ export const MessageResponse = memo(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      remarkPlugins={[
+        // @ts-ignore - remark-math types
+        require('remark-math'),
+      ]}
+      rehypePlugins={[
+        // @ts-ignore - rehype-katex types
+        [require('rehype-katex'), { output: 'mathml' }],
+      ]}
       components={{
         math: ({ children }) => <div className="my-2 overflow-x-auto">{children}</div>,
         inlineMath: ({ children }) => <span className="inline-block">{children}</span>,
