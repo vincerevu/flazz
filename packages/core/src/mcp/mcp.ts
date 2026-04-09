@@ -1,85 +1,37 @@
 import container from "../di/container.js";
-import { Client } from "@modelcontextprotocol/sdk/client";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import z from "zod";
 import { IMcpConfigRepo } from "./repo.js";
-import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
-    connectionState,
     ListToolsResponse,
     McpServerList,
 } from "@flazz/shared/dist/mcp.js";
+import { McpClientAdapter, DefaultMcpClientAdapter } from "./adapter.js";
 
-type mcpState = {
-    state: z.infer<typeof connectionState>,
-    client: Client | null,
-    error: string | null,
-};
-const clients: Record<string, mcpState> = {};
+const clients: Record<string, McpClientAdapter> = {};
 
-async function getClient(serverName: string): Promise<Client> {
-    if (clients[serverName] && clients[serverName].state === "connected") {
-        return clients[serverName].client!;
+async function getClient(serverName: string): Promise<McpClientAdapter> {
+    if (clients[serverName] && clients[serverName].getState() === "connected") {
+        return clients[serverName];
     }
+
     const repo = container.resolve<IMcpConfigRepo>('mcpConfigRepo');
     const { mcpServers } = await repo.getConfig();
     const config = mcpServers[serverName];
     if (!config) {
         throw new Error(`MCP server ${serverName} not found`);
     }
-    let transport: Transport | undefined = undefined;
-    try {
-        // create transport
-        if ("command" in config) {
-            transport = new StdioClientTransport({
-                command: config.command,
-                args: config.args,
-                env: config.env,
-            });
-        } else {
-            try {
-                transport = new StreamableHTTPClientTransport(new URL(config.url));
-            } catch {
-                // if that fails, try sse transport
-                transport = new SSEClientTransport(new URL(config.url));
-            }
-        }
 
-        if (!transport) {
-            throw new Error(`No transport found for ${serverName}`);
-        }
-
-        // create client
-        const client = new Client({
-            name: 'Flazz',
-            version: '1.0.0',
-        });
-        await client.connect(transport);
-
-        // store
-        clients[serverName] = {
-            state: "connected",
-            client,
-            error: null,
-        };
-        return client;
-    } catch (error) {
-        clients[serverName] = {
-            state: "error",
-            client: null,
-            error: error instanceof Error ? error.message : "Unknown error",
-        };
-        transport?.close();
-        throw error;
+    if (!clients[serverName]) {
+        clients[serverName] = new DefaultMcpClientAdapter();
     }
+
+    await clients[serverName].connect(serverName, config);
+    return clients[serverName];
 }
 
 export async function cleanup() {
-    for (const [serverName, { client }] of Object.entries(clients)) {
-        await client?.transport?.close();
-        await client?.close();
+    for (const [serverName, client] of Object.entries(clients)) {
+        await client.disconnect();
         delete clients[serverName];
     }
 }
@@ -90,9 +42,9 @@ export async function cleanup() {
  * Clients will be lazily reconnected on next use.
  */
 export async function forceCloseAllMcpClients(): Promise<void> {
-    for (const [serverName, { client }] of Object.entries(clients)) {
+    for (const [serverName, client] of Object.entries(clients)) {
         try {
-            await client?.close();
+            await client.disconnect();
         } catch {
             // Ignore errors during force close
         }
@@ -107,11 +59,11 @@ export async function listServers(): Promise<z.infer<typeof McpServerList>> {
         mcpServers: {},
     };
     for (const [serverName, config] of Object.entries(mcpServers)) {
-        const state = clients[serverName];
+        const client = clients[serverName];
         result.mcpServers[serverName] = {
             config,
-            state: state ? state.state : "disconnected",
-            error: state ? state.error : null,
+            state: client ? client.getState() : "disconnected",
+            error: client ? client.getError() : null,
         };
     }
     return result;
@@ -119,20 +71,10 @@ export async function listServers(): Promise<z.infer<typeof McpServerList>> {
 
 export async function listTools(serverName: string, cursor?: string): Promise<z.infer<typeof ListToolsResponse>> {
     const client = await getClient(serverName);
-    const { tools, nextCursor } = await client.listTools({
-        cursor,
-    });
-    return {
-        tools,
-        nextCursor,
-    }
+    return await client.listTools(cursor);
 }
 
 export async function executeTool(serverName: string, toolName: string, input: Record<string, unknown>): Promise<unknown> {
     const client = await getClient(serverName);
-    const result = await client.callTool({
-        name: toolName,
-        arguments: input,
-    });
-    return result;
+    return await client.callTool(toolName, input);
 }
