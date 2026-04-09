@@ -127,21 +127,34 @@ function getUnprocessedVoiceMemos(state: GraphState): string[] {
 }
 
 /**
- * Read content for specific files
+ * Read content for specific files (optimized for non-blocking I/O)
  */
 async function readFileContents(filePaths: string[]): Promise<{ path: string; content: string }[]> {
     const files: { path: string; content: string }[] = [];
+    const CONCURRENCY_LIMIT = 50;
 
-    for (const filePath of filePaths) {
-        try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            files.push({ path: filePath, content });
-        } catch (error) {
-            console.error(`Error reading file ${filePath}:`, error);
+    for (let i = 0; i < filePaths.length; i += CONCURRENCY_LIMIT) {
+        const batch = filePaths.slice(i, i + CONCURRENCY_LIMIT);
+        const batchResults = await Promise.all(
+            batch.map(async (filePath) => {
+                try {
+                    const content = await fs.promises.readFile(filePath, 'utf-8');
+                    return { path: filePath, content };
+                } catch (error) {
+                    console.error(`Error reading file ${filePath}:`, error);
+                    return null;
+                }
+            })
+        );
+
+        for (const result of batchResults) {
+            if (result) {
+                files.push(result);
+            }
         }
     }
 
-    return files;
+    return results.filter((result): result is { path: string; content: string } => result !== null);
 }
 
 /**
