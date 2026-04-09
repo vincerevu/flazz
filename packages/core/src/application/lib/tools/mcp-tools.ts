@@ -2,7 +2,7 @@ import { z } from "zod";
 import { executeTool, listServers, listTools } from "../../../mcp/mcp.js";
 import container from "../../../di/container.js";
 import { IMcpConfigRepo } from "../../../mcp/repo.js";
-import { McpServerDefinition } from "@flazz/shared/dist/mcp.js";
+import { McpServerDefinition } from "@flazz/shared";
 
 export const mcpTools = {
     addMcpServer: {

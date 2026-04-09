@@ -17,7 +17,7 @@ import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { LlmModelConfig, LlmProvider } from "@flazz/shared/dist/models.js";
+import { LlmModelConfig, LlmProvider } from "@flazz/shared";
 import z from "zod";
 
 import { ProviderAdapter } from "./provider-adapter.js";

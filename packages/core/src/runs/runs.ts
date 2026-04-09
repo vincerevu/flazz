@@ -1,7 +1,7 @@
 import z from "zod";
 import container from "../di/container.js";
 import { IMessageQueue, UserMessageContentType } from "../application/lib/message-queue.js";
-import { AskHumanResponseEvent, ToolPermissionRequestEvent, ToolPermissionResponseEvent, CreateRunOptions, Run, ListRunsResponse, ToolPermissionAuthorizePayload, AskHumanResponsePayload } from "@flazz/shared/dist/runs.js";
+import { AskHumanResponseEvent, ToolPermissionRequestEvent, ToolPermissionResponseEvent, CreateRunOptions, Run, ListRunsResponse, ToolPermissionAuthorizePayload, AskHumanResponsePayload } from "@flazz/shared";
 import { IRunsRepo } from "./repo.js";
 import { IAgentRuntime } from "../agents/runtime.js";
 import { IBus } from "../application/lib/bus.js";

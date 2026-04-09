@@ -8,8 +8,8 @@ import { serviceBus } from '@flazz/core/dist/services/service_bus.js';
 import type { FSWatcher } from 'chokidar';
 import fs from 'node:fs/promises';
 import z from 'zod';
-import { RunEvent } from '@flazz/shared/dist/runs.js';
-import { ServiceEvent } from '@flazz/shared/dist/service-events.js';
+import { RunEvent } from '@flazz/shared';
+import { ServiceEvent } from '@flazz/shared';
 import { versionHistory } from '@flazz/core';
 import {
   registerWorkspaceHandlers,

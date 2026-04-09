@@ -4,7 +4,7 @@ import path from "path";
 import crypto from "crypto";
 import { WorkDir } from "../config/config.js";
 import { IdGen } from "../application/lib/id-gen.js";
-import type { ServiceEventType } from "@flazz/shared/dist/service-events.js";
+import type { ServiceEventType } from "@flazz/shared";
 import { serviceBus } from "./service_bus.js";
 
 type ServiceNameType = ServiceEventType["service"];

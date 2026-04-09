@@ -6,9 +6,9 @@ import { IAgentScheduleStateRepo } from "./state-repo.js";
 import { IRunsRepo } from "../runs/repo.js";
 import { IAgentRuntime } from "../agents/runtime.js";
 import { IMonotonicallyIncreasingIdGenerator } from "../application/lib/id-gen.js";
-import { AgentScheduleConfig, AgentScheduleEntry } from "@flazz/shared/dist/agent-schedule.js";
-import { AgentScheduleState, AgentScheduleStateEntry } from "@flazz/shared/dist/agent-schedule-state.js";
-import { MessageEvent } from "@flazz/shared/dist/runs.js";
+import { AgentScheduleConfig, AgentScheduleEntry } from "@flazz/shared";
+import { AgentScheduleState, AgentScheduleStateEntry } from "@flazz/shared";
+import { MessageEvent } from "@flazz/shared";
 import z from "zod";
 
 const DEFAULT_STARTING_MESSAGE = "go";

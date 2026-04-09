@@ -1,8 +1,8 @@
 import { z } from "zod";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { Agent } from "@flazz/shared/dist/agent.js";
-import { ToolCallPart, ToolMessage } from "@flazz/shared/dist/message.js";
-import { RunEvent } from "@flazz/shared/dist/runs.js";
+import { Agent } from "@flazz/shared";
+import { ToolCallPart, ToolMessage } from "@flazz/shared";
+import { RunEvent } from "@flazz/shared";
 import { AgentState } from "./agent-state.js";
 
 export async function* handleSubflowDelegation({

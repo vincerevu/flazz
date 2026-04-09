@@ -154,7 +154,7 @@ async function readFileContents(filePaths: string[]): Promise<{ path: string; co
         }
     }
 
-    return results.filter((result): result is { path: string; content: string } => result !== null);
+    return files;
 }
 
 /**
