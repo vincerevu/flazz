@@ -36,6 +36,7 @@ import { runsIpc } from '@/services/runs-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
 import { knowledgeIpc } from '@/services/knowledge-ipc'
 import { useDesktopWindow } from '@/features/app/use-desktop-window'
+import { useAppKeyboardShortcuts } from '@/features/app/use-app-keyboard-shortcuts'
 import { useBackgroundTasks } from '@/features/background-tasks/use-background-tasks'
 import { ChatMainPanel } from '@/features/chat/components/chat-main-panel'
 
@@ -170,7 +171,6 @@ function App() {
   const [activeChatTabId, setActiveChatTabId] = useState<string>('default-chat')
   const [chatTabs, setChatTabs] = useState<ChatTab[]>([{ id: 'default-chat', runId: null }])
   const [chatViewStateByTab, setChatViewStateByTab] = useState<Record<string, ChatTabViewState>>({})
-  const chatViewStateByTabRef = useRef<Record<string, ChatTabViewState>>({})
   const [toolOpenByTab, setToolOpenByTab] = useState<Record<string, Record<string, boolean>>>({})
   const [agentId] = useState<string>('copilot')
   const [presetMessage, setPresetMessage] = useState<string | undefined>(undefined)
@@ -312,10 +312,6 @@ function App() {
   }, [])
 
   useEffect(() => {
-    chatViewStateByTabRef.current = chatViewStateByTab
-  }, [chatViewStateByTab])
-
-  useEffect(() => {
     const timer = setTimeout(() => {
       setChatViewStateByTab((prev) => ({ ...prev, [activeChatTabId]: chatRuntimeSnapshot }))
     }, 0)
@@ -400,123 +396,24 @@ function App() {
     setExpandedFrom(null)
   }, [expandedFrom, navigate])
 
-  // Keyboard shortcut: Cmd+K / Ctrl+K to open search
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault()
-        setIsSearchOpen(true)
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  // Route undo/redo to the active markdown tab only (prevents cross-tab browser undo behavior).
-  useEffect(() => {
-    const handleHistoryKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod || e.altKey) return
-
-      const key = e.key.toLowerCase()
-      const wantsUndo = key === 'z' && !e.shiftKey
-      const wantsRedo = (key === 'z' && e.shiftKey) || (!isMac && key === 'y')
-      if (!wantsUndo && !wantsRedo) return
-
-      if (!selectedPath || !selectedPath.endsWith('.md') || !activeFileTabId) return
-
-      const target = e.target as EventTarget | null
-      if (target instanceof HTMLElement) {
-        const inTipTapEditor = Boolean(target.closest('.tiptap-editor'))
-        const inOtherTextInput = (
-          target instanceof HTMLInputElement
-          || target instanceof HTMLTextAreaElement
-          || target.isContentEditable
-        ) && !inTipTapEditor
-        if (inOtherTextInput) return
-      }
-
-      const handlers = fileHistoryHandlersRef.current.get(activeFileTabId)
-      if (!handlers) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      if (wantsUndo) {
-        handlers.undo()
-      } else {
-        handlers.redo()
-      }
-    }
-
-    document.addEventListener('keydown', handleHistoryKeyDown, true)
-    return () => document.removeEventListener('keydown', handleHistoryKeyDown, true)
-  }, [activeFileTabId, isMac, selectedPath, fileHistoryHandlersRef])
-
-  // Keyboard shortcuts for tab management
-  useEffect(() => {
-    const handleTabKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod) return
-      const rightPaneAvailable = Boolean((selectedPath || isGraphOpen) && isChatSidebarOpen)
-      const targetPane: ShortcutPane = rightPaneAvailable
-        ? (isRightPaneMaximized ? 'right' : activeShortcutPane)
-        : 'left'
-      const inFileView = targetPane === 'left' && Boolean(selectedPath || isGraphOpen)
-      const selectedKnowledgePath = isGraphOpen ? GRAPH_TAB_PATH : selectedPath
-      const targetFileTabId = activeFileTabId ?? (
-        selectedKnowledgePath
-          ? (fileTabs.find((tab) => tab.path === selectedKnowledgePath)?.id ?? null)
-          : null
-      )
-
-      // Cmd+W — close active tab
-      if (e.key === 'w') {
-        e.preventDefault()
-        if (inFileView && targetFileTabId) {
-          closeFileTab(targetFileTabId)
-        } else {
-          closeChatTab(activeChatTabId)
-        }
-        return
-      }
-
-      // Cmd+1..9 — switch to tab N (Cmd+9 always goes to last tab)
-      if (/^[1-9]$/.test(e.key)) {
-        e.preventDefault()
-        const n = parseInt(e.key, 10)
-        if (inFileView) {
-          const idx = e.key === '9' ? fileTabs.length - 1 : n - 1
-          const tab = fileTabs[idx]
-          if (tab) switchFileTab(tab.id)
-        } else {
-          const idx = e.key === '9' ? chatTabs.length - 1 : n - 1
-          const tab = chatTabs[idx]
-          if (tab) switchChatTab(tab.id)
-        }
-        return
-      }
-
-      // Cmd+Shift+] — next tab, Cmd+Shift+[ — previous tab
-      if (e.shiftKey && (e.key === ']' || e.key === '[')) {
-        e.preventDefault()
-        const direction = e.key === ']' ? 1 : -1
-        if (inFileView) {
-          const currentIdx = fileTabs.findIndex(t => t.id === targetFileTabId)
-          if (currentIdx === -1) return
-          const nextIdx = (currentIdx + direction + fileTabs.length) % fileTabs.length
-          switchFileTab(fileTabs[nextIdx].id)
-        } else {
-          const currentIdx = chatTabs.findIndex(t => t.id === activeChatTabId)
-          if (currentIdx === -1) return
-          const nextIdx = (currentIdx + direction + chatTabs.length) % chatTabs.length
-          switchChatTab(chatTabs[nextIdx].id)
-        }
-        return
-      }
-    }
-    document.addEventListener('keydown', handleTabKeyDown)
-    return () => document.removeEventListener('keydown', handleTabKeyDown)
-  }, [selectedPath, isGraphOpen, isChatSidebarOpen, isRightPaneMaximized, activeShortcutPane, chatTabs, fileTabs, activeChatTabId, activeFileTabId, closeChatTab, closeFileTab, switchChatTab, switchFileTab])
+  useAppKeyboardShortcuts({
+    isMac,
+    setIsSearchOpen,
+    selectedPath,
+    isGraphOpen,
+    activeFileTabId,
+    fileHistoryHandlersRef,
+    isChatSidebarOpen,
+    isRightPaneMaximized,
+    activeShortcutPane,
+    fileTabs,
+    chatTabs,
+    activeChatTabId,
+    closeFileTab,
+    closeChatTab,
+    switchFileTab,
+    switchChatTab,
+  })
 
 
 
