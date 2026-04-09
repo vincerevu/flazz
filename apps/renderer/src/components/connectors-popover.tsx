@@ -23,7 +23,7 @@ import { composioIpc } from "@/services/composio-ipc"
 import { composioActionsIpc } from "@/services/composio-actions-ipc"
 import { granolaIpc } from "@/services/granola-ipc"
 import { GoogleClientIdModal } from "@/components/google-client-id-modal"
-import { getGoogleClientId, setGoogleClientId, clearGoogleClientId } from "@/lib/google-client-id-store"
+import { getGoogleOAuthCredentials, setGoogleOAuthCredentials, clearGoogleOAuthCredentials } from "@/lib/google-client-id-store"
 import { toast } from "sonner"
 
 interface ProviderState {
@@ -294,14 +294,14 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
     return cleanup
   }, [])
 
-  const startConnect = useCallback(async (provider: string, clientId?: string) => {
+  const startConnect = useCallback(async (provider: string, clientId?: string, clientSecret?: string) => {
     setProviderStates(prev => ({
       ...prev,
       [provider]: { ...prev[provider], isConnecting: true }
     }))
 
     try {
-      const result = await oauthIpc.connect(provider, clientId)
+      const result = await oauthIpc.connect(provider, clientId, clientSecret)
 
       if (result.success) {
         // OAuth flow started - keep isConnecting state, wait for event
@@ -328,23 +328,23 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
   const handleConnect = useCallback(async (provider: string) => {
     if (provider === 'google') {
       setGoogleClientIdDescription(undefined)
-      const existingClientId = getGoogleClientId()
-      if (!existingClientId) {
+      const existingCredentials = getGoogleOAuthCredentials()
+      if (!existingCredentials?.clientId) {
         setGoogleClientIdOpen(true)
         return
       }
-      await startConnect(provider, existingClientId)
+      await startConnect(provider, existingCredentials.clientId, existingCredentials.clientSecret ?? undefined)
       return
     }
 
     await startConnect(provider)
   }, [startConnect])
 
-  const handleGoogleClientIdSubmit = useCallback((clientId: string) => {
-    setGoogleClientId(clientId)
+  const handleGoogleClientIdSubmit = useCallback((clientId: string, clientSecret?: string) => {
+    setGoogleOAuthCredentials(clientId, clientSecret)
     setGoogleClientIdOpen(false)
     setGoogleClientIdDescription(undefined)
-    startConnect('google', clientId)
+    startConnect('google', clientId, clientSecret)
   }, [startConnect])
 
   // Disconnect from a provider
@@ -359,7 +359,7 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
 
       if (result.success) {
         if (provider === 'google') {
-          clearGoogleClientId()
+          clearGoogleOAuthCredentials()
         }
         const displayName = provider === 'fireflies-ai' ? 'Fireflies' : provider.charAt(0).toUpperCase() + provider.slice(1)
         toast.success(`Disconnected from ${displayName}`)

@@ -5,7 +5,11 @@ import type { InvokeHandlers } from '../ipc.js';
 
 export function registerAuthHandlers(handlers: Partial<InvokeHandlers>) {
   handlers['oauth:connect'] = async (_event, args) => {
-    return await connectProvider(args.provider, args.clientId?.trim());
+    return await connectProvider(
+      args.provider,
+      args.clientId?.trim(),
+      args.clientSecret?.trim()
+    );
   };
   handlers['oauth:disconnect'] = async (_event, args) => {
     return await disconnectProvider(args.provider);

@@ -37,9 +37,10 @@ function toOAuthTokens(response: client.TokenEndpointResponse): OAuthTokens {
  */
 export async function discoverConfiguration(
   issuerUrl: string,
-  clientId: string
+  clientId: string,
+  clientSecret?: string
 ): Promise<client.Configuration> {
-  const cacheKey = `${issuerUrl}:${clientId}`;
+  const cacheKey = `${issuerUrl}:${clientId}:${clientSecret ?? ''}`;
 
   const cached = configCache.get(cacheKey);
   if (cached) {
@@ -51,8 +52,8 @@ export async function discoverConfiguration(
   const config = await client.discovery(
     new URL(issuerUrl),
     clientId,
-    undefined, // no client_secret (PKCE flow)
-    client.None() // PKCE doesn't require client authentication
+    clientSecret,
+    clientSecret ? client.ClientSecretPost(clientSecret) : client.None()
   );
 
   configCache.set(cacheKey, config);
@@ -67,6 +68,7 @@ export function createStaticConfiguration(
   authorizationEndpoint: string,
   tokenEndpoint: string,
   clientId: string,
+  clientSecret?: string,
   revocationEndpoint?: string
 ): client.Configuration {
   console.log(`[OAuth] Creating static configuration (no discovery)`);
@@ -84,8 +86,8 @@ export function createStaticConfiguration(
   return new client.Configuration(
     serverMetadata,
     clientId,
-    undefined, // no client_secret
-    client.None() // PKCE auth
+    clientSecret,
+    clientSecret ? client.ClientSecretPost(clientSecret) : client.None()
   );
 }
 
@@ -222,7 +224,11 @@ export function isTokenExpired(tokens: OAuthTokens): boolean {
  */
 export function clearConfigCache(issuerUrl?: string, clientId?: string): void {
   if (issuerUrl && clientId) {
-    configCache.delete(`${issuerUrl}:${clientId}`);
+    for (const key of configCache.keys()) {
+      if (key.startsWith(`${issuerUrl}:${clientId}:`)) {
+        configCache.delete(key);
+      }
+    }
     console.log(`[OAuth] Cleared configuration cache for ${issuerUrl}`);
   } else {
     configCache.clear();
@@ -234,7 +240,12 @@ export function clearConfigCache(issuerUrl?: string, clientId?: string): void {
  * Get cached configuration if available
  */
 export function getCachedConfiguration(issuerUrl: string, clientId: string): client.Configuration | undefined {
-  return configCache.get(`${issuerUrl}:${clientId}`);
+  for (const [key, value] of configCache.entries()) {
+    if (key.startsWith(`${issuerUrl}:${clientId}:`)) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 // Re-export Configuration type for external use

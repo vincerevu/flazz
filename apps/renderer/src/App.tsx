@@ -147,6 +147,14 @@ function App() {
     collapseAll,
   }), [baseKnowledgeActions, ensureGraphFileTab, expandAll, collapseAll])
 
+  const handleSelectKnowledgeItem = useCallback((path: string, kind: "file" | "dir") => {
+    if (kind === 'dir') {
+      toggleExpand(path)
+      return
+    }
+    navigateToFile(path)
+  }, [navigateToFile, toggleExpand])
+
   const isGraphOpen = useMemo(() => {
     const activeTab = fileTabs.find(t => t.id === activeFileTabId)
     return activeTab?.path === GRAPH_TAB_PATH
@@ -456,7 +464,7 @@ function App() {
               tree={tree}
               selectedPath={selectedPath}
               expandedPaths={expandedPaths}
-              onSelectFile={toggleExpand}
+              onSelectFile={handleSelectKnowledgeItem}
               knowledgeActions={knowledgeActions}
               onVoiceNoteCreated={handleVoiceNoteCreated}
               runs={runs}

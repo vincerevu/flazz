@@ -1,17 +1,25 @@
-let googleClientId: string | null = null;
-
-export function getGoogleClientId(): string | null {
-  return googleClientId;
+interface GoogleOAuthCredentials {
+  clientId: string;
+  clientSecret: string | null;
 }
 
-export function setGoogleClientId(clientId: string): void {
+let googleOAuthCredentials: GoogleOAuthCredentials | null = null;
+
+export function getGoogleOAuthCredentials(): GoogleOAuthCredentials | null {
+  return googleOAuthCredentials;
+}
+
+export function setGoogleOAuthCredentials(clientId: string, clientSecret?: string): void {
   const trimmed = clientId.trim();
   if (!trimmed) {
     return;
   }
-  googleClientId = trimmed;
+  googleOAuthCredentials = {
+    clientId: trimmed,
+    clientSecret: clientSecret?.trim() || null,
+  };
 }
 
-export function clearGoogleClientId(): void {
-  googleClientId = null;
+export function clearGoogleOAuthCredentials(): void {
+  googleOAuthCredentials = null;
 }

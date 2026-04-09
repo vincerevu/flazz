@@ -23,6 +23,7 @@ const ClientSchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('static'),
     clientId: z.string().min(1).optional(),
+    clientSecret: z.string().min(1).optional(),
   }),
   z.object({
     mode: z.literal('dcr'),
