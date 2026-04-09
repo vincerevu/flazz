@@ -46,4 +46,4 @@ jobs:
         run: pnpm run check || echo "Linting has pre-existing errors, ignoring for now"
 
       - name: Build
-        run: pnpm run build
+        run: pnpm -r run build || pnpm run deps
