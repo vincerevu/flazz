@@ -13,19 +13,14 @@ import { commitAll } from '../knowledge/version_history.js';
 // ============================================================================
 
 /**
- * Assert that a relative path is safe (no traversal, no absolute paths)
+ * Assert that an absolute path safely resides within the given root boundary.
  */
-export function assertSafeRelPath(relPath: string): void {
-  if (path.isAbsolute(relPath)) {
-    throw new Error('Absolute paths are not allowed');
-  }
-  if (relPath.includes('..')) {
-    throw new Error('Path traversal (..) is not allowed');
-  }
-  // Normalize and check again after normalization
-  const normalized = path.normalize(relPath);
-  if (normalized.includes('..') || path.isAbsolute(normalized)) {
-    throw new Error('Invalid path');
+export function assertSafePath(root: string, target: string): void {
+  const resolvedRoot = path.resolve(root);
+  const resolvedTarget = path.resolve(target);
+
+  if (!resolvedTarget.startsWith(resolvedRoot + path.sep) && resolvedTarget !== resolvedRoot) {
+    throw new Error('Path outside workspace boundary');
   }
 }
 
@@ -35,15 +30,8 @@ export function assertSafeRelPath(relPath: string): void {
  * Empty string represents the root directory
  */
 export function resolveWorkspacePath(relPath: string): string {
-  // Empty string means root directory
-  if (relPath === '') {
-    return WorkDir;
-  }
-  assertSafeRelPath(relPath);
   const resolved = path.resolve(WorkDir, relPath);
-  if (!resolved.startsWith(WorkDir + path.sep) && resolved !== WorkDir) {
-    throw new Error('Path outside workspace boundary');
-  }
+  assertSafePath(WorkDir, resolved);
   return resolved;
 }
 
