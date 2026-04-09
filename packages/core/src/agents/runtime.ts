@@ -308,6 +308,7 @@ export async function* streamAgent({
 
     let loopCounter = 0;
     while (true) {
+        console.time(`runtime-loop-iter-${loopCounter}`);
         // Check abort at the top of each iteration
         signal.throwIfAborted();
 
@@ -394,6 +395,7 @@ export async function* streamAgent({
         // if waiting on user permission or ask-human, exit
         if (state.getPendingAskHumans().length || state.getPendingPermissions().length) {
             loopLogger.log('exiting loop, reason: pending asks or permissions');
+            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
             return;
         }
 
@@ -425,6 +427,7 @@ export async function* streamAgent({
             )
         ) {
             loopLogger.log('exiting loop, reason: last message is from assistant and text');
+            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
             return;
         }
 
@@ -499,6 +502,7 @@ export async function* streamAgent({
         });
 
         if (streamError) {
+            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
             return;
         }
 
@@ -512,5 +516,6 @@ export async function* streamAgent({
             processEvent,
             loopLogger
         });
+        console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
     }
 }

@@ -231,6 +231,7 @@ function getFolderType(filePath: string): string {
  * Scans all notes recursively and extracts searchable fields using folder-based parsing
  */
 export async function buildKnowledgeIndex(): Promise<KnowledgeIndex> {
+    console.time('build-knowledge-index');
     const index: KnowledgeIndex = {
         people: [],
         organizations: [],
@@ -272,6 +273,7 @@ export async function buildKnowledgeIndex(): Promise<KnowledgeIndex> {
         }
     }));
 
+    console.timeEnd('build-knowledge-index');
     return index;
 }
 
