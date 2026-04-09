@@ -154,19 +154,25 @@ async function readFileContents(filePaths: string[]): Promise<{ path: string; co
         }
     }
 
-    return files;
+    return results.filter((result): result is { path: string; content: string } => result !== null);
 }
 
 /**
  * Wait for a run to complete by listening for run-processing-end event
  */
 async function waitForRunCompletion(runId: string): Promise<void> {
-    return new Promise(async (resolve) => {
-        const unsubscribe = await bus.subscribe('*', async (event) => {
+    return new Promise((resolve) => {
+        let unsubscribe: (() => void) | undefined;
+
+        bus.subscribe('*', async (event) => {
             if (event.type === 'run-processing-end' && event.runId === runId) {
-                unsubscribe();
+                if (unsubscribe) {
+                    unsubscribe();
+                }
                 resolve();
             }
+        }).then((unsub) => {
+            unsubscribe = unsub;
         });
     });
 }
