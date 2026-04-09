@@ -1054,7 +1054,18 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
                 const rootDir = path.resolve(WorkDir);
                 const workingDir = cwd ? path.resolve(rootDir, cwd) : rootDir;
 
-                if (workingDir !== rootDir && !workingDir.startsWith(rootDir + path.sep)) {
+<<<<<<< HEAD
+                const rootPrefix = rootDir.endsWith(path.sep)
+                    ? rootDir
+                    : `${rootDir}${path.sep}`;
+                if (workingDir !== rootDir && !workingDir.startsWith(rootPrefix)) {
+=======
+                // Re-enable this check
+                const rootPrefix = rootDir.endsWith(path.sep)
+                    ? rootDir
+                    : `${rootDir}${path.sep}`;
+                if (workingDir !== rootDir && !workingDir.startsWith(rootPrefix)) {
+>>>>>>> flazz/fix-executecommand-bounds-check-4547011958936041296
                     return {
                         success: false,
                         message: 'Invalid cwd: must be within workspace root.',
