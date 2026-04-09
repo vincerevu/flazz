@@ -6,14 +6,16 @@
 
 import type { IPCChannels } from '@flazz/shared/src/ipc.js'
 
+type AgentScheduleConfig = IPCChannels['agent-schedule:getConfig']['res']
+type AgentScheduleState = IPCChannels['agent-schedule:getState']['res']
 type AgentScheduleEntry = IPCChannels['agent-schedule:updateAgent']['req']['entry']
 
 export const agentScheduleIpc = {
-  getConfig() {
+  getConfig(): Promise<AgentScheduleConfig> {
     return window.ipc.invoke('agent-schedule:getConfig', null)
   },
 
-  getState() {
+  getState(): Promise<AgentScheduleState> {
     return window.ipc.invoke('agent-schedule:getState', null)
   },
 

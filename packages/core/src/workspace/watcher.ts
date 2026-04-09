@@ -2,7 +2,7 @@ import chokidar, { type FSWatcher } from 'chokidar';
 import fs from 'node:fs/promises';
 import { ensureWorkspaceRoot, absToRelPosix } from './workspace.js';
 import { WorkDir } from '../config/config.js';
-import { WorkspaceChangeEvent } from 'packages/shared/dist/workspace.js';
+import { WorkspaceChangeEvent } from '@flazz/shared/dist/workspace.js';
 import z from 'zod';
 import { Stats } from 'node:fs';
 

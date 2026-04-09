@@ -19,7 +19,10 @@
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@flazz/shared/src/*": ["../../packages/shared/src/*"],
+      "@flazz/shared/dist/*": ["../../packages/shared/dist/*"],
+      "@flazz/shared": ["../../packages/shared/src/index.ts"]
     },
 
     /* Linting */

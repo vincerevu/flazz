@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import fsPromises from "fs/promises";
-import { WorkDir } from "./runtime-defaults.ts";
+import { WorkDir } from "./runtime-defaults.js";
 
 export const SECURITY_CONFIG_PATH = path.join(WorkDir, "config", "system-policy.json");
 

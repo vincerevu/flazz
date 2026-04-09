@@ -69,14 +69,10 @@ import { workspaceIpc } from '@/services/workspace-ipc'
 import { knowledgeIpc } from '@/services/knowledge-ipc'
 import { agentScheduleIpc } from '@/services/agent-schedule-ipc'
 
-interface BackgroundTaskSchedule {
-  type: 'cron' | 'window' | 'once'
-  expression?: string
-  cron?: string
-  startTime?: string
-  endTime?: string
-  runAt?: string
-}
+type BackgroundTaskSchedule =
+  | { type: 'cron'; expression: string }
+  | { type: 'window'; cron: string; startTime: string; endTime: string }
+  | { type: 'once'; runAt: string }
 
 interface DesktopWindowState {
   isMaximized: boolean

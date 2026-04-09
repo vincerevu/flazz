@@ -6,8 +6,8 @@ import os from "os";
 
 // Mocking dependencies is tricky with ES modules, so we'll test the core logic
 // by ensuring the config is written and then calling the functions.
-import { getSecurityAllowList, resetSecurityAllowListCache, addToSecurityConfig, SECURITY_CONFIG_PATH } from "../../config/system-policy.ts";
-import { isBlocked, extractCommandNames } from "./command-executor.ts";
+import { getSecurityAllowList, resetSecurityAllowListCache, addToSecurityConfig, SECURITY_CONFIG_PATH } from "../../config/system-policy.js";
+import { isBlocked, extractCommandNames } from "./command-executor.js";
 
 test("extractCommandNames", async (t) => {
     await t.test("extracts single command", () => {

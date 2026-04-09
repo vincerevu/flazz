@@ -1,3 +1,3 @@
-export * from "./runtime-defaults.ts";
-export * from "./system-policy.ts";
-export * from "./user-config.ts";
+export * from "./runtime-defaults.js";
+export * from "./system-policy.js";
+export * from "./user-config.js";

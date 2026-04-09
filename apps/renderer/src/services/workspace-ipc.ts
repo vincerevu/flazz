@@ -22,7 +22,7 @@ export const workspaceIpc = {
     return window.ipc.invoke('workspace:readFile', { path, ...(encoding ? { encoding } : {}) })
   },
 
-  writeFile(path: string, data: string, opts?: Pick<WriteFileOptions, 'encoding' | 'mkdirp'>) {
+  writeFile(path: string, data: string, opts?: Partial<Pick<WriteFileOptions, 'encoding' | 'mkdirp'>>) {
     return window.ipc.invoke('workspace:writeFile', { path, data, opts })
   },
 
