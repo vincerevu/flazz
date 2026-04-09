@@ -18,6 +18,13 @@
     "main:start": "cd apps/main && npm run start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "check": "run-s lint typecheck",
+    "typecheck": "run-s deps && npm-run-all typecheck:*",
+    "typecheck:shared": "cd packages/shared && tsc --noEmit",
+    "typecheck:core": "cd packages/core && tsc --noEmit",
+    "typecheck:main": "cd apps/main && tsc --noEmit",
+    "typecheck:renderer": "cd apps/renderer && tsc --noEmit",
+    "typecheck:preload": "cd apps/preload && tsc --noEmit",
     "test": "run-s test:core test:renderer",
     "test:core": "cd packages/core && npm run test",
     "test:renderer": "cd apps/renderer && npm run test"
