@@ -17,7 +17,10 @@
     "main:build": "cd apps/main && npm run build",
     "main:start": "cd apps/main && npm run start",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test": "run-s test:core test:renderer",
+    "test:core": "cd packages/core && npm run test",
+    "test:renderer": "cd apps/renderer && npm run test"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
