@@ -382,8 +382,6 @@ export function ChatSidebar({
 
       {showContent && (
         <>
-      {showContent && (
-        <>
           <header className="titlebar-drag-region flex h-auto shrink-0 flex-col border-b border-border bg-sidebar">
             <ChatKnowledgeMenu
               activeView={activeView}
