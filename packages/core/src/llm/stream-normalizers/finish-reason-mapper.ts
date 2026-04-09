@@ -6,7 +6,7 @@ import { FinishReasonMap, NormalizedFinishReason, ProviderFinishReason } from ".
  */
 export function mapFinishReason(
     providerReason: string | undefined
-): NormalizedFinishReason {
+): "stop" | "tool-calls" | "length" | "content-filter" | "error" | "other" | "unknown" {
     if (!providerReason) {
         return "unknown";
     }
@@ -44,27 +44,27 @@ export function mapFinishReason(
 /**
  * Checks if a finish reason indicates tool calls should be processed
  */
-export function isToolCallFinishReason(reason: NormalizedFinishReason): boolean {
+export function isToolCallFinishReason(reason: string | null): boolean {
     return reason === "tool-calls";
 }
 
 /**
  * Checks if a finish reason indicates the model stopped naturally
  */
-export function isStopFinishReason(reason: NormalizedFinishReason): boolean {
+export function isStopFinishReason(reason: string | null): boolean {
     return reason === "stop";
 }
 
 /**
  * Checks if a finish reason indicates the model was cut off
  */
-export function isLengthFinishReason(reason: NormalizedFinishReason): boolean {
+export function isLengthFinishReason(reason: string | null): boolean {
     return reason === "length";
 }
 
 /**
  * Checks if a finish reason indicates an error occurred
  */
-export function isErrorFinishReason(reason: NormalizedFinishReason): boolean {
+export function isErrorFinishReason(reason: string | null): boolean {
     return reason === "error";
 }

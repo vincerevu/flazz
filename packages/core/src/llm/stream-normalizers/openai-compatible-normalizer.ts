@@ -115,7 +115,7 @@ export class OpenAICompatibleStreamNormalizer {
                 type: "tool-input-start",
                 toolCallId: id,
                 toolName,
-            };
+            } as z.infer<typeof LlmStepStreamEvent>;
         }
 
         // Accumulate arguments
@@ -127,7 +127,7 @@ export class OpenAICompatibleStreamNormalizer {
                 type: "tool-input-delta",
                 toolCallId: id,
                 delta: argumentsStr,
-            };
+            } as z.infer<typeof LlmStepStreamEvent>;
 
             // Try to validate JSON
             try {
@@ -144,7 +144,7 @@ export class OpenAICompatibleStreamNormalizer {
             yield {
                 type: "tool-input-end",
                 toolCallId: id,
-            };
+            } as z.infer<typeof LlmStepStreamEvent>;
 
             try {
                 const input = JSON.parse(accumulator.argumentBuffer);
@@ -178,7 +178,7 @@ export class OpenAICompatibleStreamNormalizer {
                 yield {
                     type: "tool-input-end",
                     toolCallId: id,
-                };
+                } as z.infer<typeof LlmStepStreamEvent>;
 
                 try {
                     const input = JSON.parse(accumulator.argumentBuffer);
