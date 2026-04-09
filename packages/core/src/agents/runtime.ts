@@ -36,6 +36,7 @@ import {
     handleSubflowDelegation,
     handlePermissionAndHumanRequests
 } from "./runtime/index.js";
+import { isToolCallFinishReason } from "../llm/stream-normalizers/index.js";
 
 export interface IAgentRuntime {
     trigger(runId: string): Promise<void>;
@@ -242,6 +243,17 @@ export async function loadAgent(id: string): Promise<z.infer<typeof Agent>> {
 
     const repo = container.resolve<IAgentsRepo>('agentsRepo');
     return await repo.fetch(id);
+}
+
+/**
+ * Determines if the agent loop should continue based on finish reason
+ * Continues if finish reason indicates tool calls should be processed
+ */
+function shouldContinueLoop(finishReason: string | null): boolean {
+    if (!finishReason) {
+        return false;
+    }
+    return isToolCallFinishReason(finishReason as any);
 }
 
 export async function* streamAgent({
@@ -502,6 +514,12 @@ export async function* streamAgent({
         });
 
         if (streamError) {
+            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
+            return;
+        }
+
+        // Check if we should continue the loop based on structured finish reason
+        if (!shouldContinueLoop(lastFinishReason)) {
             console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
             return;
         }
