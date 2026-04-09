@@ -288,12 +288,14 @@ export function useFileEditor({
     const existingTab = fileTabs.find((tab) => tab.path === path)
     if (existingTab) {
       setActiveFileTabId(existingTab.id)
+      setSelectedPath(path)
       navigateToFile(path)
       return
     }
     const id = newFileTabId()
     setFileTabs((prev) => [...prev, { id, path }])
     setActiveFileTabId(id)
+    setSelectedPath(path)
     navigateToFile(path)
   }, [fileTabs, navigateToFile])
 
@@ -340,6 +342,7 @@ export function useFileEditor({
     const existingTab = fileTabs.find((tab) => tab.path === path)
     if (existingTab) {
       setActiveFileTabId(existingTab.id)
+      setSelectedPath(path)
       return
     }
 
@@ -353,6 +356,7 @@ export function useFileEditor({
           ...prev,
           [activeFileTabId]: (prev[activeFileTabId] ?? 0) + 1,
         }))
+        setSelectedPath(path)
         return
       }
     }
@@ -360,17 +364,20 @@ export function useFileEditor({
     const id = newFileTabId()
     setFileTabs((prev) => [...prev, { id, path }])
     setActiveFileTabId(id)
+    setSelectedPath(path)
   }, [fileTabs, activeFileTabId])
 
   const ensureGraphFileTab = useCallback(() => {
     const existingGraphTab = fileTabs.find((tab) => tab.path === GRAPH_TAB_PATH)
     if (existingGraphTab) {
       setActiveFileTabId(existingGraphTab.id)
+      setSelectedPath(null)
       return
     }
     const id = newFileTabId()
     setFileTabs((prev) => [...prev, { id, path: GRAPH_TAB_PATH }])
     setActiveFileTabId(id)
+    setSelectedPath(null)
   }, [fileTabs])
 
   const switchFileTab = useCallback((tabId: string) => {

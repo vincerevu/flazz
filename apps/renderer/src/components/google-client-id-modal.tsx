@@ -17,7 +17,7 @@ const GOOGLE_CLIENT_ID_SETUP_GUIDE_URL =
 interface GoogleClientIdModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (clientId: string) => void
+  onSubmit: (clientId: string, clientSecret?: string) => void
   isSubmitting?: boolean
   description?: string
 }
@@ -30,10 +30,12 @@ export function GoogleClientIdModal({
   description,
 }: GoogleClientIdModalProps) {
   const [clientId, setClientId] = useState("")
+  const [clientSecret, setClientSecret] = useState("")
 
   useEffect(() => {
     if (!open) {
       setClientId("")
+      setClientSecret("")
     }
   }, [open])
 
@@ -42,7 +44,7 @@ export function GoogleClientIdModal({
 
   const handleSubmit = () => {
     if (!isValid || isSubmitting) return
-    onSubmit(trimmedClientId)
+    onSubmit(trimmedClientId, clientSecret.trim() || undefined)
   }
 
   return (
@@ -82,6 +84,27 @@ export function GoogleClientIdModal({
               }
             }}
             autoFocus
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor="google-client-secret">
+            Client secret
+          </label>
+          <div className="text-xs text-muted-foreground">
+            Optional for public desktop clients, but some Google OAuth setups still require it during token exchange.
+          </div>
+          <Input
+            id="google-client-secret"
+            type="password"
+            placeholder="Enter client secret if Google requires it"
+            value={clientSecret}
+            onChange={(event) => setClientSecret(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault()
+                handleSubmit()
+              }
+            }}
           />
         </div>
         <div className="mt-4 flex justify-end gap-2">

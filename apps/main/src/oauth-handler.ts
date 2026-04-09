@@ -68,19 +68,29 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
         return container.resolve<IClientRegistrationRepo>('clientRegistrationRepo');
     }
 
-    private async getProviderConfiguration(provider: string, clientIdOverride?: string): Promise<Configuration> {
+    private async getProviderConfiguration(
+        provider: string,
+        clientIdOverride?: string,
+        clientSecretOverride?: string
+    ): Promise<Configuration> {
         const config = getProviderConfig(provider);
-        const resolveClientId = async (): Promise<string> => {
+        const resolveStaticCredentials = async (): Promise<{ clientId: string; clientSecret?: string }> => {
             if (config.client.mode === 'static' && config.client.clientId) {
-                return config.client.clientId;
+                return {
+                    clientId: config.client.clientId,
+                    clientSecret: config.client.clientSecret,
+                };
             }
             if (clientIdOverride) {
-                return clientIdOverride;
+                return {
+                    clientId: clientIdOverride,
+                    clientSecret: clientSecretOverride,
+                };
             }
             const oauthRepo = this.getOAuthRepo();
-            const { clientId } = await oauthRepo.read(provider);
+            const { clientId, clientSecret } = await oauthRepo.read(provider);
             if (clientId) {
-                return clientId;
+                return { clientId, clientSecret: clientSecret ?? undefined };
             }
             throw new Error(`${provider} client ID not configured. Please provide a client ID.`);
         };
@@ -88,10 +98,11 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
         if (config.discovery.mode === 'issuer') {
             if (config.client.mode === 'static') {
                 console.log(`[OAuth] ${provider}: Discovery from issuer with static client ID`);
-                const clientId = await resolveClientId();
+                const { clientId, clientSecret } = await resolveStaticCredentials();
                 return await oauthClient.discoverConfiguration(
                     config.discovery.issuer,
-                    clientId
+                    clientId,
+                    clientSecret
                 );
             } else {
                 console.log(`[OAuth] ${provider}: Discovery from issuer with DCR`);
@@ -124,17 +135,18 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
             }
 
             console.log(`[OAuth] ${provider}: Using static endpoints (no discovery)`);
-            const clientId = await resolveClientId();
+            const { clientId, clientSecret } = await resolveStaticCredentials();
             return oauthClient.createStaticConfiguration(
                 config.discovery.authorizationEndpoint,
                 config.discovery.tokenEndpoint,
                 clientId,
+                clientSecret,
                 config.discovery.revocationEndpoint
             );
         }
     }
 
-    async startFlow(provider: string, clientId?: string): Promise<{ success: boolean; error?: string }> {
+    async startFlow(provider: string, clientId?: string, clientSecret?: string): Promise<{ success: boolean; error?: string }> {
         try {
             console.log(`[OAuth] Starting connection flow for ${provider}...`);
 
@@ -149,7 +161,7 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
                 }
             }
 
-            const config = await this.getProviderConfiguration(provider, clientId);
+            const config = await this.getProviderConfiguration(provider, clientId, clientSecret);
 
             const { verifier: codeVerifier, challenge: codeChallenge } = await oauthClient.generatePKCE();
             const state = oauthClient.generateState();
@@ -189,7 +201,10 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
                     console.log(`[OAuth] Token exchange successful for ${provider}`);
                     await oauthRepo.upsert(provider, { tokens });
                     if (provider === 'google' && clientId) {
-                        await oauthRepo.upsert(provider, { clientId });
+                        await oauthRepo.upsert(provider, {
+                            clientId,
+                            clientSecret: clientSecret?.trim() || null,
+                        });
                     }
                     await oauthRepo.upsert(provider, { error: null });
 
@@ -205,7 +220,7 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
                     console.error('OAuth token exchange failed:', error);
                     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
                     this.emitOAuthEvent({ provider, success: false, error: errorMessage });
-                    throw error;
+                    await oauthRepo.upsert(provider, { error: errorMessage });
                 } finally {
                     this.activeFlows.delete(state);
                     if (this.activeFlow && this.activeFlow.state === state) {
@@ -272,8 +287,8 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
                     const config = await this.getProviderConfiguration(provider);
 
                     const existingScopes = tokens.scopes;
-                    await oauthClient.refreshTokens(config, tokens.refresh_token, existingScopes);
-                    await oauthRepo.upsert(provider, { tokens });
+                    const refreshedTokens = await oauthClient.refreshTokens(config, tokens.refresh_token, existingScopes);
+                    await oauthRepo.upsert(provider, { tokens: refreshedTokens, error: null });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Token refresh failed';
                     await oauthRepo.upsert(provider, { error: message });
@@ -296,8 +311,8 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
 
 const defaultOAuthAdapter = new DefaultOAuthAdapter();
 
-export async function connectProvider(provider: string, clientId?: string): Promise<{ success: boolean; error?: string }> {
-    return defaultOAuthAdapter.startFlow(provider, clientId);
+export async function connectProvider(provider: string, clientId?: string, clientSecret?: string): Promise<{ success: boolean; error?: string }> {
+    return defaultOAuthAdapter.startFlow(provider, clientId, clientSecret);
 }
 
 export async function disconnectProvider(provider: string): Promise<{ success: boolean }> {

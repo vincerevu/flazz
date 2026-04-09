@@ -13,8 +13,8 @@ export const oauthIpc = {
     return window.ipc.invoke('oauth:getState', null)
   },
 
-  connect(provider: string, clientId?: string) {
-    return window.ipc.invoke('oauth:connect', { provider, clientId })
+  connect(provider: string, clientId?: string, clientSecret?: string) {
+    return window.ipc.invoke('oauth:connect', { provider, clientId, clientSecret })
   },
 
   disconnect(provider: string) {

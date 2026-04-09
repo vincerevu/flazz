@@ -67,26 +67,56 @@ export function createAuthServer(
 
         // Handle callback - either traditional OAuth with code/state or Composio-style notification
         // Composio callbacks may not have code/state, just a notification that the flow completed
-        onCallback(Object.fromEntries(url.searchParams.entries()));
+        void Promise.resolve(onCallback(Object.fromEntries(url.searchParams.entries())))
+          .then(() => {
+            if (res.writableEnded) {
+              return;
+            }
 
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Authorization Successful</title>
-              <style>
-                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                .success { color: #2e7d32; }
-              </style>
-            </head>
-            <body>
-              <h1 class="success">Authorization Successful</h1>
-              <p>You can close this window.</p>
-              <script>setTimeout(() => window.close(), 2000);</script>
-            </body>
-          </html>
-        `);
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <title>Authorization Successful</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                    .success { color: #2e7d32; }
+                  </style>
+                </head>
+                <body>
+                  <h1 class="success">Authorization Successful</h1>
+                  <p>You can close this window.</p>
+                  <script>setTimeout(() => window.close(), 2000);</script>
+                </body>
+              </html>
+            `);
+          })
+          .catch((callbackError) => {
+            console.error('OAuth callback handling failed:', callbackError);
+            if (res.writableEnded) {
+              return;
+            }
+
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <title>Authorization Failed</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                    .error { color: #d32f2f; }
+                  </style>
+                </head>
+                <body>
+                  <h1 class="error">Authorization Failed</h1>
+                  <p>The token exchange did not complete. You can close this window and try again.</p>
+                  <script>setTimeout(() => window.close(), 3000);</script>
+                </body>
+              </html>
+            `);
+          });
       } else {
         res.writeHead(404);
         res.end('Not Found');

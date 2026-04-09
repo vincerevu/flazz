@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils"
 import { ComposioApiKeyModal } from "@/components/composio-api-key-modal"
 import { GoogleClientIdModal } from "@/components/google-client-id-modal"
 import { ProviderIcon } from "@/components/provider-icon"
-import { getGoogleClientId, setGoogleClientId } from "@/lib/google-client-id-store"
+import { getGoogleOAuthCredentials, setGoogleOAuthCredentials } from "@/lib/google-client-id-store"
 import { toast } from "sonner"
 import { oauthIpc } from "@/services/oauth-ipc"
 import { composioIpc } from "@/services/composio-ipc"
@@ -410,14 +410,14 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     return cleanup
   }, [])
 
-  const startConnect = useCallback(async (provider: string, clientId?: string) => {
+  const startConnect = useCallback(async (provider: string, clientId?: string, clientSecret?: string) => {
     setProviderStates(prev => ({
       ...prev,
       [provider]: { ...prev[provider], isConnecting: true }
     }))
 
     try {
-      const result = await oauthIpc.connect(provider, clientId)
+      const result = await oauthIpc.connect(provider, clientId, clientSecret)
 
       if (!result.success) {
         toast.error(result.error || `Failed to connect to ${provider}`)
@@ -439,22 +439,22 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   // Connect to a provider
   const handleConnect = useCallback(async (provider: string) => {
     if (provider === 'google') {
-      const existingClientId = getGoogleClientId()
-      if (!existingClientId) {
+      const existingCredentials = getGoogleOAuthCredentials()
+      if (!existingCredentials?.clientId) {
         setGoogleClientIdOpen(true)
         return
       }
-      await startConnect(provider, existingClientId)
+      await startConnect(provider, existingCredentials.clientId, existingCredentials.clientSecret ?? undefined)
       return
     }
 
     await startConnect(provider)
   }, [startConnect])
 
-  const handleGoogleClientIdSubmit = useCallback((clientId: string) => {
-    setGoogleClientId(clientId)
+  const handleGoogleClientIdSubmit = useCallback((clientId: string, clientSecret?: string) => {
+    setGoogleOAuthCredentials(clientId, clientSecret)
     setGoogleClientIdOpen(false)
-    startConnect('google', clientId)
+    startConnect('google', clientId, clientSecret)
   }, [startConnect])
 
   // Step indicator
