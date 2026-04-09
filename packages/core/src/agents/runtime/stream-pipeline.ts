@@ -53,6 +53,15 @@ export class StreamStepMessageBuilder {
             case "text-delta":
                 this.textBuffer += event.delta;
                 break;
+            case "tool-input-start":
+                // Tool input streaming started - no action needed yet
+                break;
+            case "tool-input-delta":
+                // Tool input streaming in progress - no action needed yet
+                break;
+            case "tool-input-end":
+                // Tool input streaming ended - wait for tool-call event
+                break;
             case "tool-call":
                 this.parts.push({
                     type: "tool-call",
