@@ -6,8 +6,15 @@ export class ServiceBus {
     private subscribers: ServiceEventHandler[] = [];
 
     async publish(event: ServiceEventType): Promise<void> {
-        const pending = this.subscribers.map(async (handler) => handler(event));
-        await Promise.all(pending);
+        const pending = this.subscribers.map(async (handler) => {
+            try {
+                await handler(event);
+            } catch (error) {
+                console.error('[ServiceBus] Error in event handler:', error);
+                // Don't throw - allow other handlers to run
+            }
+        });
+        await Promise.allSettled(pending);
     }
 
     async subscribe(handler: ServiceEventHandler): Promise<() => void> {
