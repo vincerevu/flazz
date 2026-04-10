@@ -81,6 +81,7 @@ import { servicesIpc } from "@/services/services-ipc"
 import { workspaceIpc } from "@/services/workspace-ipc"
 import type { SkillPreset } from "@/features/skills/mock-skills"
 import type { WorkflowBlueprint } from "@/features/workflow/mock-workflows"
+import { KNOWLEDGE_COLLECTIONS } from "@/features/knowledge/utils/collections"
 
 type KnowledgeActions = {
   createNote: (parentPath?: string) => void
@@ -756,6 +757,29 @@ function KnowledgeSection({
             </Tooltip>
           </div>
           <SidebarGroupContent className="flex-1 overflow-y-auto">
+            <div className="px-2 pt-2">
+              <SidebarMenu>
+                {KNOWLEDGE_COLLECTIONS.map((collection) => (
+                  <SidebarMenuItem key={collection.path}>
+                    <SidebarMenuButton
+                      isActive={selectedPath === collection.path}
+                      onClick={() => onSelectFile(collection.path, "dir")}
+                      className="data-[active=true]:font-normal"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <Network className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs">{collection.label}</div>
+                          <div className="truncate text-[10px] text-muted-foreground">
+                            {collection.description}
+                          </div>
+                        </div>
+                      </div>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </div>
             <div ref={treeContainerRef}>
               <SidebarMenu>
                 {tree.map((item, index) => (
@@ -803,7 +827,7 @@ function Tree({
 }) {
   const isDir = item.kind === 'dir'
   const isExpanded = expandedPaths.has(item.path)
-  const isSelected = selectedPath === item.path
+      const isSelected = selectedPath === item.path
   const [isRenaming, setIsRenaming] = useState(false)
   const isSubmittingRef = React.useRef(false)
 

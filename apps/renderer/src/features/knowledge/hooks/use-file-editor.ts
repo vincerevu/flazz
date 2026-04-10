@@ -406,7 +406,7 @@ export function useFileEditor({
           name = `${untitledBaseName}-${index}`
           fullPath = `${parentPath}/${name}.md`
         }
-        await workspaceIpc.writeFile(fullPath, `# ${name}\n\n`, { encoding: 'utf8' })
+        await workspaceIpc.writeFile(fullPath, `# ${name}\n\n`, { encoding: 'utf8', mkdirp: true })
         navigateToFile(fullPath)
       } catch (err) {
         console.error('Failed to create note:', err)

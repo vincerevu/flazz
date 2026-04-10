@@ -10,6 +10,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import { ImageUploadPlaceholderExtension, createImageUploadHandler } from '@/extensions/image-upload'
 import { Markdown } from 'tiptap-markdown'
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { FrontmatterProperties } from '@/components/frontmatter-properties'
 
 // Zero-width space used as invisible marker for blank lines
 const BLANK_LINE_MARKER = '\u200B'
@@ -198,6 +199,8 @@ interface MarkdownEditorProps {
   editorSessionKey?: number
   onHistoryHandlersChange?: (handlers: { undo: () => boolean; redo: () => boolean } | null) => void
   editable?: boolean
+  frontmatter?: string | null
+  onFrontmatterChange?: (raw: string | null) => void
 }
 
 type WikiLinkMatch = {
@@ -284,6 +287,8 @@ export function MarkdownEditor({
   editorSessionKey = 0,
   onHistoryHandlersChange,
   editable = true,
+  frontmatter = null,
+  onFrontmatterChange,
 }: MarkdownEditorProps) {
   const isInternalUpdate = useRef(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -626,6 +631,11 @@ export function MarkdownEditor({
         editor={editor}
         onSelectionHighlight={setSelectionHighlight}
         onImageUpload={handleImageUploadWithPlaceholder}
+      />
+      <FrontmatterProperties
+        raw={frontmatter}
+        onRawChange={(raw) => onFrontmatterChange?.(raw)}
+        editable={editable}
       />
       <div className="editor-content-wrapper" ref={wrapperRef} onScroll={handleScroll}>
         <EditorContent editor={editor} />

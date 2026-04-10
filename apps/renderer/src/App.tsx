@@ -43,6 +43,9 @@ import { mockSkills } from '@/features/skills/mock-skills'
 import { SkillsMainPanel } from '@/features/skills/components/skills-main-panel'
 import { mockWorkflows } from '@/features/workflow/mock-workflows'
 import { WorkflowMainPanel } from '@/features/workflow/components/workflow-main-panel'
+import { splitFrontmatter, joinFrontmatter } from '@/lib/frontmatter'
+import { getKnowledgeCollectionMeta, isKnowledgeCollectionPath } from '@/features/knowledge/utils/collections'
+import { KnowledgeCollectionView } from '@/features/knowledge/components/knowledge-collection-view'
 
 function App() {
   type ShortcutPane = 'left' | 'right'
@@ -155,6 +158,10 @@ function App() {
 
   const handleSelectKnowledgeItem = useCallback((path: string, kind: "file" | "dir") => {
     if (kind === 'dir') {
+      if (isKnowledgeCollectionPath(path)) {
+        navigateToFile(path)
+        return
+      }
       toggleExpand(path)
       return
     }
@@ -434,6 +441,8 @@ function App() {
   const selectedTask = selectedBackgroundTask
     ? backgroundTasks.find(t => t.name === selectedBackgroundTask)
     : null
+  const selectedCollection = getKnowledgeCollectionMeta(selectedPath)
+  const isCollectionOpen = isKnowledgeCollectionPath(selectedPath)
   const isRightPaneContext = Boolean(selectedPath || isGraphOpen)
   const isRightPaneOnlyMode = isRightPaneContext && isChatSidebarOpen && isRightPaneMaximized
   const shouldCollapseLeftPane = isRightPaneOnlyMode
@@ -583,7 +592,16 @@ function App() {
       }
       headerContent={
         <>
-          {(selectedPath || isGraphOpen) && fileTabs.length >= 1 ? (
+          {isCollectionOpen ? (
+                  <div className="flex min-w-0 items-center gap-3 px-1">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{selectedCollection?.label}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {selectedCollection?.description}
+                      </div>
+                    </div>
+                  </div>
+                ) : (selectedPath || isGraphOpen) && fileTabs.length >= 1 ? (
                   <TabBar
                     tabs={fileTabs}
                     activeTabId={activeFileTabId ?? ''}
@@ -604,7 +622,7 @@ function App() {
                     onCloseTab={closeChatTab}
                   />
                 )}
-                {selectedPath && (
+                {selectedPath && !isCollectionOpen && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground self-center shrink-0 pl-2">
                     {isSaving ? (
                       <>
@@ -619,7 +637,7 @@ function App() {
                     ) : null}
                   </div>
                 )}
-                {selectedPath && selectedPath.startsWith('knowledge/') && selectedPath.endsWith('.md') && (
+                {selectedPath && !isCollectionOpen && selectedPath.startsWith('knowledge/') && selectedPath.endsWith('.md') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -708,7 +726,18 @@ function App() {
                   />
                 </div>
               ) : selectedPath ? (
-                selectedPath.endsWith('.md') ? (
+                isCollectionOpen ? (
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <KnowledgeCollectionView
+                      collectionPath={selectedPath}
+                      tree={tree}
+                      onSelectNote={navigateToFile}
+                      onCreateNote={(parentPath) => {
+                        void knowledgeActions.createNote(parentPath)
+                      }}
+                    />
+                  </div>
+                ) : selectedPath.endsWith('.md') ? (
                   <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
                     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                       {openMarkdownTabs.map((tab) => {
@@ -720,6 +749,7 @@ function App() {
                           ? viewingHistoricalVersion.content
                           : editorContentByPath[tab.path]
                             ?? (isActive && selectedPath === tab.path ? editorContent : '')
+                        const { raw: tabFrontmatter, body: tabBody } = splitFrontmatter(tabContent)
                         return (
                           <div
                             key={tab.id}
@@ -731,8 +761,24 @@ function App() {
                             aria-hidden={!isActive}
                           >
                             <MarkdownEditor
-                              content={tabContent}
-                              onChange={(markdown) => { if (!isViewingHistory) handleEditorChange(tab.path, markdown) }}
+                              content={tabBody}
+                              frontmatter={tabFrontmatter}
+                              onChange={(markdown) => {
+                                if (!isViewingHistory) {
+                                  const currentContent = editorContentByPath[tab.path]
+                                    ?? (isActive && selectedPath === tab.path ? editorContent : '')
+                                  const { raw: currentFrontmatter } = splitFrontmatter(currentContent)
+                                  handleEditorChange(tab.path, joinFrontmatter(currentFrontmatter, markdown))
+                                }
+                              }}
+                              onFrontmatterChange={(nextRaw) => {
+                                if (!isViewingHistory) {
+                                  const currentContent = editorContentByPath[tab.path]
+                                    ?? (isActive && selectedPath === tab.path ? editorContent : '')
+                                  const { body: currentBody } = splitFrontmatter(currentContent)
+                                  handleEditorChange(tab.path, joinFrontmatter(nextRaw, currentBody))
+                                }
+                              }}
                               placeholder="Start writing..."
                               wikiLinks={{
                                 files: knowledgeFilePaths,
