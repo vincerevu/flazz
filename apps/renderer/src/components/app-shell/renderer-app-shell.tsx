@@ -4,14 +4,11 @@ import {
   ChevronRightIcon,
   CopyIcon,
   MinusIcon,
-  PanelLeftIcon,
-  SearchIcon,
   SquareIcon,
-  SquarePen,
   XIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { SidebarSectionProvider } from '@/contexts/sidebar-context'
+import { SidebarSectionProvider, useSidebarSection, type ActiveSection } from '@/contexts/sidebar-context'
 import { SidebarInset, SidebarProvider, useSidebar } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -100,8 +97,6 @@ function DesktopTitlebar({
   onToggleMaximize,
   onMinimize,
   onClose,
-  onNewChat,
-  onOpenSearch,
 }: {
   logoSrc: string
   isMaximized: boolean
@@ -109,11 +104,7 @@ function DesktopTitlebar({
   onToggleMaximize: () => void
   onMinimize: () => void
   onClose: () => void
-  onNewChat: () => void
-  onOpenSearch: () => void
 }) {
-  const { toggleSidebar } = useSidebar()
-
   if (!supportsCustomTitlebar) {
     return null
   }
@@ -121,42 +112,34 @@ function DesktopTitlebar({
   return (
     <header
       className="titlebar-drag-region absolute inset-x-0 top-0 z-30 flex h-10 items-stretch border-b border-border bg-sidebar/95 backdrop-blur"
+      style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
       onDoubleClick={onToggleMaximize}
     >
-      <FlazzTitlebarBrand logoSrc={logoSrc} />
-      <div className="titlebar-no-drag flex items-center pl-3">
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="Toggle sidebar"
-        >
-          <PanelLeftIcon className="size-5" />
-        </button>
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="ml-1 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="New chat"
-        >
-          <SquarePen className="size-5" />
-        </button>
-        <button
-          type="button"
-          onClick={onOpenSearch}
-          className="ml-1 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="Search"
-        >
-          <SearchIcon className="size-5" />
-        </button>
+      <div
+        className="titlebar-no-drag absolute inset-y-0 left-0 z-10 flex items-center"
+        style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
+      >
+        <FlazzTitlebarBrand logoSrc={logoSrc} />
       </div>
       <div className="min-w-0 flex-1" />
-      <DesktopWindowControls
-        isMaximized={isMaximized}
-        supportsCustomTitlebar={supportsCustomTitlebar}
-        onMinimize={onMinimize}
-        onToggleMaximize={onToggleMaximize}
-        onClose={onClose}
+      <div
+        className="titlebar-no-drag absolute inset-y-0 right-0 z-10 flex items-stretch"
+        style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
+      >
+        <DesktopWindowControls
+          isMaximized={isMaximized}
+          supportsCustomTitlebar={supportsCustomTitlebar}
+          onMinimize={onMinimize}
+          onToggleMaximize={onToggleMaximize}
+          onClose={onClose}
+        />
+      </div>
+      <div aria-hidden="true" className="h-full w-[200px] shrink-0" />
+      <div aria-hidden="true" className="h-full w-[150px] shrink-0" />
+      {/* Keep the actual drag surface isolated in the middle so edge controls are never part of the hit area. */}
+      <div
+        className="absolute inset-y-0 left-[200px] right-[150px]"
+        style={{ WebkitAppRegion: 'drag' } as CSSProperties}
       />
     </header>
   )
@@ -284,17 +267,18 @@ type RendererAppShellProps = {
   onWindowMinimize: () => void
   onWindowToggleMaximize: () => void
   onWindowClose: () => void
-  onNewChat: () => void
-  onOpenSearch: () => void
   onActivatePrimaryPane?: () => void
   leftSidebar: ReactNode
   headerContent: ReactNode
   mainContent: ReactNode
   auxiliaryPane?: ReactNode
+  sectionHeaderContent?: Partial<Record<ActiveSection, ReactNode>>
+  sectionMainContent?: Partial<Record<ActiveSection, ReactNode>>
+  sectionAuxiliaryPane?: Partial<Record<ActiveSection, ReactNode | null>>
   dialogs?: ReactNode
 }
 
-export function RendererAppShell({
+function RendererAppShellFrame({
   isMac,
   supportsCustomTitlebar,
   logoSrc,
@@ -307,74 +291,82 @@ export function RendererAppShell({
   onWindowMinimize,
   onWindowToggleMaximize,
   onWindowClose,
-  onNewChat,
-  onOpenSearch,
   onActivatePrimaryPane,
   leftSidebar,
   headerContent,
   mainContent,
   auxiliaryPane,
-  dialogs,
+  sectionHeaderContent,
+  sectionMainContent,
+  sectionAuxiliaryPane,
 }: RendererAppShellProps) {
+  const { activeSection } = useSidebarSection()
   const titlebarTopOffsetPx = supportsCustomTitlebar ? CUSTOM_TITLEBAR_HEIGHT_PX : 0
   const collapsedLeftPaddingPx = getCollapsedLeftPaddingPx(isMac)
+  const resolvedHeaderContent = sectionHeaderContent?.[activeSection] ?? headerContent
+  const resolvedMainContent = sectionMainContent?.[activeSection] ?? mainContent
+  const resolvedAuxiliaryPane = sectionAuxiliaryPane?.[activeSection] ?? auxiliaryPane
 
+  return (
+    <div
+      className="relative flex h-svh w-full overflow-hidden"
+      style={supportsCustomTitlebar ? { paddingTop: CUSTOM_TITLEBAR_HEIGHT_PX } : undefined}
+    >
+      <SidebarProvider
+        style={{
+          "--sidebar-width": `${DEFAULT_SIDEBAR_WIDTH}px`,
+        } as CSSProperties}
+      >
+        <DesktopTitlebar
+          logoSrc={logoSrc}
+          isMaximized={isWindowMaximized}
+          supportsCustomTitlebar={supportsCustomTitlebar}
+          onMinimize={onWindowMinimize}
+          onToggleMaximize={onWindowToggleMaximize}
+          onClose={onWindowClose}
+        />
+        {leftSidebar}
+        <SidebarInset
+          className={cn(
+            "overflow-hidden! min-h-0 min-w-0 transition-[max-width] duration-200 ease-linear",
+            shouldCollapseLeftPane && "pointer-events-none select-none"
+          )}
+          style={shouldCollapseLeftPane ? { maxWidth: 0 } : { maxWidth: '100%' }}
+          aria-hidden={shouldCollapseLeftPane}
+          onMouseDownCapture={onActivatePrimaryPane}
+          onFocusCapture={onActivatePrimaryPane}
+        >
+          <ContentHeader
+            onNavigateBack={onNavigateBack}
+            onNavigateForward={onNavigateForward}
+            canNavigateBack={canNavigateBack}
+            canNavigateForward={canNavigateForward}
+            collapsedLeftPaddingPx={collapsedLeftPaddingPx}
+          >
+            {resolvedHeaderContent}
+          </ContentHeader>
+          {resolvedMainContent}
+        </SidebarInset>
+        {resolvedAuxiliaryPane}
+        <FixedSidebarToggle
+          onNavigateBack={onNavigateBack}
+          onNavigateForward={onNavigateForward}
+          canNavigateBack={canNavigateBack}
+          canNavigateForward={canNavigateForward}
+          isMac={isMac}
+          topOffsetPx={titlebarTopOffsetPx}
+        />
+      </SidebarProvider>
+    </div>
+  )
+}
+
+export function RendererAppShell(props: RendererAppShellProps) {
   return (
     <TooltipProvider delayDuration={0}>
       <SidebarSectionProvider defaultSection="tasks">
-        <div
-          className="relative flex h-svh w-full overflow-hidden"
-          style={supportsCustomTitlebar ? { paddingTop: CUSTOM_TITLEBAR_HEIGHT_PX } : undefined}
-        >
-          <SidebarProvider
-            style={{
-              "--sidebar-width": `${DEFAULT_SIDEBAR_WIDTH}px`,
-            } as CSSProperties}
-          >
-            <DesktopTitlebar
-              logoSrc={logoSrc}
-              isMaximized={isWindowMaximized}
-              supportsCustomTitlebar={supportsCustomTitlebar}
-              onMinimize={onWindowMinimize}
-              onToggleMaximize={onWindowToggleMaximize}
-              onClose={onWindowClose}
-              onNewChat={onNewChat}
-              onOpenSearch={onOpenSearch}
-            />
-            {leftSidebar}
-            <SidebarInset
-              className={cn(
-                "overflow-hidden! min-h-0 min-w-0 transition-[max-width] duration-200 ease-linear",
-                shouldCollapseLeftPane && "pointer-events-none select-none"
-              )}
-              style={shouldCollapseLeftPane ? { maxWidth: 0 } : { maxWidth: '100%' }}
-              aria-hidden={shouldCollapseLeftPane}
-              onMouseDownCapture={onActivatePrimaryPane}
-              onFocusCapture={onActivatePrimaryPane}
-            >
-              <ContentHeader
-                onNavigateBack={onNavigateBack}
-                onNavigateForward={onNavigateForward}
-                canNavigateBack={canNavigateBack}
-                canNavigateForward={canNavigateForward}
-                collapsedLeftPaddingPx={collapsedLeftPaddingPx}
-              >
-                {headerContent}
-              </ContentHeader>
-              {mainContent}
-            </SidebarInset>
-            {auxiliaryPane}
-            <FixedSidebarToggle
-              onNavigateBack={onNavigateBack}
-              onNavigateForward={onNavigateForward}
-              canNavigateBack={canNavigateBack}
-              canNavigateForward={canNavigateForward}
-              isMac={isMac}
-              topOffsetPx={titlebarTopOffsetPx}
-            />
-          </SidebarProvider>
-        </div>
-        {dialogs}
+        <RendererAppShellFrame {...props} />
+        {props.dialogs}
       </SidebarSectionProvider>
       <Toaster />
     </TooltipProvider>

@@ -424,8 +424,15 @@ function readConfigToForm(config?: ModelConfig): ProviderFormState {
 
 function tag(label?: string) {
   if (!label) return null
+  const isActive = label === "Active"
   return (
-    <span className="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground">
+    <span
+      className={
+        isActive
+          ? "inline-flex items-center rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
+          : "inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground"
+      }
+    >
       {label}
     </span>
   )

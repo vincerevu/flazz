@@ -3,7 +3,6 @@
 import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import {
-  Bot,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -11,16 +10,16 @@ import {
   ExternalLink,
   FilePlus,
   FolderPlus,
-  AlertTriangle,
   HelpCircle,
   Mic,
   Network,
   Pencil,
-  Plug,
   LoaderIcon,
   Settings,
+  Sparkles,
   Square,
   Trash2,
+  Workflow,
 } from "lucide-react"
 
 import {
@@ -37,18 +36,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Button } from "@/components/ui/button"
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -62,6 +49,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { Button } from "@/components/ui/button"
 import {
   Popover,
   PopoverContent,
@@ -81,22 +69,18 @@ import {
 } from "@/components/ui/context-menu"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { type ActiveSection, useSidebarSection } from "@/contexts/sidebar-context"
-import { ConnectorsPopover } from "@/components/connectors-popover"
+import { useSidebarSection } from "@/contexts/sidebar-context"
 import { HelpPopover } from "@/components/help-popover"
 import { SettingsDialog } from "@/components/settings-dialog"
+import { MainSidebarMenu } from "@/components/main-sidebar-menu"
 import { toast } from "@/lib/toast"
 import { ServiceEvent } from "@flazz/shared/src/service-events.js"
 import z from "zod"
 import type { TreeNode } from "@/features/knowledge/types"
 import { servicesIpc } from "@/services/services-ipc"
-import { oauthIpc } from "@/services/oauth-ipc"
 import { workspaceIpc } from "@/services/workspace-ipc"
-
-type OAuthStateConfigEntry = {
-  connected: boolean
-  error?: string | null
-}
+import type { SkillPreset } from "@/features/skills/mock-skills"
+import type { WorkflowBlueprint } from "@/features/workflow/mock-workflows"
 
 type KnowledgeActions = {
   createNote: (parentPath?: string) => void
@@ -148,6 +132,9 @@ const SERVICE_LABELS: Record<string, string> = {
   voice_memo: "Processing voice memo",
 }
 
+const sidebarUtilityButtonClass =
+  "flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+
 type TasksActions = {
   onNewChat: () => void
   onSelectRun: (runId: string) => void
@@ -169,12 +156,13 @@ type SidebarContentPanelProps = {
   tasksActions?: TasksActions
   backgroundTasks?: BackgroundTaskItem[]
   selectedBackgroundTask?: string | null
+  skills?: SkillPreset[]
+  selectedSkillId?: string
+  onSelectSkill?: (skillId: string) => void
+  workflows?: WorkflowBlueprint[]
+  selectedWorkflowId?: string
+  onSelectWorkflow?: (workflowId: string) => void
 } & React.ComponentProps<typeof Sidebar>
-
-const sectionTabs: { id: ActiveSection; label: string }[] = [
-  { id: "tasks", label: "Chat" },
-  { id: "knowledge", label: "Knowledge" },
-]
 
 function formatEventTime(ts: string): string {
   const date = new Date(ts)
@@ -389,72 +377,27 @@ export function SidebarContentPanel({
   tasksActions,
   backgroundTasks = [],
   selectedBackgroundTask,
+  skills = [],
+  selectedSkillId,
+  onSelectSkill,
+  workflows = [],
+  selectedWorkflowId,
+  onSelectWorkflow,
   ...props
 }: SidebarContentPanelProps) {
   const { activeSection, setActiveSection } = useSidebarSection()
-  const [hasOauthError, setHasOauthError] = useState(false)
-  const [showOauthAlert, setShowOauthAlert] = useState(true)
-  const [connectorsOpen, setConnectorsOpen] = useState(false)
-  const [openConnectorsAfterClose, setOpenConnectorsAfterClose] = useState(false)
-  const connectorsButtonRef = useRef<HTMLButtonElement | null>(null)
-
-  useEffect(() => {
-    let mounted = true
-
-    const refreshOauthError = async () => {
-      try {
-        const result = await oauthIpc.getState()
-        const config = (result.config ?? {}) as Record<string, OAuthStateConfigEntry>
-        const hasError = Object.values(config).some((entry) => Boolean(entry?.error))
-        if (mounted) {
-          setHasOauthError(hasError)
-          if (!hasError) {
-            setShowOauthAlert(true)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch OAuth state:', error)
-        if (mounted) {
-          setHasOauthError(false)
-          setShowOauthAlert(true)
-        }
-      }
-    }
-
-    refreshOauthError()
-    const cleanup = oauthIpc.onDidConnect(() => {
-      refreshOauthError()
-    })
-
-    return () => {
-      mounted = false
-      cleanup()
-    }
-  }, [])
 
   return (
     <Sidebar className="border-r-0" {...props}>
-      <SidebarHeader className="titlebar-drag-region">
+      <SidebarHeader>
         {/* Top spacer to clear the traffic lights + fixed toggle row */}
-        <div className="h-8" />
-        {/* Tab switcher - centered below the traffic lights row */}
-        <div className="flex items-center px-2 py-1.5">
-          <div className="titlebar-no-drag flex w-full rounded-lg bg-sidebar-accent/50 p-0.5">
-            {sectionTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveSection(tab.id)}
-                className={cn(
-                  "flex-1 rounded-md px-3 py-1 text-sm font-medium transition-colors",
-                  activeSection === tab.id
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        <div className="titlebar-drag-region h-8 rounded-md" />
+        {/* Section menu - stays in the same slot but uses a vertical sidebar-style menu */}
+        <div className="titlebar-no-drag px-2 py-1.5">
+          <MainSidebarMenu
+            activeSection={activeSection}
+            onChange={setActiveSection}
+          />
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -469,90 +412,39 @@ export function SidebarContentPanel({
           />
         )}
         {activeSection === "tasks" && (
-          <TasksSection
+          <ChatSection
             runs={runs}
             currentRunId={currentRunId}
             processingRunIds={processingRunIds}
             actions={tasksActions}
-            backgroundTasks={backgroundTasks}
-            selectedBackgroundTask={selectedBackgroundTask}
+          />
+        )}
+        {activeSection === "skills" && (
+          <SkillsSection
+            skills={skills}
+            selectedSkillId={selectedSkillId}
+            onSelectSkill={onSelectSkill}
+          />
+        )}
+        {activeSection === "workflow" && (
+          <WorkflowSection
+            workflows={workflows}
+            selectedWorkflowId={selectedWorkflowId}
+            onSelectWorkflow={onSelectWorkflow}
           />
         )}
       </SidebarContent>
       {/* Bottom actions */}
       <div className="border-t border-sidebar-border px-2 py-2">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <ConnectorsPopover open={connectorsOpen} onOpenChange={setConnectorsOpen}>
-              <button
-                ref={connectorsButtonRef}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-              >
-                <Plug className="size-4" />
-                <span>Connected accounts</span>
-              </button>
-            </ConnectorsPopover>
-            {hasOauthError && (
-              <AlertDialog
-                open={showOauthAlert}
-                onOpenChange={setShowOauthAlert}
-              >
-                <AlertDialogTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex items-center"
-                    aria-label="OAuth connection issues"
-                  >
-                    <AlertTriangle className="size-3 text-amber-500/90 animate-pulse" />
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent
-                  onCloseAutoFocus={(event) => {
-                    event.preventDefault()
-                    if (openConnectorsAfterClose) {
-                      setOpenConnectorsAfterClose(false)
-                      setConnectorsOpen(true)
-                    }
-                    connectorsButtonRef.current?.focus()
-                  }}
-                >
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Reconnect your accounts</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      One or more connected accounts need attention. Open Connected accounts
-                      to review the status and reconnect if needed.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel
-                      onClick={() => {
-                        setOpenConnectorsAfterClose(false)
-                        setShowOauthAlert(false)
-                      }}
-                    >
-                      Dismiss
-                    </AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => {
-                        setOpenConnectorsAfterClose(true)
-                        setShowOauthAlert(false)
-                      }}
-                    >
-                      View connected accounts
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
-          </div>
           <SettingsDialog>
-            <button className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors">
+            <button className={sidebarUtilityButtonClass}>
               <Settings className="size-4" />
               <span>Settings</span>
             </button>
           </SettingsDialog>
           <HelpPopover>
-            <button className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors">
+            <button className={sidebarUtilityButtonClass}>
               <HelpCircle className="size-4" />
               <span>Help</span>
             </button>
@@ -1109,80 +1001,142 @@ function Tree({
   )
 }
 
-// Get status indicator color
-function getStatusColor(status?: string, enabled?: boolean): string {
-  // Disabled agents always show gray
-  if (enabled === false) {
-    return "bg-gray-400"
-  }
-  switch (status) {
-    case "running":
-      return "bg-blue-500"
-    case "finished":
-      return "bg-green-500"
-    case "failed":
-      return "bg-red-500"
-    case "triggered":
-      return "bg-gray-400"
-    case "scheduled":
-    default:
-      return "bg-yellow-500"
-  }
+function EmptySidebarSection({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
+  return (
+    <SidebarGroup className="flex-1">
+      <SidebarGroupContent className="flex h-full items-start">
+        <div className="px-3 py-2">
+          <div className="text-xs font-medium text-sidebar-foreground">{title}</div>
+          <p className="mt-1 max-w-[20rem] text-xs leading-5 text-muted-foreground">
+            {description}
+          </p>
+        </div>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
 }
 
-// Tasks Section
-function TasksSection({
+function SkillsSection({
+  skills = [],
+  selectedSkillId,
+  onSelectSkill,
+}: {
+  skills?: SkillPreset[]
+  selectedSkillId?: string
+  onSelectSkill?: (skillId: string) => void
+}) {
+  if (skills.length === 0) {
+    return (
+      <EmptySidebarSection
+        title="Skills"
+        description="No skills available yet."
+      />
+    )
+  }
+
+  return (
+    <SidebarGroup className="flex-1 flex flex-col overflow-hidden">
+      <SidebarGroupContent className="flex-1 overflow-y-auto">
+        <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+          Saved skills
+        </div>
+        <SidebarMenu>
+          {skills.map((skill) => (
+            <SidebarMenuItem key={skill.id}>
+              <SidebarMenuButton
+                isActive={selectedSkillId === skill.id}
+                onClick={() => onSelectSkill?.(skill.id)}
+                className="gap-2 data-[active=true]:font-normal"
+              >
+                <Sparkles className="size-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs">{skill.name}</div>
+                  <div className="truncate text-[10px] text-muted-foreground">
+                    {skill.category}
+                  </div>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
+function WorkflowSection({
+  workflows = [],
+  selectedWorkflowId,
+  onSelectWorkflow,
+}: {
+  workflows?: WorkflowBlueprint[]
+  selectedWorkflowId?: string
+  onSelectWorkflow?: (workflowId: string) => void
+}) {
+  return (
+    <SidebarGroup className="flex-1 flex flex-col overflow-hidden">
+      <SidebarGroupContent className="flex-1 overflow-y-auto">
+        <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+          Workflows
+        </div>
+        {workflows.length > 0 ? (
+          <SidebarMenu>
+            {workflows.map((workflow) => (
+              <SidebarMenuItem key={workflow.id}>
+                <SidebarMenuButton
+                  isActive={selectedWorkflowId === workflow.id}
+                  onClick={() => onSelectWorkflow?.(workflow.id)}
+                  className="gap-2 data-[active=true]:font-normal"
+                >
+                  <div className="relative">
+                    <Workflow className="size-4 shrink-0" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs">{workflow.name}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">
+                      {workflow.cadence}
+                    </div>
+                  </div>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        ) : (
+          <div className="px-3 py-2 text-xs text-muted-foreground">
+            No workflows yet.
+          </div>
+        )}
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
+// Chat Section
+function ChatSection({
   runs,
   currentRunId,
   processingRunIds,
   actions,
-  backgroundTasks = [],
-  selectedBackgroundTask,
 }: {
   runs: RunListItem[]
   currentRunId?: string | null
   processingRunIds?: Set<string>
   actions?: TasksActions
-  backgroundTasks?: BackgroundTaskItem[]
-  selectedBackgroundTask?: string | null
 }) {
   const [pendingDeleteRunId, setPendingDeleteRunId] = useState<string | null>(null)
 
   return (
     <SidebarGroup className="flex-1 flex flex-col overflow-hidden">
       <SidebarGroupContent className="flex-1 overflow-y-auto">
-        {/* Background Tasks Section */}
-        {backgroundTasks.length > 0 && (
-          <>
-            <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
-              Background Tasks
-            </div>
-            <SidebarMenu>
-              {backgroundTasks.map((task) => (
-                <SidebarMenuItem key={task.name}>
-                  <SidebarMenuButton
-                    isActive={selectedBackgroundTask === task.name}
-                    onClick={() => actions?.onSelectBackgroundTask?.(task.name)}
-                    className="gap-2"
-                  >
-                    <div className="relative">
-                      <Bot className="size-4 shrink-0" />
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full ${getStatusColor(task.status, task.enabled)} ${task.status === "running" && task.enabled ? "animate-pulse" : ""}`}
-                      />
-                    </div>
-                    <span className={`truncate text-sm ${!task.enabled ? "text-muted-foreground" : ""}`}>
-                      {task.name}
-                    </span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </>
-        )}
         {runs.length > 0 && (
           <>
-            <div className="px-3 py-1.5 mt-4 text-xs font-medium text-muted-foreground">
+            <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
               Chat history
             </div>
             <SidebarMenu>
@@ -1199,12 +1153,13 @@ function TasksSection({
                             actions?.onSelectRun(run.id)
                           }
                         }}
+                        className="data-[active=true]:font-normal"
                       >
                         <div className="flex w-full items-center gap-2 min-w-0">
                           {processingRunIds?.has(run.id) ? (
                             <span className="size-2 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
                           ) : null}
-                          <span className="min-w-0 flex-1 truncate text-sm">{run.title || '(Untitled chat)'}</span>
+                          <span className="min-w-0 flex-1 truncate text-xs">{run.title || '(Untitled chat)'}</span>
                           {run.createdAt ? (
                             <span className="shrink-0 text-[10px] text-muted-foreground">
                               {formatRunTime(run.createdAt)}
@@ -1238,6 +1193,11 @@ function TasksSection({
               ))}
             </SidebarMenu>
           </>
+        )}
+        {runs.length === 0 && (
+          <div className="px-3 py-2 text-xs text-muted-foreground">
+            No chats yet.
+          </div>
         )}
       </SidebarGroupContent>
 

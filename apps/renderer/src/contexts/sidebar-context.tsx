@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-export type ActiveSection = "knowledge" | "tasks"
+export type ActiveSection = "knowledge" | "tasks" | "skills" | "workflow"
 
 type SidebarSectionContextProps = {
   activeSection: ActiveSection

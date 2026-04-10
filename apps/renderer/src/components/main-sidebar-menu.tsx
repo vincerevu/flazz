@@ -1,105 +1,51 @@
-import { MessageCircle, BookOpen, Settings, MoreVertical } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { BookOpen, MessageSquare, Sparkles, Workflow } from "lucide-react"
 
-export type MainView = 'chat' | 'knowledge'
+import { cn } from "@/lib/utils"
+import type { ActiveSection } from "@/contexts/sidebar-context"
 
-interface MainSidebarMenuProps {
-  activeView: MainView
-  onViewChange: (view: MainView) => void
-  onSettings?: () => void
+type SidebarSectionItem = {
+  id: ActiveSection
+  label: string
+  icon: typeof MessageSquare
 }
 
-export function MainSidebarMenu({
-  activeView,
-  onViewChange,
-  onSettings,
-}: MainSidebarMenuProps) {
-  const menuItems = [
-    {
-      id: 'chat' as const,
-      label: 'Chat',
-      icon: MessageCircle,
-      description: 'Chat with AI',
-    },
-    {
-      id: 'knowledge' as const,
-      label: 'Knowledge',
-      icon: BookOpen,
-      description: 'Browse knowledge base',
-    },
-  ]
+const sectionItems: SidebarSectionItem[] = [
+  { id: "tasks", label: "Chat", icon: MessageSquare },
+  { id: "knowledge", label: "Knowledge", icon: BookOpen },
+  { id: "skills", label: "Skills", icon: Sparkles },
+  { id: "workflow", label: "Workflow", icon: Workflow },
+]
 
+type MainSidebarMenuProps = {
+  activeSection: ActiveSection
+  onChange: (section: ActiveSection) => void
+}
+
+export function MainSidebarMenu({ activeSection, onChange }: MainSidebarMenuProps) {
   return (
-    <TooltipProvider>
-      <div className="flex flex-col items-center gap-2 py-3 px-2 border-b border-border">
-        {menuItems.map((item) => {
-          const Icon = item.icon
-          const isActive = activeView === item.id
+    <nav className="titlebar-no-drag flex w-full flex-col gap-1">
+      {sectionItems.map((item) => {
+        const Icon = item.icon
+        const isActive = activeSection === item.id
 
-          return (
-            <Tooltip key={item.id}>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => onViewChange(item.id)}
-                  className={cn(
-                    'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                  aria-label={item.label}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  <Icon className="h-5 w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="ml-2">
-                {item.label}
-              </TooltipContent>
-            </Tooltip>
-          )
-        })}
-
-        <div className="flex-1" />
-
-        {onSettings && (
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                    aria-label="More options"
-                  >
-                    <MoreVertical className="h-5 w-5" />
-                  </button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="ml-2">
-                More
-              </TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent side="right" align="end">
-              <DropdownMenuItem onClick={onSettings}>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </TooltipProvider>
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onChange(item.id)}
+            className={cn(
+              "flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs font-normal transition-colors",
+              isActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+            )}
+            aria-pressed={isActive}
+          >
+            <Icon className="size-3.5 shrink-0" />
+            <span className="font-normal">{item.label}</span>
+          </button>
+        )
+      })}
+    </nav>
   )
 }
