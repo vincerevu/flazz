@@ -39,6 +39,10 @@ import { useDesktopWindow } from '@/features/app/use-desktop-window'
 import { useAppKeyboardShortcuts } from '@/features/app/use-app-keyboard-shortcuts'
 import { useBackgroundTasks } from '@/features/background-tasks/use-background-tasks'
 import { ChatMainPanel } from '@/features/chat/components/chat-main-panel'
+import { mockSkills } from '@/features/skills/mock-skills'
+import { SkillsMainPanel } from '@/features/skills/components/skills-main-panel'
+import { mockWorkflows } from '@/features/workflow/mock-workflows'
+import { WorkflowMainPanel } from '@/features/workflow/components/workflow-main-panel'
 
 function App() {
   type ShortcutPane = 'left' | 'right'
@@ -65,6 +69,8 @@ function App() {
     setSelectedBackgroundTask,
     handleToggleBackgroundTask,
   } = useBackgroundTasks()
+  const [selectedSkillId, setSelectedSkillId] = useState<string>(mockSkills[0]?.id ?? '')
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(mockWorkflows[0]?.id ?? '')
 
   // --- Navigation & History ---
   const historyRef = useRef<{ back: ViewState[]; forward: ViewState[] }>({ back: [], forward: [] })
@@ -442,6 +448,46 @@ function App() {
     return markdownTabs
   }, [fileTabs, selectedPath])
 
+  const sideChatPane = (
+    <ChatSidebar
+      defaultWidth={460}
+      isOpen={isChatSidebarOpen}
+      isMaximized={isRightPaneMaximized}
+      chatTabs={chatTabs}
+      activeChatTabId={activeChatTabId}
+      getChatTabTitle={getChatTabTitle}
+      isChatTabProcessing={isChatTabProcessing}
+      onSwitchChatTab={switchChatTab}
+      onCloseChatTab={closeChatTab}
+      onNewChatTab={handleNewChatTabInSidebar}
+      onOpenFullScreen={toggleRightPaneMaximize}
+      conversation={conversation}
+      currentAssistantMessage={currentAssistantMessage}
+      chatTabStates={chatViewStateByTab}
+      isProcessing={isProcessing}
+      isStopping={isStopping}
+      onStop={handleStop}
+      onSubmit={handlePromptSubmit}
+      knowledgeFiles={knowledgeFiles}
+      recentFiles={recentWikiFiles}
+      visibleFiles={visibleKnowledgeFiles}
+      runId={runId}
+      presetMessage={presetMessage}
+      onPresetMessageConsumed={() => setPresetMessage(undefined)}
+      getInitialDraft={(tabId) => chatDraftsRef.current.get(tabId)}
+      onDraftChangeForTab={setChatDraftForTab}
+      pendingAskHumanRequests={pendingAskHumanRequests}
+      allPermissionRequests={allPermissionRequests}
+      permissionResponses={permissionResponses}
+      onPermissionResponse={handlePermissionResponse}
+      onAskHumanResponse={handleAskHumanResponse}
+      isToolOpenForTab={isToolOpenForTab}
+      onToolOpenChangeForTab={setToolOpenForTab}
+      onOpenKnowledgeFile={(path) => { navigateToFile(path) }}
+      onActivate={() => setActiveShortcutPane('right')}
+    />
+  )
+
   return (
     <RendererAppShell
       isMac={isMac}
@@ -456,8 +502,6 @@ function App() {
       onWindowMinimize={handleWindowMinimize}
       onWindowToggleMaximize={handleWindowToggleMaximize}
       onWindowClose={handleWindowClose}
-      onNewChat={handleNewChatTab}
-      onOpenSearch={() => setIsSearchOpen(true)}
       onActivatePrimaryPane={() => setActiveShortcutPane('left')}
       leftSidebar={
         <SidebarContentPanel
@@ -533,6 +577,12 @@ function App() {
               }}
               backgroundTasks={backgroundTasks}
               selectedBackgroundTask={selectedBackgroundTask}
+              skills={mockSkills}
+              selectedSkillId={selectedSkillId}
+              onSelectSkill={setSelectedSkillId}
+              workflows={mockWorkflows}
+              selectedWorkflowId={selectedWorkflowId}
+              onSelectWorkflow={setSelectedWorkflowId}
             />
       }
       headerContent={
@@ -789,45 +839,47 @@ function App() {
               )}
         </>
       }
-      auxiliaryPane={isRightPaneContext ? (
-        <ChatSidebar
-          defaultWidth={460}
-          isOpen={isChatSidebarOpen}
-          isMaximized={isRightPaneMaximized}
-          chatTabs={chatTabs}
-          activeChatTabId={activeChatTabId}
-          getChatTabTitle={getChatTabTitle}
-          isChatTabProcessing={isChatTabProcessing}
-          onSwitchChatTab={switchChatTab}
-          onCloseChatTab={closeChatTab}
-          onNewChatTab={handleNewChatTabInSidebar}
-          onOpenFullScreen={toggleRightPaneMaximize}
-          conversation={conversation}
-          currentAssistantMessage={currentAssistantMessage}
-          chatTabStates={chatViewStateByTab}
-          isProcessing={isProcessing}
-          isStopping={isStopping}
-          onStop={handleStop}
-          onSubmit={handlePromptSubmit}
-          knowledgeFiles={knowledgeFiles}
-          recentFiles={recentWikiFiles}
-          visibleFiles={visibleKnowledgeFiles}
-          runId={runId}
-          presetMessage={presetMessage}
-          onPresetMessageConsumed={() => setPresetMessage(undefined)}
-          getInitialDraft={(tabId) => chatDraftsRef.current.get(tabId)}
-          onDraftChangeForTab={setChatDraftForTab}
-          pendingAskHumanRequests={pendingAskHumanRequests}
-          allPermissionRequests={allPermissionRequests}
-          permissionResponses={permissionResponses}
-          onPermissionResponse={handlePermissionResponse}
-          onAskHumanResponse={handleAskHumanResponse}
-          isToolOpenForTab={isToolOpenForTab}
-          onToolOpenChangeForTab={setToolOpenForTab}
-          onOpenKnowledgeFile={(path) => { navigateToFile(path) }}
-          onActivate={() => setActiveShortcutPane('right')}
-        />
-      ) : null}
+      auxiliaryPane={isRightPaneContext ? sideChatPane : null}
+      sectionHeaderContent={{
+        skills: (
+          <div className="flex min-w-0 items-center gap-3 px-1">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">Skills</div>
+              <div className="truncate text-xs text-muted-foreground">
+                Reusable presets and operating playbooks
+              </div>
+            </div>
+          </div>
+        ),
+        workflow: (
+          <div className="flex min-w-0 items-center gap-3 px-1">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">Workflow</div>
+              <div className="truncate text-xs text-muted-foreground">
+                Visual automation blueprints with room for chat on the right
+              </div>
+            </div>
+          </div>
+        ),
+      }}
+      sectionMainContent={{
+        skills: (
+          <SkillsMainPanel
+            skills={mockSkills}
+            selectedSkillId={selectedSkillId}
+          />
+        ),
+        workflow: (
+          <WorkflowMainPanel
+            workflows={mockWorkflows}
+            selectedWorkflowId={selectedWorkflowId}
+          />
+        ),
+      }}
+      sectionAuxiliaryPane={{
+        skills: sideChatPane,
+        workflow: sideChatPane,
+      }}
       dialogs={
         <SearchDialog
           open={isSearchOpen}
