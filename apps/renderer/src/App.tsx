@@ -31,6 +31,7 @@ import {
 
 import { useTheme } from '@/contexts/theme-context'
 import { RendererAppShell } from '@/components/app-shell/renderer-app-shell'
+import { MainSidebarMenu, type MainView } from '@/components/main-sidebar-menu'
 import { useChatRuntime } from '@/features/chat/use-chat-runtime'
 import { runsIpc } from '@/services/runs-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
@@ -51,6 +52,7 @@ function App() {
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(true)
   const [isRightPaneMaximized, setIsRightPaneMaximized] = useState(false)
   const [activeShortcutPane, setActiveShortcutPane] = useState<ShortcutPane>('left')
+  const [activeMainView, setActiveMainView] = useState<MainView>('knowledge')
   const {
     windowState,
     handleWindowMinimize,
@@ -504,67 +506,78 @@ function App() {
       onWindowClose={handleWindowClose}
       onActivatePrimaryPane={() => setActiveShortcutPane('left')}
       leftSidebar={
-        <SidebarContentPanel
-              tree={tree}
-              selectedPath={selectedPath}
-              expandedPaths={expandedPaths}
-              onSelectFile={handleSelectKnowledgeItem}
-              knowledgeActions={knowledgeActions}
-              onVoiceNoteCreated={handleVoiceNoteCreated}
-              runs={runs}
-              currentRunId={runId}
-              processingRunIds={processingRunIds}
-              tasksActions={{
-                onNewChat: handleNewChatTab,
-                onSelectRun: (runIdToLoad) => {
-                  if (selectedPath || isGraphOpen) {
-                    setIsChatSidebarOpen(true)
-                  }
+        <div className="flex h-full flex-col overflow-hidden">
+          <MainSidebarMenu
+            activeView={activeMainView}
+            onViewChange={setActiveMainView}
+          />
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {activeMainView === 'knowledge' && (
+              <SidebarContentPanel
+                tree={tree}
+                selectedPath={selectedPath}
+                expandedPaths={expandedPaths}
+                onSelectFile={handleSelectKnowledgeItem}
+                knowledgeActions={knowledgeActions}
+                onVoiceNoteCreated={handleVoiceNoteCreated}
+                runs={runs}
+                currentRunId={runId}
+                processingRunIds={processingRunIds}
+                tasksActions={{
+                  onNewChat: handleNewChatTab,
+                  onSelectRun: (runIdToLoad) => {
+                    if (selectedPath || isGraphOpen) {
+                      setIsChatSidebarOpen(true)
+                    }
 
-                  // If already open in a chat tab, switch to it
-                  const existingTab = chatTabs.find(t => t.runId === runIdToLoad)
-                  if (existingTab) {
-                    switchChatTab(existingTab.id)
-                    return
-                  }
-                  // In two-pane mode, keep current knowledge/graph context and just swap chat context.
-                  if (selectedPath || isGraphOpen) {
+                    // If already open in a chat tab, switch to it
+                    const existingTab = chatTabs.find(t => t.runId === runIdToLoad)
+                    if (existingTab) {
+                      switchChatTab(existingTab.id)
+                      return
+                    }
+                    // In two-pane mode, keep current knowledge/graph context and just swap chat context.
+                    if (selectedPath || isGraphOpen) {
+                      setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: runIdToLoad } : t))
+                      loadRun(runIdToLoad)
+                      return
+                    }
+
+                    // Outside two-pane mode, navigate to chat.
                     setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: runIdToLoad } : t))
-                    loadRun(runIdToLoad)
-                    return
-                  }
-
-                  // Outside two-pane mode, navigate to chat.
-                  setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: runIdToLoad } : t))
-                  void navigateToView({ type: 'chat', runId: runIdToLoad })
-                },
-                onOpenInNewTab: (targetRunId) => {
-                  openChatInNewTab(targetRunId)
-                },
-                onDeleteRun: async (runIdToDelete) => {
-                  try {
-                    await runsIpc.delete(runIdToDelete)
-                    // Close any chat tab showing the deleted run
-                    const tabForRun = chatTabs.find(t => t.runId === runIdToDelete)
-                    if (tabForRun) {
-                      if (chatTabs.length > 1) {
-                        closeChatTab(tabForRun.id)
-                      } else {
-                        // Only one tab, reset it to new chat
-                        setChatTabs([{ id: tabForRun.id, runId: null }])
+                    void navigateToView({ type: 'chat', runId: runIdToLoad })
+                  },
+                  onOpenInNewTab: (targetRunId) => {
+                    openChatInNewTab(targetRunId)
+                  },
+                  onDeleteRun: async (runIdToDelete) => {
+                    try {
+                      await runsIpc.delete(runIdToDelete)
+                      // Close any chat tab showing the deleted run
+                      const tabForRun = chatTabs.find(t => t.runId === runIdToDelete)
+                      if (tabForRun) {
+                        if (chatTabs.length > 1) {
+                          closeChatTab(tabForRun.id)
+                        } else {
+                          // Only one tab, reset it to new chat
+                          setChatTabs([{ id: tabForRun.id, runId: null }])
+                          if (selectedPath || isGraphOpen) {
+                            handleNewChat()
+                          } else {
+                            void navigateToView({ type: 'chat', runId: null })
+                          }
+                        }
+                      } else if (runId === runIdToDelete) {
                         if (selectedPath || isGraphOpen) {
+                          setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: null } : t))
                           handleNewChat()
                         } else {
                           void navigateToView({ type: 'chat', runId: null })
                         }
                       }
-                    } else if (runId === runIdToDelete) {
-                      if (selectedPath || isGraphOpen) {
-                        setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: null } : t))
-                        handleNewChat()
-                      } else {
-                        void navigateToView({ type: 'chat', runId: null })
-                      }
+                      await loadRuns()
+                    } catch (err) {
+                      console.error('Failed to delete run:', err)
                     }
                     await loadRuns()
                   } catch (err) {

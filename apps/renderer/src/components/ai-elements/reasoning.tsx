@@ -170,7 +170,19 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Streamdown {...props}>{children}</Streamdown>
+      <Streamdown
+        remarkPlugins={[
+          // @ts-ignore
+          require('remark-math'),
+        ]}
+        rehypePlugins={[
+          // @ts-ignore
+          [require('rehype-katex'), { output: 'mathml' }],
+        ]}
+        {...props}
+      >
+        {children}
+      </Streamdown>
     </CollapsibleContent>
   )
 );

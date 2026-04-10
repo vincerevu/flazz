@@ -2,6 +2,7 @@ import type { BackgroundService } from "./background_service.js";
 
 export class ServiceRegistry {
     private services: BackgroundService[] = [];
+    private failedServices: Set<string> = new Set();
 
     register(service: BackgroundService): void {
         this.services.push(service);
@@ -17,11 +18,16 @@ export class ServiceRegistry {
                 console.log(`[ServiceRegistry] Service started: ${service.name}`);
             } catch (error) {
                 console.error(`[ServiceRegistry] Error starting service ${service.name}:`, error);
-                throw error;
+                this.failedServices.add(service.name);
+                // Don't throw - allow other services to start
             }
         });
 
         await Promise.allSettled(startPromises);
+        
+        if (this.failedServices.size > 0) {
+            console.warn(`[ServiceRegistry] ${this.failedServices.size} service(s) failed to start:`, Array.from(this.failedServices));
+        }
         console.log(`[ServiceRegistry] All services start requested.`);
     }
 
@@ -40,5 +46,9 @@ export class ServiceRegistry {
 
         await Promise.allSettled(stopPromises);
         console.log(`[ServiceRegistry] All services stopped.`);
+    }
+
+    isServiceRunning(serviceName: string): boolean {
+        return !this.failedServices.has(serviceName);
     }
 }

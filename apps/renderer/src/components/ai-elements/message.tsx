@@ -319,6 +319,14 @@ export const MessageResponse = memo(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      remarkPlugins={[
+        // @ts-ignore
+        require('remark-math'),
+      ]}
+      rehypePlugins={[
+        // @ts-ignore
+        [require('rehype-katex'), { output: 'mathml' }],
+      ]}
       {...props}
     />
   ),
