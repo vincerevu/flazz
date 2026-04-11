@@ -415,7 +415,18 @@ export function useFileEditor({
     },
     createFolder: async (parentPath: string = 'knowledge') => {
       try {
-        await workspaceIpc.mkdir(`${parentPath}/new-folder-${Date.now()}`, { recursive: true })
+        let index = 0
+        let name = 'new-folder'
+        let fullPath = `${parentPath}/${name}`
+        while (index < 1000) {
+          const exists = await workspaceIpc.exists(fullPath)
+          if (!exists.exists) break
+          index += 1
+          name = `new-folder-${index}`
+          fullPath = `${parentPath}/${name}`
+        }
+        await workspaceIpc.mkdir(fullPath, { recursive: true })
+        return fullPath
       } catch (err) {
         console.error('Failed to create folder:', err)
         throw err

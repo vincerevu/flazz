@@ -85,7 +85,7 @@ import type { WorkflowBlueprint } from "@/features/workflow/mock-workflows"
 
 type KnowledgeActions = {
   createNote: (parentPath?: string) => void
-  createFolder: (parentPath?: string) => void
+  createFolder: (parentPath?: string) => Promise<string | null | undefined> | string | null | undefined
   openGraph: () => void
   expandAll: () => void
   collapseAll: () => void
@@ -150,6 +150,8 @@ type SidebarContentPanelProps = {
   expandedPaths: Set<string>
   onSelectFile: (path: string, kind: "file" | "dir") => void
   knowledgeActions: KnowledgeActions
+  pendingFolderRenamePath?: string | null
+  onPendingFolderRenameHandled?: (path: string | null) => void
   onVoiceNoteCreated?: (path: string) => void
   runs?: RunListItem[]
   currentRunId?: string | null
@@ -371,6 +373,8 @@ export function SidebarContentPanel({
   expandedPaths,
   onSelectFile,
   knowledgeActions,
+  pendingFolderRenamePath,
+  onPendingFolderRenameHandled,
   onVoiceNoteCreated,
   runs = [],
   currentRunId,
@@ -402,16 +406,18 @@ export function SidebarContentPanel({
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {activeSection === "knowledge" && (
-          <KnowledgeSection
-            tree={tree}
-            selectedPath={selectedPath}
-            expandedPaths={expandedPaths}
-            onSelectFile={onSelectFile}
-            actions={knowledgeActions}
-            onVoiceNoteCreated={onVoiceNoteCreated}
-          />
-        )}
+          {activeSection === "knowledge" && (
+            <KnowledgeSection
+              tree={tree}
+              selectedPath={selectedPath}
+              expandedPaths={expandedPaths}
+              onSelectFile={onSelectFile}
+              actions={knowledgeActions}
+              pendingFolderRenamePath={pendingFolderRenamePath}
+              onPendingFolderRenameHandled={onPendingFolderRenameHandled}
+              onVoiceNoteCreated={onVoiceNoteCreated}
+            />
+          )}
         {activeSection === "tasks" && (
           <ChatSection
             runs={runs}
@@ -672,6 +678,8 @@ function KnowledgeSection({
   expandedPaths,
   onSelectFile,
   actions,
+  pendingFolderRenamePath,
+  onPendingFolderRenameHandled,
   onVoiceNoteCreated,
 }: {
   tree: TreeNode[]
@@ -679,6 +687,8 @@ function KnowledgeSection({
   expandedPaths: Set<string>
   onSelectFile: (path: string, kind: "file" | "dir") => void
   actions: KnowledgeActions
+  pendingFolderRenamePath?: string | null
+  onPendingFolderRenameHandled?: (path: string | null) => void
   onVoiceNoteCreated?: (path: string) => void
 }) {
   const isExpanded = expandedPaths.size > 0
@@ -767,6 +777,8 @@ function KnowledgeSection({
                     expandedPaths={expandedPaths}
                     onSelect={onSelectFile}
                     actions={actions}
+                    autoRenamePath={pendingFolderRenamePath}
+                    onAutoRenameHandled={onPendingFolderRenameHandled}
                   />
                 ))}
               </SidebarMenu>
@@ -804,12 +816,16 @@ function Tree({
   expandedPaths,
   onSelect,
   actions,
+  autoRenamePath,
+  onAutoRenameHandled,
 }: {
   item: TreeNode
   selectedPath: string | null
   expandedPaths: Set<string>
   onSelect: (path: string, kind: "file" | "dir") => void
   actions: KnowledgeActions
+  autoRenamePath?: string | null
+  onAutoRenameHandled?: (path: string | null) => void
 }) {
   const isDir = item.kind === 'dir'
   const isExpanded = expandedPaths.has(item.path)
@@ -823,11 +839,20 @@ function Tree({
     ? item.name.slice(0, -3)
     : item.name
   const [newName, setNewName] = useState(baseName)
+  const isTemporaryFolder = isDir && item.name.startsWith('new-folder')
 
   // Sync newName when baseName changes (e.g., after external rename)
   React.useEffect(() => {
     setNewName(baseName)
   }, [baseName])
+
+  React.useEffect(() => {
+    if (autoRenamePath !== item.path || isRenaming) return
+    setNewName(baseName)
+    isSubmittingRef.current = false
+    setIsRenaming(true)
+    onAutoRenameHandled?.(null)
+  }, [autoRenamePath, baseName, isRenaming, item.path, onAutoRenameHandled])
 
   const handleRename = async () => {
     // Prevent double submission
@@ -835,6 +860,19 @@ function Tree({
     isSubmittingRef.current = true
 
     const trimmedName = newName.trim()
+    if (isTemporaryFolder && (!trimmedName || trimmedName === baseName)) {
+      try {
+        await actions.remove(item.path)
+      } catch {
+        toast('Failed to remove empty folder', 'error')
+      }
+      setIsRenaming(false)
+      setTimeout(() => {
+        isSubmittingRef.current = false
+      }, 100)
+      return
+    }
+
     if (trimmedName && trimmedName !== baseName) {
       try {
         await actions.rename(item.path, trimmedName, isDir)
@@ -868,6 +906,16 @@ function Tree({
     isSubmittingRef.current = true // Prevent blur from triggering rename
     setIsRenaming(false)
     setNewName(baseName) // Reset to original name
+    if (isTemporaryFolder) {
+      void actions.remove(item.path).catch(() => {
+        toast('Failed to remove empty folder', 'error')
+      }).finally(() => {
+        setTimeout(() => {
+          isSubmittingRef.current = false
+        }, 100)
+      })
+      return
+    }
     setTimeout(() => {
       isSubmittingRef.current = false
     }, 100)
@@ -1033,6 +1081,8 @@ function Tree({
                     expandedPaths={expandedPaths}
                     onSelect={onSelect}
                     actions={actions}
+                    autoRenamePath={autoRenamePath}
+                    onAutoRenameHandled={onAutoRenameHandled}
                   />
                 ))}
               </SidebarMenuSub>
