@@ -242,6 +242,184 @@
   align-self: center;
 }
 
+.frontmatter-properties {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--background);
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.frontmatter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--foreground) 60%, transparent);
+  font-size: 12px;
+  user-select: none;
+}
+
+.frontmatter-toggle:hover {
+  color: var(--foreground);
+}
+
+.frontmatter-chevron {
+  transition: transform 0.18s ease;
+}
+
+.frontmatter-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.frontmatter-label {
+  font-weight: 500;
+}
+
+.frontmatter-fields {
+  padding: 0 12px 8px;
+}
+
+.frontmatter-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.frontmatter-key {
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+  font-size: 12px;
+  line-height: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.frontmatter-value-area {
+  min-width: 0;
+}
+
+.frontmatter-input {
+  width: 100%;
+  min-height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 4px 8px;
+  color: var(--foreground);
+  outline: none;
+}
+
+.frontmatter-input:focus {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.frontmatter-input:read-only {
+  cursor: default;
+}
+
+.frontmatter-new-key-input {
+  border: 1px dashed var(--border);
+}
+
+.frontmatter-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 45%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.frontmatter-row:hover .frontmatter-remove {
+  opacity: 1;
+}
+
+.frontmatter-remove:hover {
+  background: color-mix(in srgb, var(--destructive) 15%, transparent);
+  color: var(--destructive);
+}
+
+.frontmatter-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 62%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+.frontmatter-add:hover {
+  color: var(--foreground);
+}
+
+.frontmatter-array {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.frontmatter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted) 75%, transparent);
+  color: var(--foreground);
+  padding: 4px 8px;
+}
+
+.frontmatter-chip-text {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.frontmatter-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 50%, transparent);
+  padding: 0;
+}
+
+.frontmatter-chip-remove:hover {
+  color: var(--foreground);
+}
+
+.frontmatter-chip-input {
+  min-width: 80px;
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  outline: none;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.frontmatter-chip-input::placeholder {
+  color: color-mix(in srgb, var(--foreground) 40%, transparent);
+}
+
 /* Keep knowledge text width readable while margins collapse on narrow panes. */
 .tiptap-editor .ProseMirror {
   width: 100%;

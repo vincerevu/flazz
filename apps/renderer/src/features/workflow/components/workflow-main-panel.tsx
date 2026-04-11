@@ -1,9 +1,7 @@
 import { useMemo } from "react"
 import {
   Background,
-  Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
   type Edge,
   type Node,
@@ -123,13 +121,6 @@ export function WorkflowMainPanel({
             className="bg-background"
           >
             <Background gap={20} size={1} color="hsl(var(--border))" />
-            <MiniMap
-              pannable
-              zoomable
-              nodeBorderRadius={12}
-              className="rounded-lg border border-border bg-background/90"
-            />
-            <Controls className="rounded-lg border border-border bg-background/90" />
           </ReactFlow>
         </div>
       </div>

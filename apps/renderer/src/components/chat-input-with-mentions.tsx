@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { ChatModelSelector } from '@/components/chat-model-selector'
 import {
   type AttachmentIconKind,
   getAttachmentDisplayName,
@@ -197,7 +198,7 @@ function ChatInputInner({
   }, [addFiles, isActive])
 
   return (
-    <div className="rounded-lg border border-border bg-background shadow-none">
+    <div className="rounded-[26px] border border-border bg-background shadow-none">
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 px-4 pb-1 pt-3">
           {attachments.map((attachment) => {
@@ -240,24 +241,33 @@ function ChatInputInner({
           })}
         </div>
       )}
-      <div className="flex items-center gap-2 px-4 py-4">
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const files = e.target.files
-            if (!files || files.length === 0) return
-            const paths = Array.from(files)
-              .map((file) => window.electronUtils?.getPathForFile(file))
-              .filter(Boolean) as string[]
-            if (paths.length > 0) {
-              void addFiles(paths)
-            }
-            e.target.value = ''
-          }}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = e.target.files
+          if (!files || files.length === 0) return
+          const paths = Array.from(files)
+            .map((file) => window.electronUtils?.getPathForFile(file))
+            .filter(Boolean) as string[]
+          if (paths.length > 0) {
+            void addFiles(paths)
+          }
+          e.target.value = ''
+        }}
+      />
+      <div className="px-4 pb-2 pt-4">
+        <PromptInputTextarea
+          placeholder="Type your message..."
+          onKeyDown={handleKeyDown}
+          autoFocus={isActive}
+          focusTrigger={isActive ? `${runId ?? 'new'}:${focusNonce}` : undefined}
+          className="min-h-6 rounded-none border-0 bg-transparent px-0 py-0 text-[15px] shadow-none focus-visible:ring-0"
         />
+      </div>
+      <div className="flex items-center gap-2 px-4 pb-3">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -266,46 +276,44 @@ function ChatInputInner({
         >
           <Plus className="h-4 w-4" />
         </button>
-        <PromptInputTextarea
-          placeholder="Type your message..."
-          onKeyDown={handleKeyDown}
-          autoFocus={isActive}
-          focusTrigger={isActive ? `${runId ?? 'new'}:${focusNonce}` : undefined}
-          className="min-h-6 rounded-none border-0 py-0 shadow-none focus-visible:ring-0"
-        />
-        {isProcessing ? (
-          <Button
-            size="icon"
-            onClick={onStop}
-            title={isStopping ? 'Click again to force stop' : 'Stop generation'}
-            className={cn(
-              'h-7 w-7 shrink-0 rounded-full transition-all',
-              isStopping
-                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90'
-            )}
-          >
-            {isStopping ? (
-              <LoaderIcon className="h-4 w-4 animate-spin" />
-            ) : (
-              <Square className="h-3 w-3 fill-current" />
-            )}
-          </Button>
-        ) : (
-          <Button
-            size="icon"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className={cn(
-              'h-7 w-7 shrink-0 rounded-full transition-all',
-              canSubmit
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'bg-muted text-muted-foreground'
-            )}
-          >
-            <ArrowUp className="h-4 w-4" />
-          </Button>
-        )}
+        <ChatModelSelector />
+        <div className="flex-1" />
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{message.trim().length}</span>
+          {isProcessing ? (
+            <Button
+              size="icon"
+              onClick={onStop}
+              title={isStopping ? 'Click again to force stop' : 'Stop generation'}
+              className={cn(
+                'h-8 w-8 shrink-0 rounded-full transition-all',
+                isStopping
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
+              )}
+            >
+              {isStopping ? (
+                <LoaderIcon className="h-4 w-4 animate-spin" />
+              ) : (
+                <Square className="h-3 w-3 fill-current" />
+              )}
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              className={cn(
+                'h-8 w-8 shrink-0 rounded-full transition-all',
+                canSubmit
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'bg-muted text-muted-foreground'
+              )}
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   )

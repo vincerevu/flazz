@@ -13,11 +13,13 @@ import {
   ChevronDownIcon,
   CircleIcon,
   ClockIcon,
-  WrenchIcon,
   XCircleIcon,
+  ZapIcon,
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
+import { MessageResponse } from "@/components/ai-elements/message";
+import { MarkdownPreOverride } from "@/components/ai-elements/markdown-code-override";
 const formatToolValue = (value: unknown) => {
   if (typeof value === "string") return value;
   try {
@@ -101,13 +103,13 @@ export const ToolHeader = ({
 }: ToolHeaderProps) => (
   <CollapsibleTrigger
     className={cn(
-      "flex w-full items-center justify-between gap-4 p-3",
+      "group flex w-full items-center justify-between gap-4 p-3",
       className
     )}
     {...props}
   >
     <div className="flex items-center gap-2">
-      <WrenchIcon className="size-4 text-muted-foreground" />
+      <ZapIcon className="size-4 text-muted-foreground" />
       <span className="font-medium text-sm">
         {title ?? type.split("-").slice(1).join("-")}
       </span>
@@ -164,7 +166,14 @@ export const ToolOutput = ({
   if (typeof output === "object" && !isValidElement(output)) {
     Output = <ToolCode code={formatToolValue(output ?? null)} />;
   } else if (typeof output === "string") {
-    Output = <ToolCode code={formatToolValue(output)} />;
+    Output = (
+      <MessageResponse
+        className="size-full text-xs [&_code]:text-[0.95em] [&_ol]:my-2 [&_p]:my-2 [&_table]:my-2 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:bg-muted/40 [&_th]:px-2 [&_th]:py-1 [&_ul]:my-2"
+        components={{ pre: MarkdownPreOverride }}
+      >
+        {output}
+      </MessageResponse>
+    );
   }
 
   return (

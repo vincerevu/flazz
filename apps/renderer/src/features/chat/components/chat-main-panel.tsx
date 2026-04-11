@@ -33,11 +33,29 @@ import {
 import { wikiLabel } from '@/lib/wiki-links'
 import { cn } from '@/lib/utils'
 import type { ChatTab } from '@/components/tab-bar'
+import { useDeferredValue } from 'react'
 
 const streamdownComponents = {
   WikiLink,
   FileCard,
   pre: MarkdownPreOverride,
+}
+
+function StreamingAssistantResponse({
+  content,
+}: {
+  content: string
+}) {
+  const deferredContent = useDeferredValue(content)
+  const displayContent = deferredContent || content
+
+  return (
+    <Message from="assistant">
+      <MessageContent>
+        <MessageResponse components={streamdownComponents} streaming>{displayContent}</MessageResponse>
+      </MessageContent>
+    </Message>
+  )
 }
 
 interface ChatMainPanelProps {
@@ -265,11 +283,7 @@ export function ChatMainPanel({
                         ))}
 
                         {tabState.currentAssistantMessage && (
-                          <Message from="assistant">
-                            <MessageContent>
-                              <MessageResponse components={streamdownComponents}>{tabState.currentAssistantMessage}</MessageResponse>
-                            </MessageContent>
-                          </Message>
+                          <StreamingAssistantResponse content={tabState.currentAssistantMessage} />
                         )}
 
                         {isActive && isProcessing && !tabState.currentAssistantMessage && (

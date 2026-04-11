@@ -178,18 +178,30 @@ export class FSRunsRepo implements IRunsRepo {
 
     async fetch(id: string): Promise<z.infer<typeof Run>> {
         const contents = await fsp.readFile(path.join(WorkDir, 'runs', `${id}.jsonl`), 'utf8');
-        const events = contents.split('\n')
-            .filter(line => line.trim() !== '')
-            .map(line => RunEvent.parse(JSON.parse(line)));
-        if (events.length === 0 || events[0].type !== 'start') {
+        const parsedEvents: z.infer<typeof RunEvent>[] = [];
+        for (const line of contents.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                parsedEvents.push(RunEvent.parse(JSON.parse(trimmed)));
+            } catch {
+                // Ignore legacy or malformed events so old chats can still open.
+            }
+        }
+        const startEvent = parsedEvents.find((event): event is z.infer<typeof StartEvent> => event.type === 'start');
+        if (!startEvent) {
             throw new Error('Corrupt run data');
+        }
+        const events = parsedEvents.filter((event, index) => event.type !== 'start' || event === startEvent || index === 0);
+        if (events[0] !== startEvent) {
+            events.unshift(startEvent);
         }
         const title = this.extractTitle(events);
         return {
             id,
             title,
-            createdAt: events[0].ts!,
-            agentId: events[0].agentName,
+            createdAt: startEvent.ts!,
+            agentId: startEvent.agentName,
             log: events,
         };
     }

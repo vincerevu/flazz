@@ -8,6 +8,7 @@ import {
   GRAPH_TAB_PATH,
   isGraphTabPath,
   viewStatesEqual,
+  type TreeNode,
   type ViewState,
 } from './features/knowledge/types'
 import { getBaseName } from './features/knowledge/utils/wiki-logic'
@@ -26,7 +27,6 @@ import { TabBar, type ChatTab, type FileTab } from '@/components/tab-bar'
 import {
   type ChatTabViewState,
   createEmptyChatTabViewState,
-  isToolCall,
 } from '@/lib/chat-conversation'
 
 import { useTheme } from '@/contexts/theme-context'
@@ -43,6 +43,21 @@ import { mockSkills } from '@/features/skills/mock-skills'
 import { SkillsMainPanel } from '@/features/skills/components/skills-main-panel'
 import { mockWorkflows } from '@/features/workflow/mock-workflows'
 import { WorkflowMainPanel } from '@/features/workflow/components/workflow-main-panel'
+import { splitFrontmatter, joinFrontmatter } from '@/lib/frontmatter'
+import { getKnowledgeCollectionMeta, isKnowledgeCollectionPath } from '@/features/knowledge/utils/collections'
+import { KnowledgeCollectionView } from '@/features/knowledge/components/knowledge-collection-view'
+
+function findTreeNode(nodes: TreeNode[], targetPath: string | null): TreeNode | null {
+  if (!targetPath) return null
+  for (const node of nodes) {
+    if (node.path === targetPath) return node
+    if (node.children?.length) {
+      const match = findTreeNode(node.children, targetPath)
+      if (match) return match
+    }
+  }
+  return null
+}
 
 function App() {
   type ShortcutPane = 'left' | 'right'
@@ -110,7 +125,6 @@ function App() {
     tree,
     expandedPaths,
     refreshTree,
-    toggleExpand,
     expandAll,
     collapseAll,
     knowledgeFiles,
@@ -155,11 +169,11 @@ function App() {
 
   const handleSelectKnowledgeItem = useCallback((path: string, kind: "file" | "dir") => {
     if (kind === 'dir') {
-      toggleExpand(path)
+      navigateToFile(path)
       return
     }
     navigateToFile(path)
-  }, [navigateToFile, toggleExpand])
+  }, [navigateToFile])
 
   const isGraphOpen = useMemo(() => {
     const activeTab = fileTabs.find(t => t.id === activeFileTabId)
@@ -186,39 +200,22 @@ function App() {
   const [chatTabs, setChatTabs] = useState<ChatTab[]>([{ id: 'default-chat', runId: null }])
   const [chatViewStateByTab, setChatViewStateByTab] = useState<Record<string, ChatTabViewState>>({})
   const [toolOpenByTab, setToolOpenByTab] = useState<Record<string, Record<string, boolean>>>({})
+  const activeChatTabIdRef = useRef('default-chat')
+  const chatRuntimeSnapshotRef = useRef<ChatTabViewState>(createEmptyChatTabViewState())
   const [agentId] = useState<string>('copilot')
   const [presetMessage, setPresetMessage] = useState<string | undefined>(undefined)
 
   const isToolOpenForTab = useCallback((tabId: string, toolId: string): boolean => {
-    const tabState = chatViewStateByTab[tabId]
-    if (!tabState) return false
-    const call = tabState.conversation.find(m => isToolCall(m) && m.id === toolId)
-    if (!call || !isToolCall(call)) return false
+    return toolOpenByTab[tabId]?.[toolId] ?? false
+  }, [toolOpenByTab])
 
-    if (call.result) return false
-    if (tabState.permissionResponses.has(toolId)) return false
-    return toolOpenByTab[tabId]?.[toolId] ?? true
-  }, [chatViewStateByTab, toolOpenByTab])
-
-  const switchChatTab = useCallback((tabId: string) => {
-    setActiveChatTabId(tabId)
-  }, [])
-
-  const closeChatTab = useCallback((tabId: string) => {
-    setChatTabs((prev) => {
-      if (prev.length <= 1) return prev
-      const next = prev.filter((t) => t.id !== tabId)
-      if (activeChatTabId === tabId) {
-        setActiveChatTabId(next[next.length - 1].id)
-      }
+  const clearToolOpenForTab = useCallback((tabId: string) => {
+    setToolOpenByTab((prev) => {
+      if (!prev[tabId]) return prev
+      const next = { ...prev }
+      delete next[tabId]
       return next
     })
-  }, [activeChatTabId])
-
-  const handleNewChatTab = useCallback(() => {
-    const id = `chat-${Date.now()}`
-    setChatTabs((prev) => [...prev, { id, runId: null }])
-    setActiveChatTabId(id)
   }, [])
 
   const setChatDraftForTab = useCallback((tabId: string, text: string) => {
@@ -226,18 +223,13 @@ function App() {
   }, [])
 
   const handleNewChat = useCallback(() => {
-    if (activeFileTabId) {
-      setIsChatSidebarOpen(true)
-    }
-    setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: null } : t))
-    void navigateToView({ type: 'chat', runId: null })
-  }, [activeChatTabId, activeFileTabId, navigateToView])
-
-  const handleNewChatTabInSidebar = useCallback(() => {
-    const id = `chat-${Date.now()}`
-    setChatTabs(prev => [...prev, { id, runId: null }])
-    setActiveChatTabId(id)
-  }, [])
+      if (activeFileTabId) {
+        setIsChatSidebarOpen(true)
+      }
+      setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: null } : t))
+      clearToolOpenForTab(activeChatTabId)
+      void navigateToView({ type: 'chat', runId: null })
+    }, [activeChatTabId, activeFileTabId, clearToolOpenForTab, navigateToView])
 
   const toggleKnowledgePane = useCallback(() => {
     setIsChatSidebarOpen(!isChatSidebarOpen)
@@ -271,6 +263,7 @@ function App() {
     permissionResponses,
     chatRuntimeSnapshot,
     loadRun,
+    restoreChatRuntime,
     resetChatRuntime,
     handlePromptSubmit,
     handleStop,
@@ -280,19 +273,89 @@ function App() {
     agentId,
     onActiveTabRunIdChange: (nextRunId) => {
       setChatTabs((prev) => prev.map((tab) => (
-        tab.id === activeChatTabId
+        tab.id === activeChatTabIdRef.current
           ? { ...tab, runId: nextRunId }
           : tab
       )))
     },
   })
 
+  useEffect(() => {
+    activeChatTabIdRef.current = activeChatTabId
+  }, [activeChatTabId])
+
+  useEffect(() => {
+    chatRuntimeSnapshotRef.current = chatRuntimeSnapshot
+  }, [chatRuntimeSnapshot])
+
+  const persistChatTabState = useCallback((tabId: string, snapshot: ChatTabViewState) => {
+    setChatViewStateByTab((prev) => ({
+      ...prev,
+      [tabId]: snapshot,
+    }))
+  }, [])
+
+  const activateChatTab = useCallback((tabId: string, fallbackRunId: string | null) => {
+    const currentTabId = activeChatTabIdRef.current
+    if (currentTabId !== tabId) {
+      persistChatTabState(currentTabId, chatRuntimeSnapshot)
+    }
+
+    clearToolOpenForTab(tabId)
+    setActiveChatTabId(tabId)
+
+    const savedState = chatViewStateByTab[tabId]
+    if (savedState && restoreChatRuntime(savedState, fallbackRunId)) {
+      return
+    }
+
+    if (fallbackRunId) {
+      void loadRun(fallbackRunId)
+      return
+    }
+
+    resetChatRuntime()
+  }, [chatRuntimeSnapshot, chatViewStateByTab, clearToolOpenForTab, loadRun, persistChatTabState, resetChatRuntime, restoreChatRuntime])
+
+  const switchChatTab = useCallback((tabId: string) => {
+    if (tabId === activeChatTabIdRef.current) return
+    const nextTab = chatTabs.find((tab) => tab.id === tabId)
+    if (!nextTab) return
+    activateChatTab(tabId, nextTab.runId)
+  }, [activateChatTab, chatTabs])
+
+  const closeChatTab = useCallback((tabId: string) => {
+    if (chatTabs.length <= 1) return
+
+    const nextTabs = chatTabs.filter((tab) => tab.id !== tabId)
+    setChatTabs(nextTabs)
+
+    if (activeChatTabIdRef.current !== tabId) {
+      return
+    }
+
+    const replacementTab = nextTabs[nextTabs.length - 1]
+    if (!replacementTab) return
+    activateChatTab(replacementTab.id, replacementTab.runId)
+  }, [activateChatTab, chatTabs])
+
+  const handleNewChatTab = useCallback(() => {
+    const id = `chat-${Date.now()}`
+    setChatTabs((prev) => [...prev, { id, runId: null }])
+    activateChatTab(id, null)
+  }, [activateChatTab])
+
+  const handleNewChatTabInSidebar = useCallback(() => {
+    const id = `chat-${Date.now()}`
+    setChatTabs((prev) => [...prev, { id, runId: null }])
+    activateChatTab(id, null)
+  }, [activateChatTab])
+
   const openChatInNewTab = useCallback((targetRunId?: string) => {
     const id = `chat-${Date.now()}`
-    setChatTabs(prev => [...prev, { id, runId: targetRunId || null }])
-    setActiveChatTabId(id)
-    if (targetRunId) loadRun(targetRunId)
-  }, [loadRun])
+    setChatTabs((prev) => [...prev, { id, runId: targetRunId || null }])
+    activateChatTab(id, targetRunId || null)
+  }, [activateChatTab])
 
   const getChatTabTitle = useCallback((tab: ChatTab) => {
     if (!tab.runId) return 'New chat'
@@ -325,16 +388,6 @@ function App() {
     return getBaseName(tab.path)
   }, [])
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setChatViewStateByTab((prev) => ({ ...prev, [activeChatTabId]: chatRuntimeSnapshot }))
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [
-    activeChatTabId,
-    chatRuntimeSnapshot,
-  ])
-
   const [expandedFrom, setExpandedFrom] = useState<ViewState | null>(null)
 
   // --- Navigation Implementation ---
@@ -352,25 +405,27 @@ function App() {
     currentViewRef.current = view
 
     // Sidebar interaction logic
-    if (view.type === 'file' || view.type === 'graph') {
-      ensureFileTabForPath(view.type === 'graph' ? GRAPH_TAB_PATH : view.path)
-    } else if (view.type === 'chat') {
-      if (view.runId) {
-        const existingTab = chatTabs.find((t) => t.runId === view.runId)
+      if (view.type === 'file' || view.type === 'graph') {
+        ensureFileTabForPath(view.type === 'graph' ? GRAPH_TAB_PATH : view.path)
+      } else if (view.type === 'chat') {
+        if (view.runId) {
+          const existingTab = chatTabs.find((t) => t.runId === view.runId)
         if (existingTab) {
           setActiveChatTabId(existingTab.id)
+          } else {
+            setChatTabs((prev) => prev.map((t) => (t.id === activeChatTabId ? { ...t, runId: view.runId || null } : t)))
+          }
+          clearToolOpenForTab(activeChatTabId)
+          loadRun(view.runId)
         } else {
-          setChatTabs((prev) => prev.map((t) => (t.id === activeChatTabId ? { ...t, runId: view.runId || null } : t)))
+          setChatTabs((prev) => prev.map((t) => (t.id === activeChatTabId ? { ...t, runId: null } : t)))
+          clearToolOpenForTab(activeChatTabId)
+          resetChatRuntime()
         }
-        loadRun(view.runId)
-      } else {
-        setChatTabs((prev) => prev.map((t) => (t.id === activeChatTabId ? { ...t, runId: null } : t)))
-        resetChatRuntime()
+      } else if (view.type === 'task') {
+        setSelectedBackgroundTask(view.name)
       }
-    } else if (view.type === 'task') {
-      setSelectedBackgroundTask(view.name)
-    }
-  }, [appendUnique, chatTabs, activeChatTabId, setViewHistoryFull, ensureFileTabForPath, loadRun, resetChatRuntime])
+    }, [appendUnique, chatTabs, activeChatTabId, clearToolOpenForTab, setViewHistoryFull, ensureFileTabForPath, loadRun, resetChatRuntime])
 
   useEffect(() => {
     navigateRef.current = navigate
@@ -434,6 +489,9 @@ function App() {
   const selectedTask = selectedBackgroundTask
     ? backgroundTasks.find(t => t.name === selectedBackgroundTask)
     : null
+  const selectedTreeNode = useMemo(() => findTreeNode(tree, selectedPath), [tree, selectedPath])
+  const selectedCollection = getKnowledgeCollectionMeta(selectedPath)
+  const isCollectionOpen = Boolean(selectedTreeNode?.kind === 'dir' && isKnowledgeCollectionPath(selectedPath))
   const isRightPaneContext = Boolean(selectedPath || isGraphOpen)
   const isRightPaneOnlyMode = isRightPaneContext && isChatSidebarOpen && isRightPaneMaximized
   const shouldCollapseLeftPane = isRightPaneOnlyMode
@@ -527,11 +585,12 @@ function App() {
                 return
               }
 
-              if (selectedPath || isGraphOpen) {
-                setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: runIdToLoad } : t))
-                loadRun(runIdToLoad)
-                return
-              }
+                if (selectedPath || isGraphOpen) {
+                  setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: runIdToLoad } : t))
+                  clearToolOpenForTab(activeChatTabId)
+                  loadRun(runIdToLoad)
+                  return
+                }
 
               setChatTabs(prev => prev.map(t => t.id === activeChatTabId ? { ...t, runId: runIdToLoad } : t))
               void navigateToView({ type: 'chat', runId: runIdToLoad })
@@ -583,7 +642,16 @@ function App() {
       }
       headerContent={
         <>
-          {(selectedPath || isGraphOpen) && fileTabs.length >= 1 ? (
+          {isCollectionOpen ? (
+                  <div className="flex min-w-0 items-center gap-3 px-1">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{selectedCollection?.label}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {selectedCollection?.description}
+                      </div>
+                    </div>
+                  </div>
+                ) : (selectedPath || isGraphOpen) && fileTabs.length >= 1 ? (
                   <TabBar
                     tabs={fileTabs}
                     activeTabId={activeFileTabId ?? ''}
@@ -604,7 +672,7 @@ function App() {
                     onCloseTab={closeChatTab}
                   />
                 )}
-                {selectedPath && (
+                {selectedPath && !isCollectionOpen && (
                   <div className="flex items-center gap-1 text-xs text-muted-foreground self-center shrink-0 pl-2">
                     {isSaving ? (
                       <>
@@ -619,7 +687,7 @@ function App() {
                     ) : null}
                   </div>
                 )}
-                {selectedPath && selectedPath.startsWith('knowledge/') && selectedPath.endsWith('.md') && (
+                {selectedPath && !isCollectionOpen && selectedPath.startsWith('knowledge/') && selectedPath.endsWith('.md') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -708,7 +776,18 @@ function App() {
                   />
                 </div>
               ) : selectedPath ? (
-                selectedPath.endsWith('.md') ? (
+                isCollectionOpen ? (
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <KnowledgeCollectionView
+                      collectionPath={selectedPath}
+                      tree={tree}
+                      onSelectNote={navigateToFile}
+                      onCreateNote={(parentPath) => {
+                        void knowledgeActions.createNote(parentPath)
+                      }}
+                    />
+                  </div>
+                ) : selectedPath.endsWith('.md') ? (
                   <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
                     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                       {openMarkdownTabs.map((tab) => {
@@ -720,6 +799,7 @@ function App() {
                           ? viewingHistoricalVersion.content
                           : editorContentByPath[tab.path]
                             ?? (isActive && selectedPath === tab.path ? editorContent : '')
+                        const { raw: tabFrontmatter, body: tabBody } = splitFrontmatter(tabContent)
                         return (
                           <div
                             key={tab.id}
@@ -731,8 +811,24 @@ function App() {
                             aria-hidden={!isActive}
                           >
                             <MarkdownEditor
-                              content={tabContent}
-                              onChange={(markdown) => { if (!isViewingHistory) handleEditorChange(tab.path, markdown) }}
+                              content={tabBody}
+                              frontmatter={tabFrontmatter}
+                              onChange={(markdown) => {
+                                if (!isViewingHistory) {
+                                  const currentContent = editorContentByPath[tab.path]
+                                    ?? (isActive && selectedPath === tab.path ? editorContent : '')
+                                  const { raw: currentFrontmatter } = splitFrontmatter(currentContent)
+                                  handleEditorChange(tab.path, joinFrontmatter(currentFrontmatter, markdown))
+                                }
+                              }}
+                              onFrontmatterChange={(nextRaw) => {
+                                if (!isViewingHistory) {
+                                  const currentContent = editorContentByPath[tab.path]
+                                    ?? (isActive && selectedPath === tab.path ? editorContent : '')
+                                  const { body: currentBody } = splitFrontmatter(currentContent)
+                                  handleEditorChange(tab.path, joinFrontmatter(nextRaw, currentBody))
+                                }
+                              }}
                               placeholder="Start writing..."
                               wikiLinks={{
                                 files: knowledgeFilePaths,

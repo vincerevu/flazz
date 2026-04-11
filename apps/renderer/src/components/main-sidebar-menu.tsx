@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Sparkles, Workflow } from "lucide-react"
+import { BookOpen, MessageSquare, Workflow, Zap } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { ActiveSection } from "@/contexts/sidebar-context"
@@ -12,7 +12,7 @@ type SidebarSectionItem = {
 const sectionItems: SidebarSectionItem[] = [
   { id: "tasks", label: "Chat", icon: MessageSquare },
   { id: "knowledge", label: "Knowledge", icon: BookOpen },
-  { id: "skills", label: "Skills", icon: Sparkles },
+  { id: "skills", label: "Skills", icon: Zap },
   { id: "workflow", label: "Workflow", icon: Workflow },
 ]
 

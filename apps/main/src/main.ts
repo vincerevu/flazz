@@ -150,6 +150,8 @@ function createWindow() {
     win.loadURL("app://-/index.html");
   } else {
     win.loadURL(rendererDevUrl);
+    // Open DevTools in development
+    win.webContents.openDevTools();
   }
 }
 

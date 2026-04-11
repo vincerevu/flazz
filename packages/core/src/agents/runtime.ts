@@ -3,7 +3,7 @@ import path from "path";
 import crypto from "crypto";
 import { WorkDir } from "../config/config.js";
 import { getNoteCreationStrictness } from "../config/note_creation_config.js";
-import { Agent } from "@flazz/shared";
+import { Agent, AssistantMessage } from "@flazz/shared";
 import { RunEvent } from "@flazz/shared";
 import { CopilotAgent } from "../application/assistant/agent.js";
 import container from "../di/container.js";
@@ -256,6 +256,18 @@ function shouldContinueLoop(finishReason: string | null): boolean {
     return isToolCallFinishReason(finishReason as any);
 }
 
+function buildEmptyAssistantFallback(): z.infer<typeof AssistantMessage> {
+    return {
+        role: "assistant",
+        content: [
+            {
+                type: "text",
+                text: "The selected model returned no visible output for the last step. Please retry or switch to a different model/provider."
+            }
+        ],
+    };
+}
+
 export async function* streamAgent({
     state,
     idGenerator,
@@ -504,6 +516,13 @@ export async function* streamAgent({
         });
         if (lastFinishReason === "length" && !hasVisibleAssistantOutput(message)) {
             message = appendLengthStopNotice(message);
+        }
+        if (!hasVisibleAssistantOutput(message)) {
+            emitLog("warn", "provider returned no visible assistant output", {
+                finishReason: lastFinishReason,
+                messages: state.messages.length,
+            });
+            message = buildEmptyAssistantFallback();
         }
         yield* processEvent({
             runId,
