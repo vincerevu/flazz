@@ -6,51 +6,15 @@ import { Loader2, Search, X } from "lucide-react"
 import { ProviderIcon } from "@/components/provider-icon"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import {
+  MODEL_CONFIG_PATH,
+  PROVIDER_CONNECTIONS_PATH,
+  parseProviderConnections,
+  type RuntimeProviderFlavor,
+  type SavedProviderConnections,
+} from "@/features/providers/provider-connections"
 import { workspaceIpc } from "@/services/workspace-ipc"
 import { modelsIpc } from "@/services/models-ipc"
-
-type RuntimeProviderFlavor =
-  | "openai"
-  | "anthropic"
-  | "google"
-  | "openrouter"
-  | "aigateway"
-  | "ollama"
-  | "openai-compatible"
-  | "deepseek"
-  | "groq"
-  | "mistral"
-  | "xai"
-  | "togetherai"
-  | "perplexity"
-  | "azure"
-  | "amazon-bedrock"
-  | "cohere"
-  | "google-vertex"
-  | "fireworks-ai"
-  | "deepinfra"
-  | "github-models"
-  | "cloudflare-workers-ai"
-  | "lmstudio"
-  | "zhipuai"
-  | "moonshotai"
-  | "siliconflow"
-  | "requesty"
-
-type ModelConfig = {
-  provider: {
-    flavor: RuntimeProviderFlavor
-    apiKey?: string
-    baseURL?: string
-  }
-  model: string
-  knowledgeGraphModel?: string
-}
-
-type SavedProviderConnections = {
-  activeProvider?: RuntimeProviderFlavor
-  providers: Partial<Record<RuntimeProviderFlavor, ModelConfig>>
-}
 
 type ModelOption = {
   id: string
@@ -59,14 +23,12 @@ type ModelOption = {
 }
 
 type ProviderGroup = {
-  id: RuntimeProviderFlavor
+  id: string
+  flavor: RuntimeProviderFlavor
   name: string
   icon: string
   models: ModelOption[]
 }
-
-const CONNECTIONS_PATH = "config/provider-connections.json"
-const MODELS_PATH = "config/models.json"
 const VISIBILITY_STORAGE_KEY = "Flazz-model-visibility-v1"
 
 const providerMeta: Record<RuntimeProviderFlavor, { name: string; icon: string; rank: number }> = {
@@ -98,7 +60,7 @@ const providerMeta: Record<RuntimeProviderFlavor, { name: string; icon: string; 
   ollama: { name: "Ollama", icon: "synthetic", rank: 30 },
 }
 
-function modelKey(providerID: RuntimeProviderFlavor, modelID: string) {
+function modelKey(providerID: string, modelID: string) {
   return `${providerID}:${modelID}`
 }
 
@@ -142,27 +104,18 @@ export function SettingsModelsPanel({ dialogOpen }: { dialogOpen: boolean }) {
       setLoading(true)
       try {
         const [runtimeConfigResult, modelsListResult] = await Promise.all([
-          workspaceIpc.readFile(MODELS_PATH).catch(() => null),
+          workspaceIpc.readFile(MODEL_CONFIG_PATH).catch(() => null),
           modelsIpc.list().catch(() => ({ providers: [] })),
         ])
 
-        let connections: SavedProviderConnections = { providers: {} }
+        const runtimeConfig = runtimeConfigResult?.data ? JSON.parse(runtimeConfigResult.data) : null
+        let connections: SavedProviderConnections = { connections: [] }
 
         try {
-          const connectionResult = await workspaceIpc.readFile(CONNECTIONS_PATH)
-          const parsedConnections = JSON.parse(connectionResult.data) as SavedProviderConnections
-          if (parsedConnections?.providers) {
-            connections = parsedConnections
-          }
+          const connectionResult = await workspaceIpc.readFile(PROVIDER_CONNECTIONS_PATH)
+          connections = parseProviderConnections(JSON.parse(connectionResult.data), runtimeConfig, (flavor) => providerMeta[flavor]?.name || flavor)
         } catch {
-          // Seed from current runtime config below.
-        }
-
-        if (runtimeConfigResult?.data) {
-          const runtimeConfig = JSON.parse(runtimeConfigResult.data) as ModelConfig
-          if (runtimeConfig?.provider?.flavor && runtimeConfig?.model) {
-            connections.providers[runtimeConfig.provider.flavor] = runtimeConfig
-          }
+          connections = parseProviderConnections(null, runtimeConfig, (flavor) => providerMeta[flavor]?.name || flavor)
         }
 
         const catalog = new Map<string, ModelOption[]>()
@@ -170,27 +123,23 @@ export function SettingsModelsPanel({ dialogOpen }: { dialogOpen: boolean }) {
           catalog.set(provider.id, provider.models || [])
         }
 
-        const nextGroups = Object.entries(connections.providers)
-          .filter((entry): entry is [RuntimeProviderFlavor, ModelConfig] => Boolean(entry[1]?.model))
-          .map(([providerID, config]) => {
-            const discoveredModels = catalog.get(providerID) || []
-            const fallbackModels: ModelOption[] = []
-            if (config.model) fallbackModels.push({ id: config.model, name: config.model })
-            if (config.knowledgeGraphModel) {
-              fallbackModels.push({ id: config.knowledgeGraphModel, name: config.knowledgeGraphModel })
-            }
+        const nextGroups = connections.connections
+          .map((connection) => {
+            const discoveredModels = catalog.get(connection.provider.flavor) || []
+            const fallbackModels = connection.models.map((model) => ({ id: model, name: model }))
             const models = normalizeModelList([...discoveredModels, ...fallbackModels])
-            const meta = providerMeta[providerID]
+            const meta = providerMeta[connection.provider.flavor]
             return {
-              id: providerID,
-              name: meta?.name || providerID,
+              id: connection.id,
+              flavor: connection.provider.flavor,
+              name: connection.name,
               icon: meta?.icon || "synthetic",
               models,
             }
           })
           .sort((a, b) => {
-            const aRank = providerMeta[a.id]?.rank ?? 999
-            const bRank = providerMeta[b.id]?.rank ?? 999
+            const aRank = providerMeta[a.flavor]?.rank ?? 999
+            const bRank = providerMeta[b.flavor]?.rank ?? 999
             if (aRank !== bRank) return aRank - bRank
             return a.name.localeCompare(b.name)
           })
@@ -219,17 +168,17 @@ export function SettingsModelsPanel({ dialogOpen }: { dialogOpen: boolean }) {
       .filter((group) => group.models.length > 0 || group.name.toLowerCase().includes(query))
   }, [groups, search])
 
-  const isVisible = (providerID: RuntimeProviderFlavor, modelID: string) =>
+  const isVisible = (providerID: string, modelID: string) =>
     visibility[modelKey(providerID, modelID)] ?? true
 
-  const setModelVisibility = (providerID: RuntimeProviderFlavor, modelID: string, next: boolean) => {
+  const setModelVisibility = (providerID: string, modelID: string, next: boolean) => {
     setVisibility((current) => ({
       ...current,
       [modelKey(providerID, modelID)]: next,
     }))
   }
 
-  const setProviderVisibility = (providerID: RuntimeProviderFlavor, models: ModelOption[], next: boolean) => {
+  const setProviderVisibility = (providerID: string, models: ModelOption[], next: boolean) => {
     setVisibility((current) => {
       const updated = { ...current }
       for (const model of models) {

@@ -1,4 +1,4 @@
-import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Maximize2, Minimize2, SquarePen } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -44,23 +44,6 @@ import {
 } from '@/lib/chat-conversation'
 
 const streamdownComponents = { pre: MarkdownPreOverride }
-
-function StreamingAssistantResponse({
-  content,
-}: {
-  content: string
-}) {
-  const deferredContent = useDeferredValue(content)
-  const displayContent = deferredContent || content
-
-  return (
-    <Message from="assistant">
-      <MessageContent>
-        <MessageResponse components={streamdownComponents} streaming>{displayContent}</MessageResponse>
-      </MessageContent>
-    </Message>
-  )
-}
 
 const MIN_WIDTH = 360
 const MAX_WIDTH = 1600
@@ -310,7 +293,7 @@ export function ChatSidebar({
       return (
         <Message key={item.id} from={item.role}>
           <MessageContent>
-            <MessageResponse components={streamdownComponents}>{item.content}</MessageResponse>
+            <MessageResponse components={streamdownComponents} streaming={item.streaming}>{item.content}</MessageResponse>
           </MessageContent>
         </Message>
       )
@@ -449,6 +432,9 @@ export function ChatSidebar({
                   const isActive = tab.id === activeChatTabId
                   const tabState = getTabState(tab.id)
                   const tabHasConversation = tabState.conversation.length > 0 || Boolean(tabState.currentAssistantMessage)
+                  const hasStreamingAssistant = tabState.conversation.some((item) => (
+                    isChatMessage(item) && item.role === 'assistant' && item.streaming
+                  ))
                   return (
                     <div
                       key={tab.id}
@@ -504,11 +490,7 @@ export function ChatSidebar({
                                 />
                               ))}
 
-                              {tabState.currentAssistantMessage && (
-                                <StreamingAssistantResponse content={tabState.currentAssistantMessage} />
-                              )}
-
-                              {isActive && isProcessing && !tabState.currentAssistantMessage && (
+                              {isActive && isProcessing && !hasStreamingAssistant && (
                                 <Message from="assistant">
                                   <MessageContent>
                                     <Shimmer duration={1}>Thinking...</Shimmer>

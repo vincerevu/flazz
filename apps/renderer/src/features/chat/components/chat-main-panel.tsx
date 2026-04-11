@@ -33,29 +33,11 @@ import {
 import { wikiLabel } from '@/lib/wiki-links'
 import { cn } from '@/lib/utils'
 import type { ChatTab } from '@/components/tab-bar'
-import { useDeferredValue } from 'react'
 
 const streamdownComponents = {
   WikiLink,
   FileCard,
   pre: MarkdownPreOverride,
-}
-
-function StreamingAssistantResponse({
-  content,
-}: {
-  content: string
-}) {
-  const deferredContent = useDeferredValue(content)
-  const displayContent = deferredContent || content
-
-  return (
-    <Message from="assistant">
-      <MessageContent>
-        <MessageResponse components={streamdownComponents} streaming>{displayContent}</MessageResponse>
-      </MessageContent>
-    </Message>
-  )
 }
 
 interface ChatMainPanelProps {
@@ -126,7 +108,7 @@ function renderConversationItem(
     return (
       <Message key={item.id} from={item.role}>
         <MessageContent>
-          <MessageResponse components={streamdownComponents}>{item.content}</MessageResponse>
+          <MessageResponse components={streamdownComponents} streaming={item.streaming}>{item.content}</MessageResponse>
         </MessageContent>
       </Message>
     )
@@ -214,6 +196,9 @@ export function ChatMainPanel({
             const isActive = tab.id === activeChatTabId
             const tabState = getChatTabStateForRender(tab.id)
             const tabHasConversation = tabState.conversation.length > 0 || tabState.currentAssistantMessage
+            const hasStreamingAssistant = tabState.conversation.some((item) => (
+              isChatMessage(item) && item.role === 'assistant' && item.streaming
+            ))
             const tabConversationContentClassName = tabHasConversation
               ? 'mx-auto w-full max-w-4xl pb-28'
               : 'mx-auto w-full max-w-4xl min-h-full items-center justify-center pb-0'
@@ -282,11 +267,7 @@ export function ChatMainPanel({
                           />
                         ))}
 
-                        {tabState.currentAssistantMessage && (
-                          <StreamingAssistantResponse content={tabState.currentAssistantMessage} />
-                        )}
-
-                        {isActive && isProcessing && !tabState.currentAssistantMessage && (
+                        {isActive && isProcessing && !hasStreamingAssistant && (
                           <Message from="assistant">
                             <MessageContent>
                               <Shimmer duration={1}>Thinking...</Shimmer>

@@ -37,6 +37,9 @@ export function registerIntegrationHandlers(handlers: Partial<InvokeHandlers>) {
   handlers['composio:set-api-key'] = async (_event, args) => {
     return composioHandler.setApiKey(args.apiKey);
   };
+  handlers['composio:list-toolkits'] = async () => {
+    return composioHandler.listToolkits();
+  };
   handlers['composio:initiate-connection'] = async (_event, args) => {
     return composioHandler.initiateConnection(args.toolkitSlug);
   };

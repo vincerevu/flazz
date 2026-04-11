@@ -60,10 +60,19 @@ export async function listServers(): Promise<z.infer<typeof McpServerList>> {
     };
     for (const [serverName, config] of Object.entries(mcpServers)) {
         const client = clients[serverName];
+        const state = client ? client.getState() : "disconnected";
+        const error = client ? client.getError() : null;
         result.mcpServers[serverName] = {
             config,
-            state: client ? client.getState() : "disconnected",
-            error: client ? client.getError() : null,
+            state,
+            error,
+            configured: true,
+            availabilityHint:
+                state === "connected"
+                    ? "ready"
+                    : error
+                        ? "configured but currently failing; inspect the error or retry"
+                        : "configured but not connected yet; try listMcpTools or executeMcpTool to lazy-connect it",
         };
     }
     return result;

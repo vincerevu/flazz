@@ -1,6 +1,23 @@
 export interface ComposioAdapter {
     isConfigured(): { configured: boolean };
     setApiKey(apiKey: string): { success: boolean; error?: string };
+    listToolkits(): Promise<{
+        items: Array<{
+            slug: string;
+            name: string;
+            meta: {
+                description: string;
+                logo: string;
+                tools_count: number;
+                triggers_count: number;
+            };
+            no_auth?: boolean;
+            auth_schemes?: string[];
+            composio_managed_auth_schemes?: string[];
+        }>;
+        nextCursor: string | null;
+        totalItems: number;
+    }>;
     initiateConnection(toolkitSlug: string): Promise<{
         success: boolean;
         redirectUrl?: string;

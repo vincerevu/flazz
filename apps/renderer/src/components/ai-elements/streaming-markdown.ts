@@ -1,6 +1,12 @@
 import { marked, type Tokens } from 'marked'
 import remend from 'remend'
 
+export type StreamingMarkdownBlock = {
+  raw: string
+  src: string
+  mode: 'full' | 'live'
+}
+
 function hasReferenceBlocks(text: string) {
   return /^\[[^\]]+\]:\s+\S+/m.test(text) || /^\[\^[^\]]+\]:\s+/m.test(text)
 }
@@ -20,11 +26,16 @@ function healMarkdown(text: string) {
   return remend(text, { linkMode: 'text-only' })
 }
 
-export function prepareStreamingMarkdown(text: string, streaming?: boolean) {
-  if (!streaming || !text) return text
+export function splitStreamingMarkdown(text: string, streaming?: boolean): StreamingMarkdownBlock[] {
+  if (!text) return []
+  if (!streaming) {
+    return [{ raw: text, src: text, mode: 'full' }]
+  }
 
   const healed = healMarkdown(text)
-  if (hasReferenceBlocks(text)) return healed
+  if (hasReferenceBlocks(text)) {
+    return [{ raw: text, src: healed, mode: 'live' }]
+  }
 
   const tokens = marked.lexer(text)
   let tailIndex = -1
@@ -35,19 +46,37 @@ export function prepareStreamingMarkdown(text: string, streaming?: boolean) {
       break
     }
   }
-  if (tailIndex < 0) return healed
+  if (tailIndex < 0) {
+    return [{ raw: text, src: healed, mode: 'live' }]
+  }
 
   const tail = tokens[tailIndex]
-  if (!tail || tail.type !== 'code') return healed
+  if (!tail || tail.type !== 'code') {
+    return [{ raw: text, src: healed, mode: 'live' }]
+  }
 
   const code = tail as Tokens.Code
-  if (!hasOpenCodeFence(code.raw)) return healed
+  if (!hasOpenCodeFence(code.raw)) {
+    return [{ raw: text, src: healed, mode: 'live' }]
+  }
 
   const head = tokens
     .slice(0, tailIndex)
     .map((token) => token.raw)
     .join('')
 
-  if (!head) return code.raw
-  return `${healMarkdown(head)}${code.raw}`
+  if (!head) {
+    return [{ raw: code.raw, src: code.raw, mode: 'live' }]
+  }
+
+  return [
+    { raw: head, src: healMarkdown(head), mode: 'live' },
+    { raw: code.raw, src: code.raw, mode: 'live' },
+  ]
+}
+
+export function prepareStreamingMarkdown(text: string, streaming?: boolean) {
+  return splitStreamingMarkdown(text, streaming)
+    .map((block) => block.src)
+    .join('')
 }

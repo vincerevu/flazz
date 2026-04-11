@@ -8,53 +8,18 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
+import {
+  MODEL_CONFIG_PATH,
+  PROVIDER_CONNECTIONS_PATH,
+  connectionToRuntimeConfig,
+  parseProviderConnections,
+  type ModelConfig,
+  type RuntimeProviderFlavor,
+  type SavedProviderConnections,
+} from '@/features/providers/provider-connections'
 import { modelsActionsIpc } from '@/services/models-actions-ipc'
 import { modelsIpc } from '@/services/models-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
-
-type RuntimeProviderFlavor =
-  | 'openai'
-  | 'anthropic'
-  | 'google'
-  | 'openrouter'
-  | 'aigateway'
-  | 'ollama'
-  | 'openai-compatible'
-  | 'deepseek'
-  | 'groq'
-  | 'mistral'
-  | 'xai'
-  | 'togetherai'
-  | 'perplexity'
-  | 'azure'
-  | 'amazon-bedrock'
-  | 'cohere'
-  | 'google-vertex'
-  | 'fireworks-ai'
-  | 'deepinfra'
-  | 'github-models'
-  | 'cloudflare-workers-ai'
-  | 'lmstudio'
-  | 'zhipuai'
-  | 'moonshotai'
-  | 'siliconflow'
-  | 'requesty'
-
-type ModelConfig = {
-  provider: {
-    flavor: RuntimeProviderFlavor
-    apiKey?: string
-    baseURL?: string
-    headers?: Record<string, string>
-  }
-  model: string
-  knowledgeGraphModel?: string
-}
-
-type SavedProviderConnections = {
-  activeProvider?: RuntimeProviderFlavor
-  providers: Partial<Record<RuntimeProviderFlavor, ModelConfig>>
-}
 
 type ModelOption = {
   id: string
@@ -63,15 +28,13 @@ type ModelOption = {
 }
 
 type ProviderGroup = {
-  id: RuntimeProviderFlavor
+  id: string
+  flavor: RuntimeProviderFlavor
   name: string
   icon: string
   models: ModelOption[]
   latestModelIds: Set<string>
 }
-
-const MODEL_CONFIG_PATH = 'config/models.json'
-const CONNECTIONS_PATH = 'config/provider-connections.json'
 
 const providerMeta: Record<RuntimeProviderFlavor, { name: string; icon: string; rank: number }> = {
   anthropic: { name: 'Anthropic', icon: 'anthropic', rank: 0 },
@@ -129,7 +92,7 @@ export function ChatModelSelector() {
   const [search, setSearch] = useState('')
   const [groups, setGroups] = useState<ProviderGroup[]>([])
   const [runtimeConfig, setRuntimeConfig] = useState<ModelConfig | null>(null)
-  const [connections, setConnections] = useState<SavedProviderConnections>({ providers: {} })
+  const [connections, setConnections] = useState<SavedProviderConnections>({ connections: [] })
   const [saving, setSaving] = useState(false)
 
   const loadConfig = useCallback(async () => {
@@ -145,23 +108,17 @@ export function ChatModelSelector() {
         nextRuntime = JSON.parse(runtimeResult.data) as ModelConfig
       }
 
-      let nextConnections: SavedProviderConnections = {
-        activeProvider: nextRuntime?.provider.flavor,
-        providers: nextRuntime ? { [nextRuntime.provider.flavor]: nextRuntime } : {},
-      }
-
+      let nextConnections: SavedProviderConnections = { connections: [] }
       try {
-        const connectionsResult = await workspaceIpc.readFile(CONNECTIONS_PATH)
-        const parsedConnections = JSON.parse(connectionsResult.data) as SavedProviderConnections
-        if (parsedConnections?.providers) {
-          nextConnections = parsedConnections
-        }
+        const connectionsResult = await workspaceIpc.readFile(PROVIDER_CONNECTIONS_PATH)
+        nextConnections = parseProviderConnections(JSON.parse(connectionsResult.data), nextRuntime, (flavor) => providerMeta[flavor]?.name || flavor)
       } catch {
-        // Keep runtime-derived fallback.
+        nextConnections = parseProviderConnections(null, nextRuntime, (flavor) => providerMeta[flavor]?.name || flavor)
       }
 
-      if (!nextRuntime && nextConnections.activeProvider) {
-        nextRuntime = nextConnections.providers[nextConnections.activeProvider] ?? null
+      if (!nextRuntime && nextConnections.activeProviderId) {
+        const activeConnection = nextConnections.connections.find((connection) => connection.id === nextConnections.activeProviderId)
+        nextRuntime = activeConnection ? connectionToRuntimeConfig(activeConnection) : null
       }
 
       const catalog = new Map<string, ModelOption[]>()
@@ -169,28 +126,16 @@ export function ChatModelSelector() {
         catalog.set(provider.id, provider.models || [])
       }
 
-      const connectedProviderIds = new Set<RuntimeProviderFlavor>()
-      for (const providerId of Object.keys(nextConnections.providers) as RuntimeProviderFlavor[]) {
-        if (nextConnections.providers[providerId]?.model) connectedProviderIds.add(providerId)
-      }
-      if (nextRuntime?.provider.flavor) connectedProviderIds.add(nextRuntime.provider.flavor)
-
-      const nextGroups = Array.from(connectedProviderIds)
-        .map((providerId) => {
-          const providerConfig = nextConnections.providers[providerId]
-          const fallbackModels: ModelOption[] = []
-          if (providerConfig?.model) fallbackModels.push({ id: providerConfig.model, name: providerConfig.model })
-          if (providerConfig?.knowledgeGraphModel) {
-            fallbackModels.push({ id: providerConfig.knowledgeGraphModel, name: providerConfig.knowledgeGraphModel })
-          }
-          if (nextRuntime?.provider.flavor === providerId && nextRuntime.model) {
-            fallbackModels.push({ id: nextRuntime.model, name: nextRuntime.model })
-          }
-          const models = normalizeModelList([...(catalog.get(providerId) || []), ...fallbackModels])
-          const meta = providerMeta[providerId]
+      const nextGroups = nextConnections.connections
+        .map((connection) => {
+          const discoveredModels = catalog.get(connection.provider.flavor) || []
+          const fallbackModels = connection.models.map((model) => ({ id: model, name: model }))
+          const models = normalizeModelList([...discoveredModels, ...fallbackModels])
+          const meta = providerMeta[connection.provider.flavor]
           return {
-            id: providerId,
-            name: meta?.name || providerId,
+            id: connection.id,
+            flavor: connection.provider.flavor,
+            name: connection.name,
             icon: meta?.icon || 'synthetic',
             models,
             latestModelIds: getLatestModelIds(models),
@@ -198,8 +143,8 @@ export function ChatModelSelector() {
         })
         .filter((group) => group.models.length > 0)
         .sort((a, b) => {
-          const aRank = providerMeta[a.id]?.rank ?? 999
-          const bRank = providerMeta[b.id]?.rank ?? 999
+          const aRank = providerMeta[a.flavor]?.rank ?? 999
+          const bRank = providerMeta[b.flavor]?.rank ?? 999
           if (aRank !== bRank) return aRank - bRank
           return a.name.localeCompare(b.name)
         })
@@ -232,36 +177,29 @@ export function ChatModelSelector() {
       .filter((group) => group.models.length > 0 || group.name.toLowerCase().includes(query))
   }, [groups, search])
 
-  const currentProviderId = runtimeConfig?.provider.flavor
+  const currentProviderId = connections.activeProviderId
+  const currentFlavor = runtimeConfig?.provider.flavor
   const currentModelId = runtimeConfig?.model
 
-  const handleSelect = useCallback(async (providerId: RuntimeProviderFlavor, modelId: string) => {
-    const selectedProviderConfig = connections.providers[providerId]
-    if (!selectedProviderConfig) {
+  const handleSelect = useCallback(async (connectionId: string, modelId: string) => {
+    const selectedConnection = connections.connections.find((connection) => connection.id === connectionId)
+    if (!selectedConnection) {
       toast.error('Connect this provider in Settings > Providers first')
       return
     }
 
-    const nextRuntime: ModelConfig = {
-      ...selectedProviderConfig,
-      provider: {
-        ...selectedProviderConfig.provider,
-        flavor: providerId,
-      },
-      model: modelId,
-    }
+    const nextRuntime = connectionToRuntimeConfig(selectedConnection, modelId)
 
     const nextConnections: SavedProviderConnections = {
-      activeProvider: providerId,
-      providers: {
-        ...connections.providers,
-        [providerId]: nextRuntime,
-      },
+      activeProviderId: connectionId,
+      connections: connections.connections.map((connection) =>
+        connection.id === connectionId ? { ...connection, defaultModel: modelId } : connection,
+      ),
     }
 
     setSaving(true)
     try {
-      await workspaceIpc.writeFile(CONNECTIONS_PATH, JSON.stringify(nextConnections, null, 2))
+      await workspaceIpc.writeFile(PROVIDER_CONNECTIONS_PATH, JSON.stringify(nextConnections, null, 2))
       await modelsActionsIpc.saveConfig(nextRuntime)
       setRuntimeConfig(nextRuntime)
       setConnections(nextConnections)
@@ -282,8 +220,8 @@ export function ChatModelSelector() {
           variant="ghost"
           className="h-7 max-w-[240px] justify-start gap-1.5 rounded-md border-0 bg-transparent px-2 text-xs font-medium text-foreground shadow-none hover:bg-muted focus-visible:ring-0"
         >
-          {currentProviderId ? (
-            <ProviderIcon id={providerMeta[currentProviderId]?.icon || 'synthetic'} className="size-3.5 shrink-0" />
+          {currentFlavor ? (
+            <ProviderIcon id={providerMeta[currentFlavor]?.icon || 'synthetic'} className="size-3.5 shrink-0" />
           ) : (
             <Search className="size-3.5 shrink-0" />
           )}

@@ -14,6 +14,10 @@ export const composioActionsIpc = {
     return window.ipc.invoke('composio:set-api-key', { apiKey })
   },
 
+  listToolkits() {
+    return window.ipc.invoke('composio:list-toolkits', null)
+  },
+
   getConnectionStatus(toolkitSlug: string) {
     return window.ipc.invoke('composio:get-connection-status', { toolkitSlug })
   },
