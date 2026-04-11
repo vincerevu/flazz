@@ -7,7 +7,7 @@ export const skill = String.raw`
 
 **IMPORTANT**: When a user asks for ANY task that might require external capabilities (web search, API calls, data fetching, etc.), ALWAYS:
 
-1. **First check**: Call \`listMcpServers\` to see what's available
+1. **First check**: Call \`listMcpServers\` to see what's configured
 2. **Then list tools**: Call \`listMcpTools\` on relevant servers
 3. **Execute if possible**: Use \`executeMcpTool\` if a tool matches the need
 4. **Only then decline**: If no MCP tool can help, explain what's not possible
@@ -225,10 +225,11 @@ As the copilot, you can execute MCP tools directly on behalf of the user using t
 
 ### Workflow for Executing MCP Tools
 1. **Discover available servers**: Use \`listMcpServers\` to see what MCP servers are configured
-2. **List tools from a server**: Use \`listMcpTools\` with the server name to see available tools and their schemas
-3. **CAREFULLY EXAMINE THE SCHEMA**: Look at the \`inputSchema\` to understand exactly what parameters are required
-4. **Execute the tool**: Use \`executeMcpTool\` with the server name, tool name, and required arguments (matching the schema exactly)
-5. **Return results**: Present the results to the user in a helpful format
+2. **Interpret the state carefully**: If a server shows \`disconnected\` but \`error\` is null, treat it as configured but not connected yet, not unavailable
+3. **List tools from a server**: Use \`listMcpTools\` with the server name to see available tools and their schemas. This usually lazy-connects the server
+4. **CAREFULLY EXAMINE THE SCHEMA**: Look at the \`inputSchema\` to understand exactly what parameters are required
+5. **Execute the tool**: Use \`executeMcpTool\` with the server name, tool name, and required arguments (matching the schema exactly)
+6. **Return results**: Present the results to the user in a helpful format
 
 ### CRITICAL: Schema Matching
 
@@ -342,7 +343,7 @@ When a user asks for something that might be accomplished with an MCP tool:
 
 1. **Identify the need**: "You want to search the web? Let me check what MCP tools are available..."
 2. **List servers**: Call \`listMcpServers\` 
-3. **Check for relevant tools**: If you find a relevant server (e.g., "firecrawl" for web search), call \`listMcpTools\`
+3. **Check for relevant tools**: If you find a relevant server (e.g., "firecrawl" for web search), call \`listMcpTools\` even if it currently shows \`disconnected\`, as long as there is no error
 4. **Execute the tool**: Once you find the right tool and understand its schema, call \`executeMcpTool\`
 5. **Present results**: Format and explain the results to the user
 
@@ -429,6 +430,13 @@ tools:
 - Clarify any missing details (required parameters, server names) before modifying files
 - Test server connection with \`listMcpTools\` after adding a new server
 - Invalid MCP configs prevent agents from starting—validation is critical
+
+## Important State Semantics
+- \`connected\`: already connected and ready
+- \`disconnected\` with \`error: null\`: configured, but not connected yet; still try \`listMcpTools\`
+- \`error\` or non-null \`error\`: connection failed and may need investigation
+
+Do not tell the user a configured MCP server is unavailable just because it is currently shown as \`disconnected\`.
 `;
 
 export default skill;

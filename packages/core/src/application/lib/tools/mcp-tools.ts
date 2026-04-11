@@ -42,7 +42,7 @@ export const mcpTools = {
     },
 
     listMcpServers: {
-        description: 'List all available MCP servers from the configuration',
+        description: 'List all configured MCP servers. IMPORTANT: a server with state "disconnected" may still be usable and simply not connected yet. If error is null, call listMcpTools to test and lazy-connect it before concluding it is unavailable.',
         inputSchema: z.object({}),
         execute: async () => {
             try {
@@ -51,6 +51,7 @@ export const mcpTools = {
                 return {
                     result,
                     count: Object.keys(result.mcpServers).length,
+                    hint: 'Treat disconnected + error=null as "configured but not connected yet". Try listMcpTools before saying the server is unavailable.',
                 };
             } catch (error) {
                 return {
@@ -61,7 +62,7 @@ export const mcpTools = {
     },
 
     listMcpTools: {
-        description: 'List all available tools from a specific MCP server',
+        description: 'List all available tools from a specific MCP server. This will attempt to connect the server if it is configured but not connected yet.',
         inputSchema: z.object({
             serverName: z.string().describe('Name of the MCP server to query'),
             cursor: z.string().optional(),

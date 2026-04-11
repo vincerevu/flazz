@@ -3,6 +3,7 @@ import { createAuthServer } from './auth-server.js';
 import * as composioClient from '@flazz/core/dist/composio/client.js';
 import { composioAccountsRepo } from '@flazz/core/dist/composio/repo.js';
 import type { LocalConnectedAccount } from '@flazz/core/dist/composio/types.js';
+import { CURATED_TOOLKIT_SLUGS, COMPOSIO_DISPLAY_NAMES } from '@flazz/shared';
 import { ComposioAdapter } from './composio-adapter.js';
 
 const REDIRECT_URI = 'http://localhost:8081/oauth/callback';
@@ -37,6 +38,49 @@ export class DefaultComposioAdapter implements ComposioAdapter {
                 error: error instanceof Error ? error.message : 'Failed to set API key',
             };
         }
+    }
+
+    async listToolkits(): Promise<{
+        items: Array<{
+            slug: string;
+            name: string;
+            meta: {
+                description: string;
+                logo: string;
+                tools_count: number;
+                triggers_count: number;
+            };
+            no_auth?: boolean;
+            auth_schemes?: string[];
+            composio_managed_auth_schemes?: string[];
+        }>;
+        nextCursor: string | null;
+        totalItems: number;
+    }> {
+        const allItems: Awaited<ReturnType<typeof composioClient.listToolkits>>['items'] = [];
+        let cursor: string | null = null;
+
+        for (let page = 0; page < 10; page += 1) {
+            const result = await composioClient.listToolkits(cursor);
+            allItems.push(...result.items);
+            cursor = result.next_cursor;
+            if (!cursor) {
+                break;
+            }
+        }
+
+        const filtered = allItems
+            .filter((item) => CURATED_TOOLKIT_SLUGS.has(item.slug))
+            .map((item) => ({
+                ...item,
+                name: COMPOSIO_DISPLAY_NAMES[item.slug] || item.name,
+            }));
+
+        return {
+            items: filtered,
+            nextCursor: null,
+            totalItems: filtered.length,
+        };
     }
 
     async initiateConnection(toolkitSlug: string): Promise<{
@@ -262,6 +306,26 @@ export function isConfigured(): { configured: boolean } {
 
 export function setApiKey(apiKey: string): { success: boolean; error?: string } {
     return defaultComposioAdapter.setApiKey(apiKey);
+}
+
+export async function listToolkits(): Promise<{
+    items: Array<{
+        slug: string;
+        name: string;
+        meta: {
+            description: string;
+            logo: string;
+            tools_count: number;
+            triggers_count: number;
+        };
+        no_auth?: boolean;
+        auth_schemes?: string[];
+        composio_managed_auth_schemes?: string[];
+    }>;
+    nextCursor: string | null;
+    totalItems: number;
+}> {
+    return defaultComposioAdapter.listToolkits();
 }
 
 export async function initiateConnection(toolkitSlug: string): Promise<{

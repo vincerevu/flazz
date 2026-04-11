@@ -26,6 +26,8 @@ export const McpServerList = z.object({
         config: McpServerDefinition,
         state: connectionState,
         error: z.string().nullable(),
+        configured: z.boolean(),
+        availabilityHint: z.string().nullable(),
     })),
 });
 

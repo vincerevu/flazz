@@ -48,6 +48,7 @@ type RunRecord = {
 }
 
 const STREAM_FLUSH_MS = 16
+const getStreamingAssistantId = (runId: string) => `assistant-stream-${runId}`
 
 const normalizeUsage = (usage?: Partial<LanguageModelUsage> | null): LanguageModelUsage | null => {
   if (!usage) return null
@@ -207,6 +208,16 @@ const hydrateRunConversation = (run: RunRecord) => {
   }
 }
 
+const extractMessageText = (content: unknown): string => {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((part): part is { type: string; text?: string } => !!part && typeof part === 'object' && 'type' in part)
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text || '')
+    .join('')
+}
+
 export function useChatRuntime({
   agentId,
   onActiveTabRunIdChange,
@@ -223,6 +234,7 @@ export function useChatRuntime({
   const processingRunIdsRef = useRef<Set<string>>(new Set())
   const streamingBuffersRef = useRef<Map<string, { assistant: string }>>(new Map())
   const streamFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const streamFlushFrameRef = useRef<number | null>(null)
   const [isStopping, setIsStopping] = useState(false)
   const [stopClickedAt, setStopClickedAt] = useState<number | null>(null)
   const [, setMessage] = useState('')
@@ -231,26 +243,88 @@ export function useChatRuntime({
   const [allPermissionRequests, setAllPermissionRequests] = useState<Map<string, z.infer<typeof ToolPermissionRequestEvent>>>(new Map())
   const [permissionResponses, setPermissionResponses] = useState<Map<string, PermissionResponse>>(new Map())
 
-  const commitAssistantDraft = useCallback((draftMessageId?: string) => {
-    setCurrentAssistantMessage((currentMsg) => {
-      if (!currentMsg) return ''
+  const removeStreamingAssistant = useCallback((targetRunId: string) => {
+    const streamingId = getStreamingAssistantId(targetRunId)
+    setConversation((prev) => {
+      const next = prev.filter((item) => !(item.id === streamingId && 'role' in item && item.role === 'assistant'))
+      return next.length === prev.length ? prev : next
+    })
+  }, [])
 
+  const syncStreamingAssistant = useCallback((targetRunId: string, content: string) => {
+    const streamingId = getStreamingAssistantId(targetRunId)
+    startTransition(() => {
       setConversation((prev) => {
-        const nextId = draftMessageId ?? `assistant-${Date.now()}`
-        const exists = prev.some((item) =>
-          item.id === nextId && 'role' in item && item.role === 'assistant'
-        )
-        if (exists) return prev
+        const index = prev.findIndex((item) => item.id === streamingId && 'role' in item && item.role === 'assistant')
+        const trimmed = content.trim()
+
+        if (!trimmed) {
+          if (index === -1) return prev
+          const next = [...prev]
+          next.splice(index, 1)
+          return next
+        }
+
+        if (index !== -1) {
+          const existing = prev[index]
+          if (!('role' in existing) || existing.role !== 'assistant') return prev
+          if (existing.content === content && existing.streaming) return prev
+          const next = [...prev]
+          next[index] = { ...existing, content, streaming: true }
+          return next
+        }
+
         return [...prev, {
-          id: nextId,
+          id: streamingId,
           role: 'assistant',
-          content: currentMsg,
+          content,
           timestamp: Date.now(),
+          streaming: true,
         }]
       })
-
-      return ''
+      setCurrentAssistantMessage('')
     })
+  }, [])
+
+  const commitAssistantDraft = useCallback((
+    draftMessageId?: string,
+    targetRunId?: string | null,
+    finalContent?: string,
+  ) => {
+    const resolvedRunId = targetRunId ?? runIdRef.current
+    if (!resolvedRunId) {
+      setCurrentAssistantMessage('')
+      return
+    }
+
+    const streamingId = getStreamingAssistantId(resolvedRunId)
+    setConversation((prev) => {
+      const index = prev.findIndex((item) => item.id === streamingId && 'role' in item && item.role === 'assistant')
+      const existing = index >= 0 ? prev[index] : null
+      const content = finalContent ?? (existing && 'role' in existing && existing.role === 'assistant' ? existing.content : '')
+      const nextId = draftMessageId ?? `assistant-${Date.now()}`
+      const base = index >= 0 ? [...prev.slice(0, index), ...prev.slice(index + 1)] : prev
+      const normalizedContent = content.trim()
+
+      if (!normalizedContent) return base
+
+      const existingCommittedIndex = base.findIndex((item) => item.id === nextId && 'role' in item && item.role === 'assistant')
+      const committedMessage: ChatMessage = {
+        id: nextId,
+        role: 'assistant',
+        content,
+        timestamp: existing && 'timestamp' in existing ? existing.timestamp : Date.now(),
+      }
+
+      if (existingCommittedIndex !== -1) {
+        const next = [...base]
+        next[existingCommittedIndex] = committedMessage
+        return next
+      }
+
+      return [...base, committedMessage]
+    })
+    setCurrentAssistantMessage('')
   }, [])
 
   useEffect(() => {
@@ -361,12 +435,19 @@ export function useChatRuntime({
     const nextRunId = targetRunId ?? runIdRef.current
     if (!nextRunId || nextRunId !== runIdRef.current) return
     const nextText = streamingBuffersRef.current.get(nextRunId)?.assistant ?? ''
-    startTransition(() => {
-      setCurrentAssistantMessage(nextText)
-    })
-  }, [])
+    syncStreamingAssistant(nextRunId, nextText)
+  }, [syncStreamingAssistant])
 
   const scheduleStreamingAssistantFlush = useCallback((targetRunId?: string | null) => {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      if (streamFlushFrameRef.current !== null) return
+      streamFlushFrameRef.current = window.requestAnimationFrame(() => {
+        streamFlushFrameRef.current = null
+        flushStreamingAssistant(targetRunId)
+      })
+      return
+    }
+
     if (streamFlushTimerRef.current) return
     streamFlushTimerRef.current = setTimeout(() => {
       streamFlushTimerRef.current = null
@@ -375,6 +456,10 @@ export function useChatRuntime({
   }, [flushStreamingAssistant])
 
   const cancelStreamingAssistantFlush = useCallback(() => {
+    if (streamFlushFrameRef.current !== null && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(streamFlushFrameRef.current)
+      streamFlushFrameRef.current = null
+    }
     if (!streamFlushTimerRef.current) return
     clearTimeout(streamFlushTimerRef.current)
     streamFlushTimerRef.current = null
@@ -406,13 +491,14 @@ export function useChatRuntime({
         if (isActiveRun) {
           cancelStreamingAssistantFlush()
           flushStreamingAssistant(event.runId)
-          commitAssistantDraft()
+          commitAssistantDraft(undefined, event.runId)
         }
         clearStreamingBuffer(event.runId)
         if (!isActiveRun) return
         setIsProcessing(false)
         setIsStopping(false)
         setStopClickedAt(null)
+        setCurrentAssistantMessage('')
         break
 
       case 'start':
@@ -424,6 +510,7 @@ export function useChatRuntime({
         })
         if (!isActiveRun) return
         setIsProcessing(true)
+        removeStreamingAssistant(event.runId)
         setCurrentAssistantMessage('')
         setModelUsage(null)
         break
@@ -485,7 +572,7 @@ export function useChatRuntime({
           return
         }
         if (msg.role === 'assistant') {
-          commitAssistantDraft(event.messageId)
+          commitAssistantDraft(event.messageId, event.runId, extractMessageText(msg.content))
           clearStreamingBuffer(event.runId)
         }
         break
@@ -611,7 +698,7 @@ export function useChatRuntime({
         setStopClickedAt(null)
         setPendingPermissionRequests(new Map())
         setPendingAskHumanRequests(new Map())
-        commitAssistantDraft(`assistant-stopped-${Date.now()}`)
+        commitAssistantDraft(`assistant-stopped-${Date.now()}`, event.runId)
         break
 
       case 'error':
@@ -623,6 +710,7 @@ export function useChatRuntime({
         clearStreamingBuffer(event.runId)
         if (!isActiveRun) return
         cancelStreamingAssistantFlush()
+        commitAssistantDraft(undefined, event.runId)
         setIsProcessing(false)
         setIsStopping(false)
         setStopClickedAt(null)
@@ -669,17 +757,16 @@ export function useChatRuntime({
     setIsProcessing(isRunProcessing)
     if (isRunProcessing) {
       const buffer = streamingBuffersRef.current.get(runId)
-      startTransition(() => {
-        setCurrentAssistantMessage(buffer?.assistant ?? '')
-      })
+      syncStreamingAssistant(runId, buffer?.assistant ?? '')
     } else {
       setIsStopping(false)
       setStopClickedAt(null)
       cancelStreamingAssistantFlush()
       setCurrentAssistantMessage('')
       streamingBuffersRef.current.delete(runId)
+      removeStreamingAssistant(runId)
     }
-  }, [cancelStreamingAssistantFlush, runId, processingRunIds])
+  }, [cancelStreamingAssistantFlush, removeStreamingAssistant, runId, processingRunIds, syncStreamingAssistant])
 
   const handlePromptSubmit = useCallback(async (
     message: PromptInputMessage,

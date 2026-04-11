@@ -3,18 +3,7 @@ import { z } from "zod";
 /**
  * Composio authentication schemes
  */
-export const ZAuthScheme = z.enum([
-    'API_KEY',
-    'BASIC',
-    'BASIC_WITH_JWT',
-    'BEARER_TOKEN',
-    'COMPOSIO_LINK',
-    'SERVICE_ACCOUNT',
-    'GOOGLE_SERVICE_ACCOUNT',
-    'NO_AUTH',
-    'OAUTH1',
-    'OAUTH2',
-]);
+export const ZAuthScheme = z.string();
 
 /**
  * Connected account status

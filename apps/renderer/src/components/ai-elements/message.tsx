@@ -20,12 +20,12 @@ import {
   XIcon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, memo, useContext, useEffect, useState } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { prepareStreamingMarkdown } from "@/components/ai-elements/streaming-markdown";
+import { splitStreamingMarkdown } from "@/components/ai-elements/streaming-markdown";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -316,11 +316,57 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
+function hashMarkdownBlock(input: string) {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) | 0;
+  }
+  return `${hash}`;
+}
+
+const MessageResponseBlock = memo(function MessageResponseBlock({
+  content,
+  ...props
+}: Omit<MessageResponseProps, "children"> & { content: string }) {
+  return (
+    <Streamdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[[rehypeKatex, { output: "mathml" }]]}
+      {...props}
+    >
+      {content}
+    </Streamdown>
+  );
+}, (prevProps, nextProps) => (
+  prevProps.content === nextProps.content
+  && prevProps.components === nextProps.components
+));
+
 export const MessageResponse = memo(
   ({ className, children, streaming, ...props }: MessageResponseProps & { streaming?: boolean }) => {
-    const normalizedChildren = typeof children === "string"
-      ? prepareStreamingMarkdown(children, streaming)
-      : children;
+    const blocks = useMemo(
+      () => (typeof children === "string" ? splitStreamingMarkdown(children, streaming) : null),
+      [children, streaming]
+    );
+
+    if (blocks) {
+      return (
+        <div
+          className={cn(
+            "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+            className
+          )}
+        >
+          {blocks.map((block, index) => (
+            <MessageResponseBlock
+              key={`${index}-${block.mode}-${hashMarkdownBlock(block.raw)}`}
+              {...props}
+              content={block.src}
+            />
+          ))}
+        </div>
+      );
+    }
 
     return (
       <Streamdown
@@ -332,7 +378,7 @@ export const MessageResponse = memo(
         rehypePlugins={[[rehypeKatex, { output: 'mathml' }]]}
         {...props}
       >
-        {normalizedChildren}
+        {children}
       </Streamdown>
     );
   },

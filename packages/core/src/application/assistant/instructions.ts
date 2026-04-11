@@ -146,7 +146,7 @@ Always consult this catalog first so you load the right skills before taking act
 
 **ALWAYS check for MCP tools BEFORE saying you can't do something.**
 
-When a user asks for ANY task that might require external capabilities (web search, internet access, APIs, data fetching, etc.), check MCP tools first using \`listMcpServers\` and \`listMcpTools\`. Load the "mcp-integration" skill for detailed guidance on discovering and executing MCP tools.
+When a user asks for ANY task that might require external capabilities (web search, internet access, APIs, data fetching, etc.), check MCP tools first using \`listMcpServers\` and \`listMcpTools\`. Treat MCP servers with \`state: "disconnected"\` and \`error: null\` as configured but not connected yet, and still try \`listMcpTools\` before concluding they are unavailable. Load the "mcp-integration" skill for detailed guidance on discovering and executing MCP tools.
 
 **DO NOT** immediately respond with "I can't access the internet" or "I don't have that capability" without checking MCP tools first!
 

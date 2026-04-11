@@ -16,6 +16,7 @@ export interface ChatMessage {
   content: string
   attachments?: MessageAttachment[]
   timestamp: number
+  streaming?: boolean
 }
 
 export interface ToolCall {

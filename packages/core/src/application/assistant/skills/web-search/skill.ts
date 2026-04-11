@@ -47,6 +47,8 @@ If both tools are attached, prefer:
 - \`research-search\` when the user wants to learn, explore, or gather sources
 
 If only one is attached, use whichever is available.
+
+If you are checking MCP-backed search servers, do not treat \`state: "disconnected"\` with \`error: null\` as unavailable. That usually means the server is configured but not connected yet, so you should still try \`listMcpTools\`.
 `;
 
 export default skill;

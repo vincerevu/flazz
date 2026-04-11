@@ -7,6 +7,7 @@ import { AgentScheduleConfig, AgentScheduleEntry } from './agent-schedule.js';
 import { AgentScheduleState } from './agent-schedule-state.js';
 import { ServiceEvent } from './service-events.js';
 import { UserMessageContent } from './message.js';
+import { ZListToolkitsResponse } from './composio.js';
 
 // ============================================================================
 // Runtime Validation Schemas (Single Source of Truth)
@@ -381,6 +382,10 @@ const ipcSchemas = {
     res: z.object({
       toolkits: z.array(z.string()),
     }),
+  },
+  'composio:list-toolkits': {
+    req: z.null(),
+    res: ZListToolkitsResponse,
   },
   'composio:execute-action': {
     req: z.object({
