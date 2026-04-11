@@ -86,6 +86,7 @@ function App() {
   } = useBackgroundTasks()
   const [selectedSkillId, setSelectedSkillId] = useState<string>(mockSkills[0]?.id ?? '')
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(mockWorkflows[0]?.id ?? '')
+  const [pendingFolderRenamePath, setPendingFolderRenamePath] = useState<string | null>(null)
 
   // --- Navigation & History ---
   const historyRef = useRef<{ back: ViewState[]; forward: ViewState[] }>({ back: [], forward: [] })
@@ -125,6 +126,7 @@ function App() {
     tree,
     expandedPaths,
     refreshTree,
+    expandPath,
     expandAll,
     collapseAll,
     knowledgeFiles,
@@ -162,10 +164,37 @@ function App() {
 
   const knowledgeActions = useMemo(() => ({
     ...baseKnowledgeActions,
+    createNote: async (parentPath?: string) => {
+      const result = await baseKnowledgeActions.createNote(parentPath)
+      await refreshTree()
+      return result
+    },
+    createFolder: async (parentPath?: string) => {
+      const createdPath = await baseKnowledgeActions.createFolder(parentPath)
+      if (!createdPath) return createdPath
+      const parentDir = createdPath.split('/').slice(0, -1).join('/')
+      if (parentDir) expandPath(parentDir)
+      await refreshTree()
+      setPendingFolderRenamePath(createdPath)
+      return createdPath
+    },
+    rename: async (path: string, newName: string, isDir: boolean) => {
+      const result = await baseKnowledgeActions.rename(path, newName, isDir)
+      await refreshTree()
+      return result
+    },
+    remove: async (path: string) => {
+      const result = await baseKnowledgeActions.remove(path)
+      await refreshTree()
+      if (pendingFolderRenamePath === path) {
+        setPendingFolderRenamePath(null)
+      }
+      return result
+    },
     openGraph: ensureGraphFileTab,
     expandAll,
     collapseAll,
-  }), [baseKnowledgeActions, ensureGraphFileTab, expandAll, collapseAll])
+  }), [baseKnowledgeActions, collapseAll, ensureGraphFileTab, expandAll, expandPath, pendingFolderRenamePath, refreshTree])
 
   const handleSelectKnowledgeItem = useCallback((path: string, kind: "file" | "dir") => {
     if (kind === 'dir') {
@@ -568,6 +597,8 @@ function App() {
           expandedPaths={expandedPaths}
           onSelectFile={handleSelectKnowledgeItem}
           knowledgeActions={knowledgeActions}
+          pendingFolderRenamePath={pendingFolderRenamePath}
+          onPendingFolderRenameHandled={setPendingFolderRenamePath}
           onVoiceNoteCreated={handleVoiceNoteCreated}
           runs={runs}
           currentRunId={runId}
