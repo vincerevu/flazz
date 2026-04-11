@@ -446,9 +446,12 @@ function providerCardNote(provider: ProviderMeta, config?: ModelConfig) {
   return provider.description
 }
 
-function providerConnectionTag(provider: ProviderMeta, activeProvider?: RuntimeProviderFlavor) {
-  if (provider.runtimeFlavor === "openai-compatible") return "Custom"
-  if (provider.runtimeFlavor === "ollama" || provider.runtimeFlavor === "lmstudio") return "Local"
+function providerConnectionTag(
+  provider: ProviderMeta,
+  activeProvider?: RuntimeProviderFlavor,
+  isConnected?: boolean,
+) {
+  if (isConnected) return "Active"
   if (provider.runtimeFlavor && provider.runtimeFlavor === activeProvider) return "Active"
   return provider.tag
 }
@@ -774,7 +777,7 @@ export function ProviderSettingsPanel({ dialogOpen }: { dialogOpen: boolean }) {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-foreground">{provider.name}</span>
-              {tag(providerConnectionTag(provider, connections.activeProvider))}
+              {tag(providerConnectionTag(provider, connections.activeProvider, connected))}
             </div>
             <p className="pt-0.5 text-xs text-muted-foreground">
               {providerCardNote(provider, runtimeConfig)}

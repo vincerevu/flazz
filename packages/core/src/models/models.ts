@@ -35,14 +35,95 @@ const OPENAI_COMPATIBLE_BASE_URLS: Partial<Record<ProviderConfig["flavor"], stri
     lmstudio: "http://localhost:1234/v1",
 };
 
+const OPENAI_COMPATIBLE_VALIDATION_FLAVORS = new Set<ProviderConfig["flavor"]>([
+    "openai-compatible",
+    "github-models",
+    "cloudflare-workers-ai",
+    "lmstudio",
+    "zhipuai",
+    "moonshotai",
+    "siliconflow",
+    "requesty",
+]);
+
 class DefaultProviderAdapter implements ProviderAdapter {
+    private getOpenAICompatibleBaseURL(config: ProviderConfig): string {
+        return config.baseURL || OPENAI_COMPATIBLE_BASE_URLS[config.flavor] || "";
+    }
+
     private createOpenAICompatibleProvider(name: string, config: ProviderConfig): RuntimeProvider {
         return createOpenAICompatible({
             name,
             apiKey: config.apiKey,
-            baseURL: config.baseURL || OPENAI_COMPATIBLE_BASE_URLS[config.flavor] || "",
+            baseURL: this.getOpenAICompatibleBaseURL(config),
             headers: config.headers,
         });
+    }
+
+    private async testOpenAICompatibleConnection(
+        config: ProviderConfig,
+        model: string,
+        abortSignal: AbortSignal,
+    ): Promise<{ success: boolean; error?: string }> {
+        const baseURL = this.getOpenAICompatibleBaseURL(config).replace(/\/+$/, "");
+        if (!baseURL) {
+            return { success: false, error: "Base URL is required" };
+        }
+
+        const headers = new Headers(config.headers);
+        headers.set("Content-Type", "application/json");
+        if (config.apiKey) {
+            headers.set("Authorization", `Bearer ${config.apiKey}`);
+        }
+
+        const response = await fetch(`${baseURL}/chat/completions`, {
+            method: "POST",
+            headers,
+            signal: abortSignal,
+            body: JSON.stringify({
+                model,
+                messages: [{ role: "user", content: "ping" }],
+                max_tokens: 16,
+                stream: false,
+            }),
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const bodyText = await response.text();
+        let bodyJson: unknown;
+
+        if (bodyText && contentType.includes("application/json")) {
+            try {
+                bodyJson = JSON.parse(bodyText);
+            } catch {
+                return { success: false, error: "Provider returned invalid JSON" };
+            }
+        }
+
+        if (!response.ok) {
+            if (bodyJson && typeof bodyJson === "object" && bodyJson !== null && "error" in bodyJson) {
+                const errorValue = (bodyJson as { error?: unknown }).error;
+                if (typeof errorValue === "string") {
+                    return { success: false, error: errorValue };
+                }
+                if (errorValue && typeof errorValue === "object" && "message" in errorValue) {
+                    const message = (errorValue as { message?: unknown }).message;
+                    if (typeof message === "string") {
+                        return { success: false, error: message };
+                    }
+                }
+            }
+            return {
+                success: false,
+                error: bodyText || `Connection test failed with status ${response.status}`,
+            };
+        }
+
+        if (!bodyJson || typeof bodyJson !== "object" || !("choices" in bodyJson)) {
+            return { success: false, error: "Provider returned an unexpected response shape" };
+        }
+
+        return { success: true };
     }
 
     private createRuntimeProvider(config: ProviderConfig): RuntimeProvider {
@@ -196,6 +277,9 @@ class DefaultProviderAdapter implements ProviderAdapter {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
         try {
+            if (OPENAI_COMPATIBLE_VALIDATION_FLAVORS.has(config.flavor)) {
+                return await this.testOpenAICompatibleConnection(config, model, controller.signal);
+            }
             const languageModel = this.createModel(config, model);
             await generateText({
                 model: languageModel,

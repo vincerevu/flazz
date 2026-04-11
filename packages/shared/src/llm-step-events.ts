@@ -18,6 +18,10 @@ export const LlmStepStreamReasoningEndEvent = BaseEvent.extend({
     type: z.literal("reasoning-end"),
 });
 
+export const LlmStepStreamStartStepEvent = BaseEvent.extend({
+    type: z.literal("start-step"),
+});
+
 export const LlmStepStreamTextStartEvent = BaseEvent.extend({
     type: z.literal("text-start"),
 });
@@ -87,6 +91,7 @@ export const LlmStepStreamErrorEvent = BaseEvent.extend({
 });
 
 export const LlmStepStreamEvent = z.union([
+    LlmStepStreamStartStepEvent,
     LlmStepStreamReasoningStartEvent,
     LlmStepStreamReasoningDeltaEvent,
     LlmStepStreamReasoningEndEvent,

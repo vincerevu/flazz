@@ -22,6 +22,10 @@ import {
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import { prepareStreamingMarkdown } from "@/components/ai-elements/streaming-markdown";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -313,24 +317,29 @@ export const MessageBranchPage = ({
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      remarkPlugins={[
-        // @ts-ignore
-        require('remark-math'),
-      ]}
-      rehypePlugins={[
-        // @ts-ignore
-        [require('rehype-katex'), { output: 'mathml' }],
-      ]}
-      {...props}
-    />
-  ),
-  (prevProps, nextProps) => prevProps.children === nextProps.children
+  ({ className, children, streaming, ...props }: MessageResponseProps & { streaming?: boolean }) => {
+    const normalizedChildren = typeof children === "string"
+      ? prepareStreamingMarkdown(children, streaming)
+      : children;
+
+    return (
+      <Streamdown
+        className={cn(
+          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+          className
+        )}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[[rehypeKatex, { output: 'mathml' }]]}
+        {...props}
+      >
+        {normalizedChildren}
+      </Streamdown>
+    );
+  },
+  (prevProps, nextProps) => (
+    prevProps.children === nextProps.children
+    && prevProps.streaming === nextProps.streaming
+  )
 );
 
 MessageResponse.displayName = "MessageResponse";

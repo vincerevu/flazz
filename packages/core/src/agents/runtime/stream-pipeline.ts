@@ -37,6 +37,8 @@ export class StreamStepMessageBuilder {
 
     ingest(event: z.infer<typeof LlmStepStreamEvent>) {
         switch (event.type) {
+            case "start-step":
+                break;
             case "reasoning-start":
                 break;
             case "reasoning-end":
@@ -446,7 +448,6 @@ export async function* streamLlm(
     signal?: AbortSignal,
 ): AsyncGenerator<z.infer<typeof LlmStepStreamEvent>, void, unknown> {
     const converted = convertFromMessages(messages);
-    console.log(`! SENDING payload to model: `, JSON.stringify(converted))
     const { fullStream } = streamText({
         model,
         messages: converted,
@@ -458,7 +459,6 @@ export async function* streamLlm(
     for await (const event of fullStream) {
         // Check abort on every chunk for responsiveness
         signal?.throwIfAborted();
-        console.log("-> \t\tstream event", JSON.stringify(event));
         switch (event.type) {
             case "error":
                 yield {
@@ -466,6 +466,11 @@ export async function* streamLlm(
                     error: formatLlmStreamError((event as { error?: unknown }).error ?? event),
                 };
                 return;
+            case "start-step":
+                yield {
+                    type: "start-step",
+                };
+                break;
             case "reasoning-start":
                 yield {
                     type: "reasoning-start",
@@ -529,7 +534,6 @@ export async function* streamLlm(
                 };
                 break;
             default:
-                console.log('unknown stream event:', JSON.stringify(event));
                 continue;
         }
     }

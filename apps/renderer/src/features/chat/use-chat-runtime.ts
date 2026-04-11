@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LanguageModelUsage, ToolUIPart } from 'ai'
 import z from 'zod'
 import { AskHumanRequestEvent, ListRunsResponse, RunEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
@@ -46,6 +46,8 @@ type ChatRuntimeSnapshot = {
 type RunRecord = {
   log: RunEventType[]
 }
+
+const STREAM_FLUSH_MS = 16
 
 const normalizeUsage = (usage?: Partial<LanguageModelUsage> | null): LanguageModelUsage | null => {
   if (!usage) return null
@@ -220,6 +222,7 @@ export function useChatRuntime({
   const [processingRunIds, setProcessingRunIds] = useState<Set<string>>(new Set())
   const processingRunIdsRef = useRef<Set<string>>(new Set())
   const streamingBuffersRef = useRef<Map<string, { assistant: string }>>(new Map())
+  const streamFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isStopping, setIsStopping] = useState(false)
   const [stopClickedAt, setStopClickedAt] = useState<number | null>(null)
   const [, setMessage] = useState('')
@@ -227,6 +230,28 @@ export function useChatRuntime({
   const [pendingAskHumanRequests, setPendingAskHumanRequests] = useState<Map<string, z.infer<typeof AskHumanRequestEvent>>>(new Map())
   const [allPermissionRequests, setAllPermissionRequests] = useState<Map<string, z.infer<typeof ToolPermissionRequestEvent>>>(new Map())
   const [permissionResponses, setPermissionResponses] = useState<Map<string, PermissionResponse>>(new Map())
+
+  const commitAssistantDraft = useCallback((draftMessageId?: string) => {
+    setCurrentAssistantMessage((currentMsg) => {
+      if (!currentMsg) return ''
+
+      setConversation((prev) => {
+        const nextId = draftMessageId ?? `assistant-${Date.now()}`
+        const exists = prev.some((item) =>
+          item.id === nextId && 'role' in item && item.role === 'assistant'
+        )
+        if (exists) return prev
+        return [...prev, {
+          id: nextId,
+          role: 'assistant',
+          content: currentMsg,
+          timestamp: Date.now(),
+        }]
+      })
+
+      return ''
+    })
+  }, [])
 
   useEffect(() => {
     runIdRef.current = runId
@@ -297,6 +322,20 @@ export function useChatRuntime({
       setPermissionResponses(parsed.permissionResponses)
     } catch (err) {
       console.error('Failed to load run:', err)
+      if (loadRunRequestIdRef.current !== requestId) return
+      setRunId(id)
+      setConversation([{
+        id: `error-load-${Date.now()}`,
+        kind: 'error',
+        message: 'Failed to open this chat history. Flazz skipped corrupted legacy events where possible, but this run still could not be loaded.',
+        timestamp: Date.now(),
+      }])
+      setMessage('')
+      setPendingPermissionRequests(new Map())
+      setPendingAskHumanRequests(new Map())
+      setAllPermissionRequests(new Map())
+      setPermissionResponses(new Map())
+      toast.error('Failed to open this chat history')
     }
   }, [])
 
@@ -316,6 +355,29 @@ export function useChatRuntime({
 
   const clearStreamingBuffer = useCallback((id: string) => {
     streamingBuffersRef.current.delete(id)
+  }, [])
+
+  const flushStreamingAssistant = useCallback((targetRunId?: string | null) => {
+    const nextRunId = targetRunId ?? runIdRef.current
+    if (!nextRunId || nextRunId !== runIdRef.current) return
+    const nextText = streamingBuffersRef.current.get(nextRunId)?.assistant ?? ''
+    startTransition(() => {
+      setCurrentAssistantMessage(nextText)
+    })
+  }, [])
+
+  const scheduleStreamingAssistantFlush = useCallback((targetRunId?: string | null) => {
+    if (streamFlushTimerRef.current) return
+    streamFlushTimerRef.current = setTimeout(() => {
+      streamFlushTimerRef.current = null
+      flushStreamingAssistant(targetRunId)
+    }, STREAM_FLUSH_MS)
+  }, [flushStreamingAssistant])
+
+  const cancelStreamingAssistantFlush = useCallback(() => {
+    if (!streamFlushTimerRef.current) return
+    clearTimeout(streamFlushTimerRef.current)
+    streamFlushTimerRef.current = null
   }, [])
 
   const handleRunEvent = useCallback((event: RunEventType) => {
@@ -341,6 +403,11 @@ export function useChatRuntime({
           return next
         })
         void loadRuns()
+        if (isActiveRun) {
+          cancelStreamingAssistantFlush()
+          flushStreamingAssistant(event.runId)
+          commitAssistantDraft()
+        }
         clearStreamingBuffer(event.runId)
         if (!isActiveRun) return
         setIsProcessing(false)
@@ -378,7 +445,10 @@ export function useChatRuntime({
         setIsProcessing(true)
         if (llmEvent.type === 'text-delta' && llmEvent.delta) {
           appendStreamingBuffer(event.runId, llmEvent.delta)
-          setCurrentAssistantMessage((prev) => prev + llmEvent.delta)
+          scheduleStreamingAssistantFlush(event.runId)
+        } else if (llmEvent.type === 'start-step') {
+          // Multi-step capable providers may emit explicit step boundaries before text begins.
+          // Keep the run marked as processing, but no UI mutation is needed yet.
         } else if (llmEvent.type === 'tool-call') {
           setConversation((prev) => [...prev, {
             id: llmEvent.toolCallId || `tool-${Date.now()}`,
@@ -415,23 +485,7 @@ export function useChatRuntime({
           return
         }
         if (msg.role === 'assistant') {
-          setCurrentAssistantMessage((currentMsg) => {
-            if (currentMsg) {
-              setConversation((prev) => {
-                const exists = prev.some((item) =>
-                  item.id === event.messageId && 'role' in item && item.role === 'assistant'
-                )
-                if (exists) return prev
-                return [...prev, {
-                  id: event.messageId,
-                  role: 'assistant',
-                  content: currentMsg,
-                  timestamp: Date.now(),
-                }]
-              })
-            }
-            return ''
-          })
+          commitAssistantDraft(event.messageId)
           clearStreamingBuffer(event.runId)
         }
         break
@@ -551,22 +605,13 @@ export function useChatRuntime({
         })
         clearStreamingBuffer(event.runId)
         if (!isActiveRun) return
+        cancelStreamingAssistantFlush()
         setIsProcessing(false)
         setIsStopping(false)
         setStopClickedAt(null)
         setPendingPermissionRequests(new Map())
         setPendingAskHumanRequests(new Map())
-        setCurrentAssistantMessage((currentMsg) => {
-          if (currentMsg) {
-            setConversation((prev) => [...prev, {
-              id: `assistant-stopped-${Date.now()}`,
-              role: 'assistant',
-              content: currentMsg,
-              timestamp: Date.now(),
-            }])
-          }
-          return ''
-        })
+        commitAssistantDraft(`assistant-stopped-${Date.now()}`)
         break
 
       case 'error':
@@ -577,6 +622,7 @@ export function useChatRuntime({
         })
         clearStreamingBuffer(event.runId)
         if (!isActiveRun) return
+        cancelStreamingAssistantFlush()
         setIsProcessing(false)
         setIsStopping(false)
         setStopClickedAt(null)
@@ -590,20 +636,32 @@ export function useChatRuntime({
         console.error('Run error:', event.error)
         break
     }
-  }, [appendStreamingBuffer, clearStreamingBuffer, loadRuns])
+  }, [
+    appendStreamingBuffer,
+    cancelStreamingAssistantFlush,
+    clearStreamingBuffer,
+    commitAssistantDraft,
+    flushStreamingAssistant,
+    loadRuns,
+    scheduleStreamingAssistantFlush,
+  ])
 
   useEffect(() => {
     const cleanup = runsIpc.onEvents(((event: unknown) => {
       handleRunEvent(event as RunEventType)
     }) as (event: null) => void)
-    return cleanup
-  }, [handleRunEvent])
+    return () => {
+      cancelStreamingAssistantFlush()
+      cleanup()
+    }
+  }, [cancelStreamingAssistantFlush, handleRunEvent])
 
   useEffect(() => {
     if (!runId) {
       setIsProcessing(false)
       setIsStopping(false)
       setStopClickedAt(null)
+      cancelStreamingAssistantFlush()
       setCurrentAssistantMessage('')
       return
     }
@@ -611,14 +669,17 @@ export function useChatRuntime({
     setIsProcessing(isRunProcessing)
     if (isRunProcessing) {
       const buffer = streamingBuffersRef.current.get(runId)
-      setCurrentAssistantMessage(buffer?.assistant ?? '')
+      startTransition(() => {
+        setCurrentAssistantMessage(buffer?.assistant ?? '')
+      })
     } else {
       setIsStopping(false)
       setStopClickedAt(null)
+      cancelStreamingAssistantFlush()
       setCurrentAssistantMessage('')
       streamingBuffersRef.current.delete(runId)
     }
-  }, [runId, processingRunIds])
+  }, [cancelStreamingAssistantFlush, runId, processingRunIds])
 
   const handlePromptSubmit = useCallback(async (
     message: PromptInputMessage,

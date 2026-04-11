@@ -9,6 +9,7 @@ import {
   Copy,
   ExternalLink,
   FilePlus,
+  Folder,
   FolderPlus,
   HelpCircle,
   Mic,
@@ -81,7 +82,6 @@ import { servicesIpc } from "@/services/services-ipc"
 import { workspaceIpc } from "@/services/workspace-ipc"
 import type { SkillPreset } from "@/features/skills/mock-skills"
 import type { WorkflowBlueprint } from "@/features/workflow/mock-workflows"
-import { KNOWLEDGE_COLLECTIONS } from "@/features/knowledge/utils/collections"
 
 type KnowledgeActions = {
   createNote: (parentPath?: string) => void
@@ -757,29 +757,6 @@ function KnowledgeSection({
             </Tooltip>
           </div>
           <SidebarGroupContent className="flex-1 overflow-y-auto">
-            <div className="px-2 pt-2">
-              <SidebarMenu>
-                {KNOWLEDGE_COLLECTIONS.map((collection) => (
-                  <SidebarMenuItem key={collection.path}>
-                    <SidebarMenuButton
-                      isActive={selectedPath === collection.path}
-                      onClick={() => onSelectFile(collection.path, "dir")}
-                      className="data-[active=true]:font-normal"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <Network className="size-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-xs">{collection.label}</div>
-                          <div className="truncate text-[10px] text-muted-foreground">
-                            {collection.description}
-                          </div>
-                        </div>
-                      </div>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </div>
             <div ref={treeContainerRef}>
               <SidebarMenu>
                 {tree.map((item, index) => (
@@ -811,6 +788,15 @@ function KnowledgeSection({
   )
 }
 
+function countFiles(node: TreeNode): number {
+  if (node.kind === 'file') return 1
+  return (node.children ?? []).reduce((sum, child) => sum + countFiles(child), 0)
+}
+
+const FOLDER_DISPLAY_NAMES: Record<string, string> = {
+  Notes: 'My Notes',
+}
+
 // Tree component for file browser
 function Tree({
   item,
@@ -827,9 +813,10 @@ function Tree({
 }) {
   const isDir = item.kind === 'dir'
   const isExpanded = expandedPaths.has(item.path)
-      const isSelected = selectedPath === item.path
+  const isSelected = selectedPath === item.path
   const [isRenaming, setIsRenaming] = useState(false)
   const isSubmittingRef = React.useRef(false)
+  const displayName = (isDir && FOLDER_DISPLAY_NAMES[item.name]) || item.name
 
   // For files, strip .md extension for editing
   const baseName = !isDir && item.name.endsWith('.md')
@@ -988,6 +975,34 @@ function Tree({
     )
   }
 
+  const parts = item.path.split('/')
+  const isTopLevelKnowledgeFolder = isDir && parts.length === 2 && parts[0] === 'knowledge'
+
+  if (isTopLevelKnowledgeFolder) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={isSelected}
+              onClick={() => onSelect(item.path, item.kind)}
+              className="data-[active=true]:font-normal"
+            >
+              <Folder className="size-4 shrink-0" />
+              <div className="flex w-full min-w-0 items-center gap-1">
+                <span className="min-w-0 flex-1 truncate">{displayName}</span>
+                <span className="shrink-0 text-xs tabular-nums text-sidebar-foreground/50">
+                  {countFiles(item)}
+                </span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </ContextMenuTrigger>
+        {contextMenuContent}
+      </ContextMenu>
+    )
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -1000,7 +1015,12 @@ function Tree({
             <CollapsibleTrigger asChild>
               <SidebarMenuButton>
                 <ChevronRight className="transition-transform size-4" />
-                <span>{item.name}</span>
+                <div className="flex w-full min-w-0 items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate">{displayName}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-sidebar-foreground/50">
+                    {countFiles(item)}
+                  </span>
+                </div>
               </SidebarMenuButton>
             </CollapsibleTrigger>
             <CollapsibleContent>
