@@ -53,6 +53,15 @@ function isKnowledgeMarkdownRelPath(relPath: string): boolean {
   return normalized.startsWith('knowledge/') && normalized.endsWith('.md');
 }
 
+function shouldWriteUtf8Bom(relPath: string, encoding: z.infer<typeof workspace.Encoding>): boolean {
+  if (encoding !== 'utf8') return false;
+  return path.extname(relPath).toLowerCase() === '.csv';
+}
+
+function ensureUtf8Bom(data: string): string {
+  return data.startsWith('\uFEFF') ? data : `\uFEFF${data}`;
+}
+
 // ============================================================================
 // File System Utilities
 // ============================================================================
@@ -249,7 +258,8 @@ export async function writeFile(
   // Convert data to buffer based on encoding
   let buffer: Buffer;
   if (encoding === 'utf8') {
-    buffer = Buffer.from(data, 'utf8');
+    const normalized = shouldWriteUtf8Bom(relPath, encoding) ? ensureUtf8Bom(data) : data;
+    buffer = Buffer.from(normalized, 'utf8');
   } else if (encoding === 'base64') {
     buffer = Buffer.from(data, 'base64');
   } else {
