@@ -40,8 +40,8 @@ const MIN_HUB_DEGREE = 3 // Minimum degree to be considered a hub
 const MAX_HUB_NODES = 30 // Maximum hub nodes to always show
 
 // Simulation constants (adaptive based on node count)
-const SIMULATION_STEPS_BASE = 240
-const SIMULATION_STEPS_LARGE = 100 // Reduced steps for large graphs
+const SIMULATION_STEPS_BASE = 80  // Reduced from 240
+const SIMULATION_STEPS_LARGE = 50 // Reduced from 100
 const LARGE_GRAPH_THRESHOLD = 200
 
 const SPRING_LENGTH = 80
@@ -282,6 +282,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
     let step = 0
     let rafId = 0
     let active = true
+    let stableCount = 0 // Count stable iterations
 
     // Set simulating state
     setIsSimulating(true)
@@ -297,6 +298,8 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
       ids.forEach((id) => forces.set(id, { x: 0, y: 0 }))
 
       // Repulsion forces (O(n²) - most expensive part)
+      // Optimization: Skip nodes that are too far apart
+      const MAX_REPULSION_DISTANCE = 400
       for (let i = 0; i < ids.length; i += 1) {
         const idA = ids[i]
         const posA = positions.get(idA)
@@ -307,7 +310,12 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
           if (!posB) continue
           const dx = posB.x - posA.x
           const dy = posB.y - posA.y
-          const distance = Math.max(MIN_DISTANCE, Math.hypot(dx, dy))
+          const distanceSquared = dx * dx + dy * dy
+          
+          // Skip if too far (optimization)
+          if (distanceSquared > MAX_REPULSION_DISTANCE * MAX_REPULSION_DISTANCE) continue
+          
+          const distance = Math.max(MIN_DISTANCE, Math.sqrt(distanceSquared))
           const force = REPULSION / (distance * distance)
           const fx = (force * dx) / distance
           const fy = (force * dy) / distance
@@ -362,7 +370,8 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         force.y += dy * CLUSTER_STRENGTH
       })
 
-      // Apply forces
+      // Apply forces and check for stability
+      let maxVelocity = 0
       ids.forEach((id) => {
         const pos = positions.get(id)
         const force = forces.get(id)
@@ -376,7 +385,24 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         pos.vy = (pos.vy + force.y) * DAMPING
         pos.x += pos.vx
         pos.y += pos.vy
+        
+        // Track max velocity for early termination
+        const velocity = Math.abs(pos.vx) + Math.abs(pos.vy)
+        if (velocity > maxVelocity) maxVelocity = velocity
       })
+
+      // Early termination if graph is stable
+      if (maxVelocity < 0.1) {
+        stableCount++
+        if (stableCount > 5) {
+          // Graph is stable, stop early
+          setIsSimulating(false)
+          forceRender((prev) => prev + 1)
+          return
+        }
+      } else {
+        stableCount = 0
+      }
 
       // Only render when simulation is complete for static graph
       if (step >= simulationSteps) {
