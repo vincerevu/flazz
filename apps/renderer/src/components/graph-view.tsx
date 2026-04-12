@@ -215,17 +215,9 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
   }, [])
 
   const getDisplayPosition = useCallback((id: string, base: NodePosition, skipMotion: boolean) => {
-    // Skip motion for large graphs or when dragging
-    if (skipMotion || nodes.length > LARGE_GRAPH_THRESHOLD) {
-      return { x: base.x, y: base.y }
-    }
-    const seed = getMotionSeed(id)
-    const phase = seed.phase + motionTimeRef.current * seed.speed
-    return {
-      x: base.x + Math.sin(phase) * seed.amplitude,
-      y: base.y + Math.cos(phase * 0.9) * seed.amplitude,
-    }
-  }, [getMotionSeed, nodes.length])
+    // Always return static position (no floating animation)
+    return { x: base.x, y: base.y }
+  }, [])
 
   const getGraphPoint = useCallback((event: React.PointerEvent) => {
     const container = containerRef.current
@@ -396,28 +388,28 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
     }
   }, [nodes, edgeList, groupCenters, nodeGroupMap])
 
-  // Floating animation (disabled for large graphs)
-  useEffect(() => {
-    if (nodes.length === 0 || nodes.length > LARGE_GRAPH_THRESHOLD) return
-    
-    let rafId = 0
-    let lastTime = performance.now()
-
-    const animate = (time: number) => {
-      const delta = time - lastTime
-      if (delta >= 32) {
-        motionTimeRef.current += delta
-        lastTime = time
-        forceRender((prev) => prev + 1)
-      }
-      rafId = requestAnimationFrame(animate)
-    }
-
-    rafId = requestAnimationFrame(animate)
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-    }
-  }, [nodes.length])
+  // Floating animation - DISABLED for static graph like Obsidian
+  // useEffect(() => {
+  //   if (nodes.length === 0 || nodes.length > LARGE_GRAPH_THRESHOLD) return
+  //   
+  //   let rafId = 0
+  //   let lastTime = performance.now()
+  //
+  //   const animate = (time: number) => {
+  //     const delta = time - lastTime
+  //     if (delta >= 32) {
+  //       motionTimeRef.current += delta
+  //       lastTime = time
+  //       forceRender((prev) => prev + 1)
+  //     }
+  //     rafId = requestAnimationFrame(animate)
+  //   }
+  //
+  //   rafId = requestAnimationFrame(animate)
+  //   return () => {
+  //     if (rafId) cancelAnimationFrame(rafId)
+  //   }
+  // }, [nodes.length])
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -683,15 +675,14 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
             }
             const activeNode = activeNodeId ? nodes.find((n) => n.id === activeNodeId) : null
             const stroke = isActiveEdge && activeNode ? activeNode.color : '#333'
-            const dx = target.x - source.x
-            const dy = target.y - source.y
-            const dr = Math.sqrt(dx * dx + dy * dy) * 1.5
-            const pathD = `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`
+            // Straight lines like Obsidian (no curves)
             return (
-              <path
+              <line
                 key={`${edge.source}-${edge.target}-${index}`}
-                d={pathD}
-                fill="none"
+                x1={source.x}
+                y1={source.y}
+                x2={target.x}
+                y2={target.y}
                 stroke={stroke}
                 strokeOpacity={strokeOpacity}
                 strokeWidth={strokeWidth}
