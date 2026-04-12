@@ -33,7 +33,17 @@ type NodePosition = {
   vy: number
 }
 
-const SIMULATION_STEPS = 240
+// Performance constants
+const MAX_VISIBLE_NODES = 200 // Maximum nodes to render at once
+const VIEWPORT_PADDING = 300 // Padding around viewport for smooth panning
+const MIN_HUB_DEGREE = 3 // Minimum degree to be considered a hub
+const MAX_HUB_NODES = 30 // Maximum hub nodes to always show
+
+// Simulation constants (adaptive based on node count)
+const SIMULATION_STEPS_BASE = 80  // Reduced from 240
+const SIMULATION_STEPS_LARGE = 50 // Reduced from 100
+const LARGE_GRAPH_THRESHOLD = 200
+
 const SPRING_LENGTH = 80
 const SPRING_STRENGTH = 0.0038
 const REPULSION = 5800
@@ -72,6 +82,8 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string>>(new Set())
+  const [isSimulating, setIsSimulating] = useState(false)
   const [, forceRender] = useState(0)
 
   const edgeList = useMemo(
@@ -115,6 +127,77 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
     return centers
   }, [nodes])
 
+  // Calculate viewport bounds in graph coordinates
+  const viewportBounds = useMemo(() => {
+    const padding = VIEWPORT_PADDING / zoom
+    return {
+      minX: (-pan.x) / zoom - padding,
+      minY: (-pan.y) / zoom - padding,
+      maxX: (-pan.x + viewport.width) / zoom + padding,
+      maxY: (-pan.y + viewport.height) / zoom + padding,
+    }
+  }, [pan, zoom, viewport])
+
+  // Select nodes to render based on viewport and importance
+  const nodesToRender = useMemo(() => {
+    if (nodes.length === 0) return []
+    
+    // If search or group filter is active, show all matching nodes
+    if (searchQuery || selectedGroup) {
+      return nodes
+    }
+
+    // For small graphs, show all nodes
+    if (nodes.length <= MAX_VISIBLE_NODES) {
+      return nodes
+    }
+
+    // Get hub nodes (high degree) - always visible
+    const hubNodes = nodes
+      .filter(n => n.degree >= MIN_HUB_DEGREE)
+      .sort((a, b) => b.degree - a.degree)
+      .slice(0, MAX_HUB_NODES)
+    
+    const hubIds = new Set(hubNodes.map(n => n.id))
+
+    // Get nodes in viewport
+    const nodesInViewport = nodes.filter(node => {
+      const pos = positionsRef.current.get(node.id)
+      if (!pos) return false
+      return (
+        pos.x >= viewportBounds.minX &&
+        pos.x <= viewportBounds.maxX &&
+        pos.y >= viewportBounds.minY &&
+        pos.y <= viewportBounds.maxY
+      )
+    })
+
+    // Combine hubs and viewport nodes
+    const visible = new Set<string>()
+    hubNodes.forEach(n => visible.add(n.id))
+    nodesInViewport.forEach(n => visible.add(n.id))
+
+    // Add connected nodes of visible nodes (for context)
+    const withConnections = new Set(visible)
+    edgeList.forEach(edge => {
+      if (visible.has(edge.source)) withConnections.add(edge.target)
+      if (visible.has(edge.target)) withConnections.add(edge.source)
+    })
+
+    // Limit to MAX_VISIBLE_NODES
+    const result = Array.from(withConnections)
+      .map(id => nodes.find(n => n.id === id))
+      .filter((n): n is GraphNode => n !== undefined)
+      .slice(0, MAX_VISIBLE_NODES)
+
+    return result
+  }, [nodes, viewportBounds, searchQuery, selectedGroup, edgeList])
+
+  // Update visible node IDs when nodesToRender changes
+  useEffect(() => {
+    setVisibleNodeIds(new Set(nodesToRender.map(n => n.id)))
+  }, [nodesToRender])
+
   const getMotionSeed = useCallback((id: string) => {
     const existing = motionSeedsRef.current.get(id)
     if (existing) return existing
@@ -133,16 +216,9 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
   }, [])
 
   const getDisplayPosition = useCallback((id: string, base: NodePosition, skipMotion: boolean) => {
-    if (skipMotion) {
-      return { x: base.x, y: base.y }
-    }
-    const seed = getMotionSeed(id)
-    const phase = seed.phase + motionTimeRef.current * seed.speed
-    return {
-      x: base.x + Math.sin(phase) * seed.amplitude,
-      y: base.y + Math.cos(phase * 0.9) * seed.amplitude,
-    }
-  }, [getMotionSeed])
+    // Always return static position (no floating animation)
+    return { x: base.x, y: base.y }
+  }, [])
 
   const getGraphPoint = useCallback((event: React.PointerEvent) => {
     const container = containerRef.current
@@ -198,9 +274,18 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
 
     positionsRef.current = nextPositions
 
+    // Adaptive simulation steps based on graph size
+    const simulationSteps = nodes.length > LARGE_GRAPH_THRESHOLD 
+      ? SIMULATION_STEPS_LARGE 
+      : SIMULATION_STEPS_BASE
+
     let step = 0
     let rafId = 0
     let active = true
+    let stableCount = 0 // Count stable iterations
+
+    // Set simulating state
+    setIsSimulating(true)
 
     const simulate = () => {
       if (!active) return
@@ -212,6 +297,9 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
 
       ids.forEach((id) => forces.set(id, { x: 0, y: 0 }))
 
+      // Repulsion forces (O(n²) - most expensive part)
+      // Optimization: Skip nodes that are too far apart
+      const MAX_REPULSION_DISTANCE = 400
       for (let i = 0; i < ids.length; i += 1) {
         const idA = ids[i]
         const posA = positions.get(idA)
@@ -222,7 +310,12 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
           if (!posB) continue
           const dx = posB.x - posA.x
           const dy = posB.y - posA.y
-          const distance = Math.max(MIN_DISTANCE, Math.hypot(dx, dy))
+          const distanceSquared = dx * dx + dy * dy
+          
+          // Skip if too far (optimization)
+          if (distanceSquared > MAX_REPULSION_DISTANCE * MAX_REPULSION_DISTANCE) continue
+          
+          const distance = Math.max(MIN_DISTANCE, Math.sqrt(distanceSquared))
           const force = REPULSION / (distance * distance)
           const fx = (force * dx) / distance
           const fy = (force * dy) / distance
@@ -239,6 +332,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         }
       }
 
+      // Spring forces (edges)
       edgeList.forEach((edge) => {
         const posA = positions.get(edge.source)
         const posB = positions.get(edge.target)
@@ -262,6 +356,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         }
       })
 
+      // Cluster forces
       ids.forEach((id) => {
         const pos = positions.get(id)
         const force = forces.get(id)
@@ -275,6 +370,8 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         force.y += dy * CLUSTER_STRENGTH
       })
 
+      // Apply forces and check for stability
+      let maxVelocity = 0
       ids.forEach((id) => {
         const pos = positions.get(id)
         const force = forces.get(id)
@@ -288,11 +385,32 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         pos.vy = (pos.vy + force.y) * DAMPING
         pos.x += pos.vx
         pos.y += pos.vy
+        
+        // Track max velocity for early termination
+        const velocity = Math.abs(pos.vx) + Math.abs(pos.vy)
+        if (velocity > maxVelocity) maxVelocity = velocity
       })
 
-      forceRender((prev) => prev + 1)
+      // Early termination if graph is stable
+      if (maxVelocity < 0.1) {
+        stableCount++
+        if (stableCount > 5) {
+          // Graph is stable, stop early
+          setIsSimulating(false)
+          forceRender((prev) => prev + 1)
+          return
+        }
+      } else {
+        stableCount = 0
+      }
 
-      if (step < SIMULATION_STEPS) {
+      // Only render when simulation is complete for static graph
+      if (step >= simulationSteps) {
+        setIsSimulating(false)
+        forceRender((prev) => prev + 1)
+      }
+
+      if (step < simulationSteps) {
         rafId = requestAnimationFrame(simulate)
       }
     }
@@ -300,30 +418,33 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
     rafId = requestAnimationFrame(simulate)
     return () => {
       active = false
+      setIsSimulating(false)
       if (rafId) cancelAnimationFrame(rafId)
     }
   }, [nodes, edgeList, groupCenters, nodeGroupMap])
 
-  useEffect(() => {
-    if (nodes.length === 0) return
-    let rafId = 0
-    let lastTime = performance.now()
-
-    const animate = (time: number) => {
-      const delta = time - lastTime
-      if (delta >= 32) {
-        motionTimeRef.current += delta
-        lastTime = time
-        forceRender((prev) => prev + 1)
-      }
-      rafId = requestAnimationFrame(animate)
-    }
-
-    rafId = requestAnimationFrame(animate)
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-    }
-  }, [nodes.length])
+  // Floating animation - DISABLED for static graph like Obsidian
+  // useEffect(() => {
+  //   if (nodes.length === 0 || nodes.length > LARGE_GRAPH_THRESHOLD) return
+  //   
+  //   let rafId = 0
+  //   let lastTime = performance.now()
+  //
+  //   const animate = (time: number) => {
+  //     const delta = time - lastTime
+  //     if (delta >= 32) {
+  //       motionTimeRef.current += delta
+  //       lastTime = time
+  //       forceRender((prev) => prev + 1)
+  //     }
+  //     rafId = requestAnimationFrame(animate)
+  //   }
+  //
+  //   rafId = requestAnimationFrame(animate)
+  //   return () => {
+  //     if (rafId) cancelAnimationFrame(rafId)
+  //   }
+  // }, [nodes.length])
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -418,13 +539,21 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
     }
   }
 
+  // Calculate display positions only for visible nodes
   const displayPositions = new Map<string, { x: number; y: number }>()
-  nodes.forEach((node) => {
+  nodesToRender.forEach((node) => {
     const pos = positionsRef.current.get(node.id)
     if (!pos) return
     const isDragging = draggingRef.current?.id === node.id
     displayPositions.set(node.id, getDisplayPosition(node.id, pos, isDragging))
   })
+  
+  // Filter edges to only show edges between visible nodes
+  const visibleEdges = useMemo(() => {
+    return edgeList.filter(edge => 
+      visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)
+    )
+  }, [edgeList, visibleNodeIds])
   const activeNodeId = hoveredNodeId ?? draggingRef.current?.id ?? null
   const connectedNodes = useMemo(() => {
     if (!activeNodeId) return null
@@ -456,11 +585,11 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
 
   return (
     <div ref={containerRef} className="graph-view relative h-full w-full">
-      {isLoading ? (
+      {(isLoading || isSimulating) ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/70 backdrop-blur-sm">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            <span>Building graph…</span>
+            <span>{isLoading ? 'Building graph…' : 'Computing layout…'}</span>
           </div>
         </div>
       ) : null}
@@ -471,19 +600,26 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         </div>
       ) : null}
 
-      {!isLoading && !error && nodes.length === 0 ? (
+      {!isLoading && !isSimulating && !error && nodes.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
           No notes found.
         </div>
       ) : null}
 
-      {legendItems.length > 0 ? (
+      {legendItems.length > 0 && !isSimulating ? (
         <div
           className="absolute right-3 top-3 z-20 rounded-md border border-border/80 bg-background/90 px-3 py-2 text-xs text-foreground shadow-sm backdrop-blur"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <div className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-            Folders
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              Folders
+            </div>
+            {nodes.length > MAX_VISIBLE_NODES && !searchQuery && !selectedGroup && (
+              <div className="text-[0.65rem] text-muted-foreground">
+                {nodesToRender.length}/{nodes.length}
+              </div>
+            )}
           </div>
           <div className="grid gap-1">
             {legendItems.map((item) => {
@@ -506,11 +642,17 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
               )
             })}
           </div>
+          {nodes.length > MAX_VISIBLE_NODES && !searchQuery && !selectedGroup && (
+            <div className="mt-2 pt-2 border-t border-border/50 text-[0.65rem] text-muted-foreground">
+              Pan or zoom to see more nodes
+            </div>
+          )}
         </div>
       ) : null}
 
       <svg
         className="h-full w-full touch-none"
+        style={{ opacity: isSimulating ? 0 : 1, transition: 'opacity 0.3s' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -540,7 +682,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
           ))}
         </defs>
         <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
-          {edgeList.map((edge, index) => {
+          {visibleEdges.map((edge, index) => {
             const source = displayPositions.get(edge.source)
             const target = displayPositions.get(edge.target)
             if (!source || !target) return null
@@ -569,15 +711,14 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
             }
             const activeNode = activeNodeId ? nodes.find((n) => n.id === activeNodeId) : null
             const stroke = isActiveEdge && activeNode ? activeNode.color : '#333'
-            const dx = target.x - source.x
-            const dy = target.y - source.y
-            const dr = Math.sqrt(dx * dx + dy * dy) * 1.5
-            const pathD = `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`
+            // Straight lines like Obsidian (no curves)
             return (
-              <path
+              <line
                 key={`${edge.source}-${edge.target}-${index}`}
-                d={pathD}
-                fill="none"
+                x1={source.x}
+                y1={source.y}
+                x2={target.x}
+                y2={target.y}
                 stroke={stroke}
                 strokeOpacity={strokeOpacity}
                 strokeWidth={strokeWidth}
@@ -586,7 +727,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
             )
           })}
 
-          {nodes.map((node) => {
+          {nodesToRender.map((node) => {
             const pos = displayPositions.get(node.id)
             if (!pos) return null
             const nodeGroup = node.group || 'root'

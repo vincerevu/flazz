@@ -3,15 +3,16 @@ import type { GraphNode, GraphEdge } from '@/components/graph-view'
 import { stripKnowledgePrefix, wikiLabel, toKnowledgePath } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
+// Vibrant color palette - works well in both dark and light themes
 const graphPalette = [
-  { hue: 210, sat: 72, light: 52 },
-  { hue: 28, sat: 78, light: 52 },
-  { hue: 120, sat: 62, light: 48 },
-  { hue: 170, sat: 66, light: 46 },
-  { hue: 280, sat: 70, light: 56 },
-  { hue: 330, sat: 68, light: 54 },
-  { hue: 55, sat: 80, light: 52 },
-  { hue: 0, sat: 72, light: 52 },
+  { hue: 260, sat: 85, light: 65 },  // Purple - vibrant
+  { hue: 200, sat: 90, light: 60 },  // Blue - bright
+  { hue: 340, sat: 85, light: 60 },  // Pink - vivid
+  { hue: 160, sat: 75, light: 55 },  // Teal - fresh
+  { hue: 30, sat: 90, light: 60 },   // Orange - warm
+  { hue: 120, sat: 70, light: 55 },  // Green - natural
+  { hue: 280, sat: 80, light: 60 },  // Magenta - bold
+  { hue: 50, sat: 85, light: 60 },   // Yellow - bright
 ]
 
 const clampNumber = (value: number, min: number, max: number) =>
@@ -88,11 +89,13 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
 
       const getNodeColors = (groupIndex: number, depth: number) => {
         const base = graphPalette[groupIndex % graphPalette.length]
-        const light = clampNumber(base.light + depth * 6, 36, 72)
-        const strokeLight = clampNumber(light - 12, 28, 60)
+        // Adjust lightness for better visibility in both themes
+        // Light theme: slightly darker, Dark theme: slightly lighter
+        const light = clampNumber(base.light + depth * 4, 50, 70)
+        const strokeLight = clampNumber(light - 15, 35, 55)
         return {
           fill: `hsl(${base.hue} ${base.sat}% ${light}%)`,
-          stroke: `hsl(${base.hue} ${Math.min(80, base.sat + 8)}% ${strokeLight}%)`,
+          stroke: `hsl(${base.hue} ${Math.min(90, base.sat + 10)}% ${strokeLight}%)`,
         }
       }
 

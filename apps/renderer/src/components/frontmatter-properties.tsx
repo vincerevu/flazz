@@ -8,6 +8,26 @@ type FrontmatterField = {
   value: string | string[]
 }
 
+type PropertyKind = 'text' | 'list' | 'date'
+
+type SuggestedProperty = {
+  key: string
+  kind: PropertyKind
+}
+
+const SUGGESTED_PROPERTIES: SuggestedProperty[] = [
+  { key: 'type', kind: 'text' },
+  { key: 'status', kind: 'text' },
+  { key: 'relationship', kind: 'text' },
+  { key: 'industry', kind: 'text' },
+  { key: 'domain', kind: 'text' },
+  { key: 'aliases', kind: 'list' },
+  { key: 'people', kind: 'list' },
+  { key: 'projects', kind: 'list' },
+  { key: 'first met', kind: 'date' },
+  { key: 'last seen', kind: 'date' },
+]
+
 function fieldsFromRaw(raw: string | null): FrontmatterField[] {
   return Object.entries(extractAllFrontmatterValues(raw)).map(([key, value]) => ({ key, value }))
 }
@@ -22,6 +42,24 @@ function rawFromFields(fields: FrontmatterField[]): string | null {
   return buildFrontmatter(record)
 }
 
+function inferFieldKind(field: FrontmatterField): PropertyKind {
+  if (Array.isArray(field.value)) return 'list'
+  const lowerKey = field.key.trim().toLowerCase()
+  if (
+    lowerKey.includes('date')
+    || lowerKey.includes('seen')
+    || lowerKey.includes('met')
+    || /^\d{4}-\d{2}-\d{2}$/.test(field.value.trim())
+  ) {
+    return 'date'
+  }
+  return 'text'
+}
+
+function buildInitialValue(kind: PropertyKind): string | string[] {
+  return kind === 'list' ? [] : ''
+}
+
 export function FrontmatterProperties({
   raw,
   onRawChange,
@@ -34,6 +72,8 @@ export function FrontmatterProperties({
   const [expanded, setExpanded] = useState(false)
   const [fields, setFields] = useState<FrontmatterField[]>(() => fieldsFromRaw(raw))
   const [addingField, setAddingField] = useState(false)
+  const [pendingFieldKey, setPendingFieldKey] = useState('')
+  const [pendingFieldKind, setPendingFieldKind] = useState<PropertyKind>('text')
   const newFieldInputRef = useRef<HTMLInputElement | null>(null)
   const lastRawRef = useRef(raw)
 
@@ -58,6 +98,18 @@ export function FrontmatterProperties({
 
   const propertyCount = fields.length
 
+  const beginAddField = useCallback((suggestion?: SuggestedProperty) => {
+    setAddingField(true)
+    setPendingFieldKey(suggestion?.key ?? '')
+    setPendingFieldKind(suggestion?.kind ?? 'text')
+  }, [])
+
+  const cancelAddField = useCallback(() => {
+    setAddingField(false)
+    setPendingFieldKey('')
+    setPendingFieldKind('text')
+  }, [])
+
   const removeField = useCallback((index: number) => {
     setFields((prev) => {
       const next = prev.filter((_, fieldIndex) => fieldIndex !== index)
@@ -66,17 +118,23 @@ export function FrontmatterProperties({
     })
   }, [commit])
 
-  const addField = useCallback((key: string) => {
+  const addField = useCallback((key: string, kind: PropertyKind) => {
     const trimmed = key.trim()
     if (!trimmed) return
+
+    let added = false
     setFields((prev) => {
-      if (prev.some((field) => field.key === trimmed)) return prev
-      const next = [...prev, { key: trimmed, value: '' }]
+      if (prev.some((field) => field.key.toLowerCase() === trimmed.toLowerCase())) return prev
+      const next = [...prev, { key: trimmed, value: buildInitialValue(kind) }]
       commit(next)
+      added = true
       return next
     })
-    setAddingField(false)
-  }, [commit])
+
+    if (added) {
+      cancelAddField()
+    }
+  }, [cancelAddField, commit])
 
   const updateFieldValue = useCallback((index: number, nextValue: string) => {
     setFields((prev) => prev.map((field, fieldIndex) => (
@@ -102,6 +160,12 @@ export function FrontmatterProperties({
   }, [commit])
 
   const rows = useMemo(() => fields, [fields])
+  const remainingSuggestions = useMemo(
+    () => SUGGESTED_PROPERTIES.filter((suggestion) => (
+      !fields.some((field) => field.key.toLowerCase() === suggestion.key.toLowerCase())
+    )),
+    [fields]
+  )
 
   return (
     <div className="frontmatter-properties">
@@ -118,74 +182,118 @@ export function FrontmatterProperties({
 
       {expanded ? (
         <div className="frontmatter-fields">
-          {rows.map((field, index) => (
-            <div key={`${field.key}-${index}`} className="frontmatter-row">
-              <span className="frontmatter-key" title={field.key}>
-                {field.key}
-              </span>
-              <div className="frontmatter-value-area">
-                {Array.isArray(field.value) ? (
-                  <ArrayField
-                    value={field.value}
-                    editable={editable}
-                    onChange={(nextValue) => updateArrayField(index, nextValue)}
-                  />
-                ) : (
-                  <input
-                    className="frontmatter-input"
-                    readOnly={!editable}
-                    value={field.value}
-                    onChange={(event) => updateFieldValue(index, event.target.value)}
-                    onBlur={commitFieldValue}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.currentTarget.blur()
-                      }
-                    }}
-                  />
-                )}
+          {rows.map((field, index) => {
+            const kind = inferFieldKind(field)
+
+            return (
+              <div key={`${field.key}-${index}`} className="frontmatter-row">
+                <span className="frontmatter-key" title={field.key}>
+                  {field.key}
+                </span>
+                <div className="frontmatter-value-area">
+                  {Array.isArray(field.value) ? (
+                    <ArrayField
+                      value={field.value}
+                      editable={editable}
+                      onChange={(nextValue) => updateArrayField(index, nextValue)}
+                    />
+                  ) : (
+                    <input
+                      className="frontmatter-input"
+                      type={kind === 'date' ? 'date' : 'text'}
+                      readOnly={!editable}
+                      value={field.value}
+                      onChange={(event) => updateFieldValue(index, event.target.value)}
+                      onBlur={commitFieldValue}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.currentTarget.blur()
+                        }
+                      }}
+                    />
+                  )}
+                </div>
+                {editable ? (
+                  <button
+                    type="button"
+                    className="frontmatter-remove"
+                    onClick={() => removeField(index)}
+                    title="Remove property"
+                  >
+                    <X size={12} />
+                  </button>
+                ) : null}
               </div>
-              {editable ? (
+            )
+          })}
+
+          {editable && remainingSuggestions.length > 0 ? (
+            <div className="frontmatter-suggestions">
+              {remainingSuggestions.map((suggestion) => (
                 <button
+                  key={suggestion.key}
                   type="button"
-                  className="frontmatter-remove"
-                  onClick={() => removeField(index)}
-                  title="Remove property"
+                  className="frontmatter-suggestion"
+                  onClick={() => addField(suggestion.key, suggestion.kind)}
+                  title={`Add ${suggestion.key}`}
                 >
-                  <X size={12} />
+                  <Plus size={10} />
+                  <span>{suggestion.key}</span>
                 </button>
-              ) : null}
+              ))}
             </div>
-          ))}
+          ) : null}
 
           {editable ? (
             addingField ? (
-              <div className="frontmatter-row frontmatter-new-row">
-                <input
-                  ref={newFieldInputRef}
-                  className="frontmatter-input frontmatter-new-key-input"
-                  placeholder="Property name"
-                  onBlur={(event) => {
-                    if (event.currentTarget.value.trim()) {
-                      addField(event.currentTarget.value)
-                    } else {
-                      setAddingField(false)
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      addField(event.currentTarget.value)
-                    } else if (event.key === 'Escape') {
-                      setAddingField(false)
-                    }
-                  }}
-                />
+              <div className="frontmatter-add-panel">
+                <div className="frontmatter-add-row">
+                  <input
+                    ref={newFieldInputRef}
+                    className="frontmatter-input frontmatter-new-key-input"
+                    placeholder="Property name"
+                    value={pendingFieldKey}
+                    onChange={(event) => setPendingFieldKey(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        addField(pendingFieldKey, pendingFieldKind)
+                      } else if (event.key === 'Escape') {
+                        cancelAddField()
+                      }
+                    }}
+                  />
+                  <select
+                    className="frontmatter-kind-select"
+                    value={pendingFieldKind}
+                    onChange={(event) => setPendingFieldKind(event.target.value as PropertyKind)}
+                  >
+                    <option value="text">Text</option>
+                    <option value="list">List</option>
+                    <option value="date">Date</option>
+                  </select>
+                </div>
+                <div className="frontmatter-add-actions">
+                  <button
+                    type="button"
+                    className="frontmatter-add-confirm"
+                    onClick={() => addField(pendingFieldKey, pendingFieldKind)}
+                  >
+                    Add property
+                  </button>
+                  <button
+                    type="button"
+                    className="frontmatter-add-cancel"
+                    onClick={cancelAddField}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             ) : (
               <button
                 type="button"
                 className="frontmatter-add"
-                onClick={() => setAddingField(true)}
+                onClick={() => beginAddField()}
               >
                 <Plus size={12} />
                 <span>Add property</span>
@@ -257,4 +365,3 @@ function ArrayField({
     </div>
   )
 }
-
