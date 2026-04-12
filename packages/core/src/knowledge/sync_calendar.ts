@@ -11,7 +11,7 @@ import { limitEventItems } from './limit_event_items.js';
 
 // Configuration
 const SYNC_DIR = path.join(WorkDir, 'calendar_sync');
-const SYNC_INTERVAL_MS = 5 * 60 * 1000; // Check every 5 minutes
+const SYNC_INTERVAL_MS = 60 * 60 * 1000; // Check every 1 hour
 const LOOKBACK_DAYS = 14;
 const REQUIRED_SCOPES = [
     'https://www.googleapis.com/auth/calendar.events.readonly',
