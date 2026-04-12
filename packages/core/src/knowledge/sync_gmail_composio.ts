@@ -83,43 +83,24 @@ function saveState(state: SyncState, stateFile: string) {
 async function listThreads(accountId: string, afterDate: string): Promise<any[]> {
     console.log(`[Gmail Composio] Listing threads after ${afterDate}`);
     
-    const allThreads: any[] = [];
-    let pageToken: string | undefined;
-    let pageCount = 0;
-    const MAX_PAGES = 10; // Safety limit: 10 pages × 500 = 5000 threads max
-
-    do {
-        const result = await executeAction(
-            'GMAIL_LIST_THREADS',
-            accountId,
-            {
-                q: `after:${afterDate}`,
-                maxResults: 500, // Increased from 100 to 500 (Gmail API maximum)
-                ...(pageToken && { pageToken })
-            }
-        );
-
-        if (!result.success) {
-            throw new Error(`Failed to list threads: ${result.error}`);
+    // Single page, max 500 threads
+    const result = await executeAction(
+        'GMAIL_LIST_THREADS',
+        accountId,
+        {
+            q: `after:${afterDate}`,
+            maxResults: 500
         }
+    );
 
-        const threads = result.data?.threads || [];
-        allThreads.push(...threads);
-        pageToken = result.data?.nextPageToken;
-        pageCount++;
+    if (!result.success) {
+        throw new Error(`Failed to list threads: ${result.error}`);
+    }
 
-        console.log(`[Gmail Composio] Page ${pageCount}: Fetched ${threads.length} threads (total: ${allThreads.length})`);
-
-        // Safety limit to prevent runaway pagination
-        if (pageCount >= MAX_PAGES) {
-            console.log(`[Gmail Composio] Reached max pages (${MAX_PAGES}), stopping pagination`);
-            break;
-        }
-
-    } while (pageToken);
-
-    console.log(`[Gmail Composio] Total threads fetched: ${allThreads.length} in ${pageCount} page(s)`);
-    return allThreads;
+    const threads = result.data?.threads || [];
+    console.log(`[Gmail Composio] Fetched ${threads.length} threads`);
+    
+    return threads;
 }
 
 async function getThreadDetails(accountId: string, threadId: string): Promise<any> {
@@ -345,70 +326,46 @@ async function performSync() {
     try {
         console.log('[Gmail Composio] Starting sync...');
 
-        // Load state to check last sync time
-        const state = loadState(STATE_FILE);
+        // Always sync last 30 days, max 500 threads
+        const pastDate = new Date();
+        pastDate.setDate(pastDate.getDate() - LOOKBACK_DAYS);
+        const dateQuery = pastDate.toISOString().split('T')[0].replace(/-/g, '/');
 
-        // Calculate date query
-        let dateQuery: string;
-        let isIncrementalSync = false;
-
-        if (state.lastSyncTime) {
-            // Incremental sync: Only get threads after last sync (with 1 hour buffer for safety)
-            const lastSync = new Date(state.lastSyncTime);
-            lastSync.setHours(lastSync.getHours() - 1); // 1 hour buffer
-            dateQuery = lastSync.toISOString().split('T')[0].replace(/-/g, '/');
-            isIncrementalSync = true;
-            console.log(`[Gmail Composio] Incremental sync from ${dateQuery}`);
-        } else {
-            // First sync: Get last 30 days
-            const pastDate = new Date();
-            pastDate.setDate(pastDate.getDate() - LOOKBACK_DAYS);
-            dateQuery = pastDate.toISOString().split('T')[0].replace(/-/g, '/');
-            console.log(`[Gmail Composio] Full sync (last ${LOOKBACK_DAYS} days)`);
-        }
+        console.log(`[Gmail Composio] Syncing last ${LOOKBACK_DAYS} days (max 500 threads)`);
 
         // List threads
         const threads = await listThreads(account.id, dateQuery);
 
         if (threads.length === 0) {
-            console.log('[Gmail Composio] No new threads found.');
-            saveState({ lastSyncTime: new Date().toISOString() }, STATE_FILE);
+            console.log('[Gmail Composio] No threads found.');
             return;
         }
 
         console.log(`[Gmail Composio] Found ${threads.length} threads to check`);
 
-        // Filter threads: skip if file exists and is recent
+        // Filter: only process if file does NOT exist
         let newCount = 0;
         let skippedCount = 0;
         const processedThreadIds: string[] = [];
-        const ONE_HOUR_MS = 60 * 60 * 1000;
 
         for (const thread of threads) {
             if (!thread.id) continue;
 
             const filePath = path.join(SYNC_DIR, `${thread.id}.md`);
 
-            // Check if file exists and is recent (< 1 hour old)
+            // Skip if file already exists (already synced)
             if (fs.existsSync(filePath)) {
-                const stats = fs.statSync(filePath);
-                const fileAge = Date.now() - stats.mtimeMs;
-
-                if (fileAge < ONE_HOUR_MS) {
-                    // File is recent, skip
-                    skippedCount++;
-                    continue;
-                }
-                // File is old (> 1 hour), re-sync in case thread was updated
+                skippedCount++;
+                continue;
             }
 
-            // Process thread (new or updated)
+            // Process thread (new email only)
             await processThread(account.id, thread.id, SYNC_DIR, ATTACHMENTS_DIR);
             processedThreadIds.push(thread.id);
             newCount++;
         }
 
-        console.log(`[Gmail Composio] Synced ${newCount} threads, skipped ${skippedCount} existing`);
+        console.log(`[Gmail Composio] Synced ${newCount} new threads, skipped ${skippedCount} existing`);
 
         // Only log if there were actual changes
         if (newCount > 0) {
@@ -437,9 +394,6 @@ async function performSync() {
                 summary: { new: newCount, skipped: skippedCount },
             });
         }
-
-        // Save current time as last sync
-        saveState({ lastSyncTime: new Date().toISOString() }, STATE_FILE);
 
         console.log('[Gmail Composio] Sync completed.');
 
