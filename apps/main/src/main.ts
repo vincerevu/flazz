@@ -9,8 +9,12 @@ import { dirname } from "node:path";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 
 import { ServiceRegistry } from "@flazz/core/dist/services/service_registry.js";
-import { gmailSyncService } from "@flazz/core/dist/knowledge/sync_gmail.js";
-import { calendarSyncService } from "@flazz/core/dist/knowledge/sync_calendar.js";
+// Use Composio-based sync services (simpler OAuth, unified integration)
+import { gmailSyncService } from "@flazz/core/dist/knowledge/sync_gmail_composio.js";
+import { calendarSyncService } from "@flazz/core/dist/knowledge/sync_calendar_composio.js";
+// Old Direct API versions (kept for reference):
+// import { gmailSyncService } from "@flazz/core/dist/knowledge/sync_gmail.js";
+// import { calendarSyncService } from "@flazz/core/dist/knowledge/sync_calendar.js";
 import { firefliesSyncService } from "@flazz/core/dist/knowledge/sync_fireflies.js";
 import { granolaSyncService } from "@flazz/core/dist/knowledge/granola/sync.js";
 import { graphBuilderService } from "@flazz/core/dist/knowledge/build_graph.js";
