@@ -34,6 +34,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 import { toast } from 'sonner'
 import { shellIpc } from '@/services/shell-ipc'
+import { workspaceIpc } from '@/services/workspace-ipc'
 
 export type StagedAttachment = {
   id: string
@@ -46,6 +47,37 @@ export type StagedAttachment = {
 }
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024 // 10MB
+const TEMP_ATTACHMENT_DIR = 'tmp/chat-attachments'
+
+function sanitizeFilenameSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+function inferExtension(file: File): string {
+  const explicit = getExtension(file.name)
+  if (explicit) return explicit
+
+  const mime = file.type.toLowerCase()
+  if (mime === 'image/png') return 'png'
+  if (mime === 'image/jpeg') return 'jpg'
+  if (mime === 'image/webp') return 'webp'
+  if (mime === 'image/gif') return 'gif'
+  if (mime === 'image/svg+xml') return 'svg'
+  if (mime === 'image/bmp') return 'bmp'
+  if (mime === 'image/tiff') return 'tiff'
+  return 'bin'
+}
+
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
+}
 
 function getAttachmentIcon(kind: AttachmentIconKind) {
   switch (kind) {
@@ -148,6 +180,48 @@ function ChatInputInner({
     }
   }, [])
 
+  const addClipboardFiles = useCallback(async (files: File[]) => {
+    const newAttachments: StagedAttachment[] = []
+
+    for (const file of files) {
+      try {
+        if (file.size > MAX_ATTACHMENT_SIZE) {
+          toast.error(`File too large: ${file.name || 'clipboard-image'} (max 10MB)`)
+          continue
+        }
+
+        const ext = inferExtension(file)
+        const baseName = sanitizeFilenameSegment(
+          file.name ? file.name.replace(/\.[^.]+$/, '') : `clipboard-${Date.now()}`
+        ) || `clipboard-${Date.now()}`
+        const filename = `${baseName}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+        const relativePath = `${TEMP_ATTACHMENT_DIR}/${filename}`
+        const base64 = bufferToBase64(await file.arrayBuffer())
+
+        await workspaceIpc.writeFile(relativePath, base64, { encoding: 'base64', mkdirp: true })
+
+        const mime = file.type || getMimeFromExtension(ext)
+        newAttachments.push({
+          id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          path: relativePath,
+          filename: file.name || filename,
+          mimeType: mime,
+          isImage: isImageMime(mime),
+          size: file.size,
+          thumbnailUrl: isImageMime(mime) ? `data:${mime};base64,${base64}` : undefined,
+        })
+      } catch (err) {
+        console.error('Failed to store pasted file:', file.name, err)
+        toast.error(`Failed to paste: ${file.name || 'clipboard-image'}`)
+      }
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments((prev) => [...prev, ...newAttachments])
+      setFocusNonce((value) => value + 1)
+    }
+  }, [])
+
   const removeAttachment = useCallback((id: string) => {
     setAttachments((prev) => prev.filter((attachment) => attachment.id !== id))
   }, [])
@@ -166,6 +240,23 @@ function ChatInputInner({
       handleSubmit()
     }
   }, [handleSubmit])
+
+  const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = event.clipboardData?.items
+    if (!items) return
+
+    const files: File[] = []
+    for (const item of items) {
+      if (item.kind !== 'file') continue
+      const file = item.getAsFile()
+      if (file) files.push(file)
+    }
+
+    if (files.length === 0) return
+
+    event.preventDefault()
+    void addClipboardFiles(files)
+  }, [addClipboardFiles])
 
   useEffect(() => {
     if (!isActive) return
@@ -262,6 +353,7 @@ function ChatInputInner({
         <PromptInputTextarea
           placeholder="Type your message..."
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           autoFocus={isActive}
           focusTrigger={isActive ? `${runId ?? 'new'}:${focusNonce}` : undefined}
           className="min-h-6 rounded-none border-0 bg-transparent px-0 py-0 text-[15px] shadow-none focus-visible:ring-0"

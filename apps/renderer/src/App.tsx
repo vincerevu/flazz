@@ -13,7 +13,7 @@ import {
 } from './features/knowledge/types'
 import { getBaseName } from './features/knowledge/utils/wiki-logic'
 
-import { CheckIcon, HistoryIcon, LoaderIcon, Maximize2, Minimize2, SquarePen } from 'lucide-react';
+import { CheckIcon, HistoryIcon, LoaderIcon, Maximize2, Minimize2, RotateCcw, SquarePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MarkdownEditor } from './components/markdown-editor';
 import { ChatSidebar } from './components/chat-sidebar';
@@ -153,6 +153,7 @@ function App() {
     switchFileTab,
     closeFileTab,
     openWikiLink,
+    reloadFileFromDisk,
   } = useFileEditor({
     workspaceRoot: windowState?.workspaceRoot || '',
     navigateToFile: navigateToFileRefThunk,
@@ -724,6 +725,23 @@ function App() {
                       <button
                         type="button"
                         onClick={() => {
+                          void reloadFileFromDisk(selectedPath)
+                        }}
+                        className="titlebar-no-drag flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors self-center shrink-0"
+                        aria-label="Reload from disk"
+                      >
+                        <RotateCcw className="size-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Reload from disk</TooltipContent>
+                  </Tooltip>
+                )}
+                {selectedPath && !isCollectionOpen && selectedPath.startsWith('knowledge/') && selectedPath.endsWith('.md') && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => {
                           if (versionHistoryPath) {
                             setVersionHistoryPath(null)
                             setViewingHistoricalVersion(null)
@@ -864,7 +882,9 @@ function App() {
                               wikiLinks={{
                                 files: knowledgeFilePaths,
                                 recent: recentWikiFiles,
-                                onOpen: (path) => navigateToView({ type: 'file', path }),
+                                onOpen: (path) => {
+                                  void openWikiLink(path)
+                                },
                                 onCreate: (path) => openWikiLink(path),
                               }}
                               onImageUpload={handleImageUpload}

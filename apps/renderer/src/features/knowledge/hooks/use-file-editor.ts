@@ -15,6 +15,14 @@ import { workspaceIpc } from '@/services/workspace-ipc'
 const GRAPH_TAB_PATH = '__Flazz_graph_view__'
 const untitledBaseName = 'untitled'
 
+function normalizeForCompare(value: string): string {
+  return value
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim()
+}
+
 interface UseFileEditorOptions {
   workspaceRoot: string
   navigateToFile: (path: string) => void
@@ -99,6 +107,42 @@ export function useFileEditor({
     setEditorContent(markdown)
   }, [setEditorCacheForPath])
 
+  const reloadFileFromDisk = useCallback(async (
+    path: string,
+    options?: { force?: boolean }
+  ) => {
+    if (!path.endsWith('.md')) return
+
+    const requestId = (fileLoadRequestIdRef.current += 1)
+    const result = await workspaceIpc.readFile(path)
+
+    if (fileLoadRequestIdRef.current !== requestId) return
+
+    setFileContent((current) => (selectedPathRef.current === path ? result.data : current))
+
+    const currentBaseline = initialContentByPathRef.current.get(path)
+    const hasUnsavedActiveEdits =
+      currentBaseline !== undefined
+      && normalizeForCompare(editorContentRef.current) !== normalizeForCompare(currentBaseline)
+    const shouldApplyToEditor =
+      options?.force === true
+      || editorPathRef.current !== path
+      || !hasUnsavedActiveEdits
+
+    if (!shouldApplyToEditor) return
+
+    setEditorCacheForPath(path, result.data)
+    initialContentByPathRef.current.set(path, result.data)
+
+    if (selectedPathRef.current === path) {
+      setEditorContent(result.data)
+      editorContentRef.current = result.data
+      editorPathRef.current = path
+      initialContentRef.current = result.data
+      setLastSaved(new Date())
+    }
+  }, [setEditorCacheForPath])
+
   // Load file content
   useEffect(() => {
     if (!selectedPath) {
@@ -111,13 +155,18 @@ export function useFileEditor({
     }
     if (selectedPath.endsWith('.md')) {
       const cachedContent = editorContentByPathRef.current.get(selectedPath)
-      if (cachedContent !== undefined) {
+      const baselineContent = initialContentByPathRef.current.get(selectedPath)
+      const hasUnsavedCachedChanges =
+        cachedContent !== undefined
+        && baselineContent !== undefined
+        && normalizeForCompare(cachedContent) !== normalizeForCompare(baselineContent)
+
+      if (hasUnsavedCachedChanges) {
         setFileContent(cachedContent)
         setEditorContent(cachedContent)
         editorContentRef.current = cachedContent
         editorPathRef.current = selectedPath
-        initialContentRef.current = initialContentByPathRef.current.get(selectedPath) ?? cachedContent
-        return
+        initialContentRef.current = baselineContent
       }
     }
     const requestId = (fileLoadRequestIdRef.current += 1)
@@ -128,26 +177,15 @@ export function useFileEditor({
         const stat = await workspaceIpc.stat(pathToLoad)
         if (cancelled || fileLoadRequestIdRef.current !== requestId || selectedPathRef.current !== pathToLoad) return
         if (stat.kind === 'file') {
-          const result = await workspaceIpc.readFile(pathToLoad)
-          if (cancelled || fileLoadRequestIdRef.current !== requestId || selectedPathRef.current !== pathToLoad) return
-          setFileContent(result.data)
-          const normalizeForCompare = (s: string) => s.split('\n').map(line => line.trimEnd()).join('\n').trim()
-          const isSameEditorFile = editorPathRef.current === pathToLoad
-          const wouldClobberActiveEdits =
-            isSameEditorFile
-            && normalizeForCompare(editorContentRef.current) !== normalizeForCompare(result.data)
-          if (!wouldClobberActiveEdits) {
-            setEditorContent(result.data)
-            if (pathToLoad.endsWith('.md')) {
-              setEditorCacheForPath(pathToLoad, result.data)
+          if (pathToLoad.endsWith('.md')) {
+            await reloadFileFromDisk(pathToLoad, { force: true })
+            if (!cancelled && fileLoadRequestIdRef.current === requestId && selectedPathRef.current === pathToLoad) {
+              setLastSaved(null)
             }
-            editorContentRef.current = result.data
-            editorPathRef.current = pathToLoad
-            initialContentByPathRef.current.set(pathToLoad, result.data)
-            initialContentRef.current = result.data
-            setLastSaved(null)
           } else {
-            editorPathRef.current = pathToLoad
+            const result = await workspaceIpc.readFile(pathToLoad)
+            if (cancelled || fileLoadRequestIdRef.current !== requestId || selectedPathRef.current !== pathToLoad) return
+            setFileContent(result.data)
           }
         }
       } catch (err) {
@@ -157,7 +195,7 @@ export function useFileEditor({
     return () => {
       cancelled = true
     }
-  }, [selectedPath, setEditorCacheForPath])
+  }, [reloadFileFromDisk, selectedPath])
 
   // Recent wiki files
   useEffect(() => {
@@ -553,6 +591,7 @@ export function useFileEditor({
     removeEditorCacheForPath,
     ensureWikiFile,
     openWikiLink,
+    reloadFileFromDisk,
     selectedPathRef,
     editorPathRef,
     initialContentByPathRef,
