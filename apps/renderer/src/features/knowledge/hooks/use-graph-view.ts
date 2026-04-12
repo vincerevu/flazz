@@ -3,15 +3,16 @@ import type { GraphNode, GraphEdge } from '@/components/graph-view'
 import { stripKnowledgePrefix, wikiLabel, toKnowledgePath } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
+// Soft pastel colors - easy on the eyes
 const graphPalette = [
-  { hue: 210, sat: 72, light: 52 },
-  { hue: 28, sat: 78, light: 52 },
-  { hue: 120, sat: 62, light: 48 },
-  { hue: 170, sat: 66, light: 46 },
-  { hue: 280, sat: 70, light: 56 },
-  { hue: 330, sat: 68, light: 54 },
-  { hue: 55, sat: 80, light: 52 },
-  { hue: 0, sat: 72, light: 52 },
+  { hue: 210, sat: 45, light: 65 },  // Soft blue
+  { hue: 30, sat: 50, light: 68 },   // Soft orange
+  { hue: 140, sat: 40, light: 62 },  // Soft green
+  { hue: 180, sat: 42, light: 64 },  // Soft cyan
+  { hue: 270, sat: 48, light: 70 },  // Soft purple
+  { hue: 340, sat: 45, light: 68 },  // Soft pink
+  { hue: 50, sat: 52, light: 66 },   // Soft yellow
+  { hue: 0, sat: 48, light: 66 },    // Soft red
 ]
 
 const clampNumber = (value: number, min: number, max: number) =>
@@ -88,11 +89,12 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
 
       const getNodeColors = (groupIndex: number, depth: number) => {
         const base = graphPalette[groupIndex % graphPalette.length]
-        const light = clampNumber(base.light + depth * 6, 36, 72)
-        const strokeLight = clampNumber(light - 12, 28, 60)
+        // Lighter colors for better visibility
+        const light = clampNumber(base.light + depth * 4, 58, 78)
+        const strokeLight = clampNumber(light - 18, 40, 65)
         return {
           fill: `hsl(${base.hue} ${base.sat}% ${light}%)`,
-          stroke: `hsl(${base.hue} ${Math.min(80, base.sat + 8)}% ${strokeLight}%)`,
+          stroke: `hsl(${base.hue} ${Math.min(60, base.sat + 5)}% ${strokeLight}%)`,
         }
       }
 
