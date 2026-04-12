@@ -83,6 +83,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string>>(new Set())
+  const [isSimulating, setIsSimulating] = useState(false)
   const [, forceRender] = useState(0)
 
   const edgeList = useMemo(
@@ -282,6 +283,9 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
     let rafId = 0
     let active = true
 
+    // Set simulating state
+    setIsSimulating(true)
+
     const simulate = () => {
       if (!active) return
       step += 1
@@ -376,6 +380,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
 
       // Only render when simulation is complete for static graph
       if (step >= simulationSteps) {
+        setIsSimulating(false)
         forceRender((prev) => prev + 1)
       }
 
@@ -387,6 +392,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
     rafId = requestAnimationFrame(simulate)
     return () => {
       active = false
+      setIsSimulating(false)
       if (rafId) cancelAnimationFrame(rafId)
     }
   }, [nodes, edgeList, groupCenters, nodeGroupMap])
@@ -553,11 +559,11 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
 
   return (
     <div ref={containerRef} className="graph-view relative h-full w-full">
-      {isLoading ? (
+      {(isLoading || isSimulating) ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/70 backdrop-blur-sm">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            <span>Building graph…</span>
+            <span>{isLoading ? 'Building graph…' : 'Computing layout…'}</span>
           </div>
         </div>
       ) : null}
@@ -568,13 +574,13 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         </div>
       ) : null}
 
-      {!isLoading && !error && nodes.length === 0 ? (
+      {!isLoading && !isSimulating && !error && nodes.length === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
           No notes found.
         </div>
       ) : null}
 
-      {legendItems.length > 0 ? (
+      {legendItems.length > 0 && !isSimulating ? (
         <div
           className="absolute right-3 top-3 z-20 rounded-md border border-border/80 bg-background/90 px-3 py-2 text-xs text-foreground shadow-sm backdrop-blur"
           onPointerDown={(event) => event.stopPropagation()}
@@ -620,6 +626,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
 
       <svg
         className="h-full w-full touch-none"
+        style={{ opacity: isSimulating ? 0 : 1, transition: 'opacity 0.3s' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
