@@ -374,7 +374,10 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
         pos.y += pos.vy
       })
 
-      forceRender((prev) => prev + 1)
+      // Only render when simulation is complete for static graph
+      if (step >= simulationSteps) {
+        forceRender((prev) => prev + 1)
+      }
 
       if (step < simulationSteps) {
         rafId = requestAnimationFrame(simulate)
