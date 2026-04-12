@@ -1,3 +1,10 @@
+function decodeScalarValue(value: string): string {
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1)
+  }
+  return value
+}
+
 export function splitFrontmatter(content: string): { raw: string | null; body: string } {
   if (!content.startsWith('---')) {
     return { raw: null, body: content }
@@ -41,7 +48,7 @@ export function extractAllFrontmatterValues(raw: string | null): Record<string, 
       const key = topMatch[1].trim()
       const value = topMatch[2].trim()
       if (value) {
-        result[key] = value
+        result[key] = decodeScalarValue(value)
         currentKey = null
       } else {
         currentKey = key
@@ -72,9 +79,8 @@ export function buildFrontmatter(fields: Record<string, string | string[]>): str
     if (!trimmedKey) continue
 
     if (Array.isArray(value)) {
-      const nextItems = value.map((item) => item.trim()).filter(Boolean)
-      if (nextItems.length === 0) continue
       lines.push(`${trimmedKey}:`)
+      const nextItems = value.map((item) => item.trim()).filter(Boolean)
       for (const item of nextItems) {
         lines.push(`  - ${item}`)
       }
@@ -82,8 +88,7 @@ export function buildFrontmatter(fields: Record<string, string | string[]>): str
     }
 
     const trimmedValue = value.trim()
-    if (!trimmedValue) continue
-    lines.push(`${trimmedKey}: ${trimmedValue}`)
+    lines.push(`${trimmedKey}: ${trimmedValue ? trimmedValue : '""'}`)
   }
 
   if (lines.length === 0) return null
