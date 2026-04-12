@@ -3,16 +3,16 @@ import type { GraphNode, GraphEdge } from '@/components/graph-view'
 import { stripKnowledgePrefix, wikiLabel, toKnowledgePath } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
-// Soft pastel colors - easy on the eyes
+// Vibrant color palette - works well in both dark and light themes
 const graphPalette = [
-  { hue: 210, sat: 45, light: 65 },  // Soft blue
-  { hue: 30, sat: 50, light: 68 },   // Soft orange
-  { hue: 140, sat: 40, light: 62 },  // Soft green
-  { hue: 180, sat: 42, light: 64 },  // Soft cyan
-  { hue: 270, sat: 48, light: 70 },  // Soft purple
-  { hue: 340, sat: 45, light: 68 },  // Soft pink
-  { hue: 50, sat: 52, light: 66 },   // Soft yellow
-  { hue: 0, sat: 48, light: 66 },    // Soft red
+  { hue: 260, sat: 85, light: 65 },  // Purple - vibrant
+  { hue: 200, sat: 90, light: 60 },  // Blue - bright
+  { hue: 340, sat: 85, light: 60 },  // Pink - vivid
+  { hue: 160, sat: 75, light: 55 },  // Teal - fresh
+  { hue: 30, sat: 90, light: 60 },   // Orange - warm
+  { hue: 120, sat: 70, light: 55 },  // Green - natural
+  { hue: 280, sat: 80, light: 60 },  // Magenta - bold
+  { hue: 50, sat: 85, light: 60 },   // Yellow - bright
 ]
 
 const clampNumber = (value: number, min: number, max: number) =>
@@ -89,12 +89,13 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
 
       const getNodeColors = (groupIndex: number, depth: number) => {
         const base = graphPalette[groupIndex % graphPalette.length]
-        // Lighter colors for better visibility
-        const light = clampNumber(base.light + depth * 4, 58, 78)
-        const strokeLight = clampNumber(light - 18, 40, 65)
+        // Adjust lightness for better visibility in both themes
+        // Light theme: slightly darker, Dark theme: slightly lighter
+        const light = clampNumber(base.light + depth * 4, 50, 70)
+        const strokeLight = clampNumber(light - 15, 35, 55)
         return {
           fill: `hsl(${base.hue} ${base.sat}% ${light}%)`,
-          stroke: `hsl(${base.hue} ${Math.min(60, base.sat + 5)}% ${strokeLight}%)`,
+          stroke: `hsl(${base.hue} ${Math.min(90, base.sat + 10)}% ${strokeLight}%)`,
         }
       }
 
