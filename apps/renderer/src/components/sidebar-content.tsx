@@ -406,7 +406,7 @@ export function SidebarContentPanel({
         </div>
       </SidebarHeader>
       <SidebarContent>
-          {activeSection === "knowledge" && (
+          {activeSection === "memory" && (
             <KnowledgeSection
               tree={tree}
               selectedPath={selectedPath}
@@ -517,15 +517,15 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
       const timestamp = now.toISOString().replace(/[:.]/g, '-')
       const dateStr = now.toISOString().split('T')[0] // YYYY-MM-DD
       const noteName = `voice-memo-${timestamp}`
-      const notePath = `knowledge/Voice Memos/${dateStr}/${noteName}.md`
+      const notePath = `memory/Voice Memos/${dateStr}/${noteName}.md`
 
       timestampRef.current = timestamp
       notePathRef.current = notePath
-      // Relative path for linking (from knowledge/ root, without .md extension)
+      // Relative path for linking (from memory/ root, without .md extension)
       const relativePath = `Voice Memos/${dateStr}/${noteName}`
       relativePathRef.current = relativePath
 
-      await workspaceIpc.mkdir(`knowledge/Voice Memos/${dateStr}`, { recursive: true })
+      await workspaceIpc.mkdir(`memory/Voice Memos/${dateStr}`, { recursive: true })
 
       const initialContent = `# Voice Memo
 

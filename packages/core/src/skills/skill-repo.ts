@@ -10,7 +10,7 @@ export class SkillRepo implements ISkillRepo {
   private readonly ALLOWED_SUBDIRS = ['references', 'templates', 'scripts', 'assets'];
 
   constructor(workspacePath: string) {
-    this.skillsDir = path.join(workspacePath, 'skills');
+    this.skillsDir = path.join(workspacePath, 'memory', 'Skills');
   }
 
   async ensureSkillsDir(): Promise<void> {

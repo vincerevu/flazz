@@ -9,14 +9,6 @@ import { dirname } from "node:path";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 
 import { ServiceRegistry } from "@flazz/core/dist/services/service_registry.js";
-// Use Composio-based sync services (simpler OAuth, unified integration)
-import { gmailSyncService } from "@flazz/core/dist/knowledge/sync_gmail_composio.js";
-import { calendarSyncService } from "@flazz/core/dist/knowledge/sync_calendar_composio.js";
-// Old Direct API versions (kept for reference):
-// import { gmailSyncService } from "@flazz/core/dist/knowledge/sync_gmail.js";
-// import { calendarSyncService } from "@flazz/core/dist/knowledge/sync_calendar.js";
-import { firefliesSyncService } from "@flazz/core/dist/knowledge/sync_fireflies.js";
-import { granolaSyncService } from "@flazz/core/dist/knowledge/granola/sync.js";
 import { graphBuilderService } from "@flazz/core/dist/knowledge/build_graph.js";
 import { agentRunnerService } from "@flazz/core/dist/agent-schedule/runner.js";
 import { workspaceWatcherService, runsWatcherService, servicesWatcherService } from "./ipc.js";
@@ -164,10 +156,6 @@ const serviceRegistry = new ServiceRegistry();
 serviceRegistry.register(workspaceWatcherService);
 serviceRegistry.register(runsWatcherService);
 serviceRegistry.register(servicesWatcherService);
-serviceRegistry.register(gmailSyncService);
-serviceRegistry.register(calendarSyncService);
-serviceRegistry.register(firefliesSyncService);
-serviceRegistry.register(granolaSyncService);
 serviceRegistry.register(graphBuilderService);
 serviceRegistry.register(agentRunnerService);
 

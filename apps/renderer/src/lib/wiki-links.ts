@@ -1,7 +1,16 @@
-const KNOWLEDGE_PREFIX = 'knowledge/'
+const MEMORY_PREFIX = 'memory/'
+const KNOWLEDGE_PREFIX = 'knowledge/' // Legacy support
 
-export const stripKnowledgePrefix = (path: string) =>
-  path.startsWith(KNOWLEDGE_PREFIX) ? path.slice(KNOWLEDGE_PREFIX.length) : path
+export const stripKnowledgePrefix = (path: string) => {
+  // Support both memory/ and knowledge/ (legacy)
+  if (path.startsWith(MEMORY_PREFIX)) {
+    return path.slice(MEMORY_PREFIX.length)
+  }
+  if (path.startsWith(KNOWLEDGE_PREFIX)) {
+    return path.slice(KNOWLEDGE_PREFIX.length)
+  }
+  return path
+}
 
 export const normalizeWikiPath = (input: string) => {
   const trimmed = input.trim().replace(/^\/+/, '').replace(/^\.\//, '')
@@ -16,7 +25,7 @@ export const ensureMarkdownExtension = (path: string) => {
 export const toKnowledgePath = (wikiPath: string) => {
   const normalized = normalizeWikiPath(wikiPath)
   if (!normalized || normalized.includes('..') || normalized.endsWith('/')) return null
-  return `${KNOWLEDGE_PREFIX}${ensureMarkdownExtension(normalized)}`
+  return `${MEMORY_PREFIX}${ensureMarkdownExtension(normalized)}`
 }
 
 export const wikiLabel = (wikiPath: string) => {

@@ -89,7 +89,7 @@ export type AttachmentsContext = {
 
 export type FileMention = {
   id: string;
-  path: string;         // "knowledge/notes.md"
+  path: string;         // "memory/notes.md" or "knowledge/notes.md" (legacy)
   displayName: string;  // "notes"
 };
 

@@ -23,7 +23,7 @@ import { commitAll } from './version_history.js';
  * and note creation agents sequentially on content files
  */
 
-const NOTES_OUTPUT_DIR = path.join(WorkDir, 'knowledge');
+const NOTES_OUTPUT_DIR = path.join(WorkDir, 'memory');
 const NOTE_CREATION_AGENT = 'note_creation';
 
 // Configuration for the graph builder service
@@ -31,8 +31,8 @@ const SYNC_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
 // Note: gmail_sync, fireflies_transcripts, granola_notes removed (not used)
 const SOURCE_FOLDERS: string[] = [];
 
-// Voice memos are now created directly in knowledge/Voice Memos/<date>/
-const VOICE_MEMOS_KNOWLEDGE_DIR = path.join(NOTES_OUTPUT_DIR, 'Voice Memos');
+// Voice memos are now created directly in memory/Voice Memos/<date>/
+const VOICE_MEMOS_MEMORY_DIR = path.join(NOTES_OUTPUT_DIR, 'Voice Memos');
 
 function extractPathFromToolInput(input: string): string | null {
     try {
@@ -44,14 +44,14 @@ function extractPathFromToolInput(input: string): string | null {
 }
 
 /**
- * Get unprocessed voice memo files from knowledge/Voice Memos/
+ * Get unprocessed voice memo files from memory/Voice Memos/
  * Voice memos are created directly in this directory by the UI.
  * Returns paths to files that need entity extraction.
  */
 function getUnprocessedVoiceMemos(state: GraphState): string[] {
-    console.log(`[GraphBuilder] Checking directory: ${VOICE_MEMOS_KNOWLEDGE_DIR}`);
+    console.log(`[GraphBuilder] Checking directory: ${VOICE_MEMOS_MEMORY_DIR}`);
 
-    if (!fs.existsSync(VOICE_MEMOS_KNOWLEDGE_DIR)) {
+    if (!fs.existsSync(VOICE_MEMOS_MEMORY_DIR)) {
         console.log(`[GraphBuilder] Directory does not exist`);
         return [];
     }
@@ -59,11 +59,11 @@ function getUnprocessedVoiceMemos(state: GraphState): string[] {
     const unprocessedFiles: string[] = [];
 
     // Scan date folders (e.g., 2026-02-03)
-    const dateFolders = fs.readdirSync(VOICE_MEMOS_KNOWLEDGE_DIR);
+    const dateFolders = fs.readdirSync(VOICE_MEMOS_MEMORY_DIR);
     console.log(`[GraphBuilder] Found ${dateFolders.length} date folders: ${dateFolders.join(', ')}`);
 
     for (const dateFolder of dateFolders) {
-        const dateFolderPath = path.join(VOICE_MEMOS_KNOWLEDGE_DIR, dateFolder);
+        const dateFolderPath = path.join(VOICE_MEMOS_MEMORY_DIR, dateFolder);
 
         // Skip if not a directory
         try {
@@ -194,7 +194,7 @@ async function createNotesFromBatch(
     message += `**Instructions:**\n`;
     message += `- Use the KNOWLEDGE BASE INDEX below to resolve entities - DO NOT grep/search for existing notes\n`;
     message += `- Extract entities (people, organizations, projects, topics) from ALL files below\n`;
-    message += `- Create or update notes in "knowledge" directory (workspace-relative paths like "knowledge/People/Name.md")\n`;
+    message += `- Create or update notes in "memory" directory (workspace-relative paths like "memory/People/Name.md")\n`;
     message += `- If the same entity appears in multiple files, merge the information into a single note\n`;
     message += `- Use workspace tools to read existing notes (when you need full content) and write updates\n`;
     message += `- Follow the note templates and guidelines in your instructions\n\n`;
@@ -388,14 +388,14 @@ export async function buildGraph(sourceDir: string): Promise<void> {
 }
 
 /**
- * Process voice memos from knowledge/Voice Memos/ and run entity extraction on them
- * Voice memos are now created directly in the knowledge directory by the UI.
+ * Process voice memos from memory/Voice Memos/ and run entity extraction on them
+ * Voice memos are now created directly in the memory directory by the UI.
  */
 async function processVoiceMemosForKnowledge(): Promise<boolean> {
     console.log(`[GraphBuilder] Starting voice memo processing...`);
     const state = loadState();
 
-    // Get unprocessed voice memos from knowledge/Voice Memos/
+    // Get unprocessed voice memos from memory/Voice Memos/
     const unprocessedFiles = getUnprocessedVoiceMemos(state);
 
     if (unprocessedFiles.length === 0) {
@@ -602,7 +602,7 @@ export const graphBuilderService: BackgroundService = {
         isRunning = true;
 
         console.log('[GraphBuilder] Starting Knowledge Graph Builder Service...');
-        console.log('[GraphBuilder] Monitoring: knowledge/Voice Memos/ (voice recordings)');
+        console.log('[GraphBuilder] Monitoring: memory/Voice Memos/ (voice recordings)');
         console.log('[GraphBuilder] Also processes: Memory archives, Manual notes');
         console.log(`[GraphBuilder] Will check for new content every ${SYNC_INTERVAL_MS / 1000} seconds`);
 
