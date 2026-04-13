@@ -16,10 +16,14 @@ import { FSAgentScheduleRepo, IAgentScheduleRepo } from "../agent-schedule/repo.
 import { FSAgentScheduleStateRepo, IAgentScheduleStateRepo } from "../agent-schedule/state-repo.js";
 import { MemoryRepo } from "../memory/memory-repo.js";
 import { MemoryManager } from "../memory/memory-manager.js";
+import { MemoryArchiver } from "../memory/memory-archiver.js";
 import { setMemoryManager } from "../application/lib/tools/memory-tools.js";
+import { setMemoryArchiver } from "../application/lib/tools/memory-archive-tool.js";
 import { SkillRepo } from "../skills/skill-repo.js";
 import { SkillManager } from "../skills/skill-manager.js";
 import { setSkillManager } from "../application/lib/tools/skill-tools.js";
+import { ContextBuilder } from "../agents/runtime/context-builder.js";
+import { KnowledgeSearchProvider } from "../search/knowledge_search.js";
 import { WorkDir } from "../config/config.js";
 
 const container = createContainer({
@@ -59,9 +63,20 @@ memoryManager.initialize().catch(err => {
 });
 setMemoryManager(memoryManager);
 
+// Initialize Memory Archiver
+const memoryArchiver = new MemoryArchiver(memoryRepo);
+setMemoryArchiver(memoryArchiver);
+
 // Initialize Skills System
 const skillRepo = new SkillRepo(WorkDir);
 const skillManager = new SkillManager(skillRepo);
 setSkillManager(skillManager);
+
+// Initialize Context Builder
+const knowledgeSearch = new KnowledgeSearchProvider();
+const contextBuilder = new ContextBuilder(memoryManager, skillManager, knowledgeSearch);
+
+// Export for use in agent runtime
+export { memoryManager, memoryArchiver, skillManager, contextBuilder };
 
 export default container;

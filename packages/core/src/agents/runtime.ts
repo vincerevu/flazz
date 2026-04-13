@@ -6,7 +6,7 @@ import { getNoteCreationStrictness } from "../config/note_creation_config.js";
 import { Agent, AssistantMessage } from "@flazz/shared";
 import { RunEvent } from "@flazz/shared";
 import { CopilotAgent } from "../application/assistant/agent.js";
-import container from "../di/container.js";
+import container, { contextBuilder } from "../di/container.js";
 import { IModelConfigRepo } from "../models/repo.js";
 import { createProvider } from "../models/models.js";
 import { getModelExecutionPolicy } from "../models/provider-capabilities.js";
@@ -471,7 +471,25 @@ export async function* streamAgent({
         const compatibilityNote = executionPolicy.toolExecutionMode === "disabled" && Object.keys(requestedTools).length > 0
             ? "\n\nProvider compatibility note: Tool execution is disabled for this provider endpoint because it does not reliably return structured tool calls in Flazz. Do not claim to inspect tools, run MCP servers, browse, or execute actions. Answer directly with the information already available in the conversation and be explicit when tool access is unavailable."
             : "";
-        const instructionsWithDateTime = `Current date and time: ${currentDateTime}\n\n${agent.instructions}${compatibilityNote}`;
+        
+        // Build context using ContextBuilder
+        // Get first user message to determine query for context building
+        const firstUserMessage = state.messages.find(m => m.role === 'user');
+        const query = firstUserMessage 
+            ? (typeof firstUserMessage.content === 'string' 
+                ? firstUserMessage.content 
+                : firstUserMessage.content.map(c => c.type === 'text' ? c.text : '').join(' '))
+            : '';
+        
+        // Build context (memory + skills)
+        const contextParts = await contextBuilder.buildContext(query, {
+            includeMemory: true,
+            includeSkills: true,
+            includeKnowledge: false, // Don't auto-include knowledge (too expensive)
+        });
+        
+        const contextSection = contextParts.length > 0 ? '\n\n' + contextParts.join('\n\n') : '';
+        const instructionsWithDateTime = `Current date and time: ${currentDateTime}\n\n${agent.instructions}${compatibilityNote}${contextSection}`;
         let streamError: string | null = null;
         let lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "error" | "other" | "unknown" | null = null;
         const messageBuilder = new StreamStepMessageBuilder({

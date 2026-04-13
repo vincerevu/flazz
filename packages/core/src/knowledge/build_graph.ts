@@ -28,11 +28,8 @@ const NOTE_CREATION_AGENT = 'note_creation';
 
 // Configuration for the graph builder service
 const SYNC_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
-const SOURCE_FOLDERS = [
-    'gmail_sync',
-    'fireflies_transcripts',
-    'granola_notes',
-];
+// Note: gmail_sync, fireflies_transcripts, granola_notes removed (not used)
+const SOURCE_FOLDERS: string[] = [];
 
 // Voice memos are now created directly in knowledge/Voice Memos/<date>/
 const VOICE_MEMOS_KNOWLEDGE_DIR = path.join(NOTES_OUTPUT_DIR, 'Voice Memos');
@@ -538,9 +535,11 @@ async function processVoiceMemosForKnowledge(): Promise<boolean> {
 
 /**
  * Process all configured source directories
+ * Currently only processes voice memos (created directly in knowledge/)
+ * and manual notes created by user/agent
  */
 async function processAllSources(): Promise<void> {
-    console.log('[GraphBuilder] Checking for new content in all sources...');
+    console.log('[GraphBuilder] Checking for new content...');
 
     // Auto-configure strictness on first run if not already done
     autoConfigureStrictnessIfNeeded();
@@ -557,91 +556,11 @@ async function processAllSources(): Promise<void> {
         console.error('[GraphBuilder] Error processing voice memos:', error);
     }
 
-    const state = loadState();
-    const folderChanges: { folder: string; sourceDir: string; files: string[] }[] = [];
-    const countsByFolder: Record<string, number> = {};
-    const allFiles: string[] = [];
-
-    for (const folder of SOURCE_FOLDERS) {
-        const sourceDir = path.join(WorkDir, folder);
-
-        // Skip if folder doesn't exist
-        if (!fs.existsSync(sourceDir)) {
-            // Don't log this every time - it's noisy
-            continue;
-        }
-
-        try {
-            const filesToProcess = getFilesToProcess(sourceDir, state);
-
-            if (filesToProcess.length > 0) {
-                console.log(`[GraphBuilder] Found ${filesToProcess.length} new/changed files in ${folder}`);
-                folderChanges.push({ folder, sourceDir, files: filesToProcess });
-                countsByFolder[folder] = filesToProcess.length;
-                allFiles.push(...filesToProcess);
-            }
-        } catch (error) {
-            console.error(`[GraphBuilder] Error processing ${folder}:`, error);
-            // Continue with other folders even if one fails
-        }
-    }
-
-    if (allFiles.length > 0) {
-        const run = await serviceLogger.startRun({
-            service: 'graph',
-            message: 'Syncing knowledge graph',
-            trigger: 'timer',
-            config: { sources: SOURCE_FOLDERS },
-        });
-
-        const relativeFiles = allFiles.map(filePath => path.relative(WorkDir, filePath));
-        const limitedFiles = limitEventItems(relativeFiles);
-        const foldersList = Object.keys(countsByFolder).join(', ');
-        const folderMessage = foldersList ? ` across ${foldersList}` : '';
-
-        await serviceLogger.log({
-            type: 'changes_identified',
-            service: run.service,
-            runId: run.runId,
-            level: 'info',
-            message: `Found ${allFiles.length} changed file${allFiles.length === 1 ? '' : 's'}${folderMessage}`,
-            counts: countsByFolder,
-            items: limitedFiles.items,
-            truncated: limitedFiles.truncated,
-        });
-
-        const notesCreated = new Set<string>();
-        const notesModified = new Set<string>();
-        const processedFiles: string[] = [];
-        let hadError = false;
-
-        for (const entry of folderChanges) {
-            const result = await buildGraphWithFiles(entry.sourceDir, entry.files, state, run);
-            result.processedFiles.forEach(file => processedFiles.push(file));
-            result.notesCreated.forEach(note => notesCreated.add(note));
-            result.notesModified.forEach(note => notesModified.add(note));
-            if (result.hadError) {
-                hadError = true;
-            }
-        }
-
-        await serviceLogger.log({
-            type: 'run_complete',
-            service: run.service,
-            runId: run.runId,
-            level: hadError ? 'error' : 'info',
-            message: `Graph sync complete: ${processedFiles.length} files, ${notesCreated.size} created, ${notesModified.size} updated`,
-            durationMs: Date.now() - run.startedAt,
-            outcome: hadError ? 'error' : 'ok',
-            summary: {
-                processedFiles: processedFiles.length,
-                notesCreated: notesCreated.size,
-                notesModified: notesModified.size,
-            },
-        });
-
-        anyFilesProcessed = true;
-    }
+    // Note: SOURCE_FOLDERS is now empty (gmail_sync, fireflies, granola removed)
+    // Graph builder now focuses on:
+    // 1. Voice memos (built-in feature)
+    // 2. Memory archiving (Phase 3)
+    // 3. Manual notes created by user/agent
 
     if (!anyFilesProcessed) {
         console.log('[GraphBuilder] No new content to process');
@@ -683,7 +602,8 @@ export const graphBuilderService: BackgroundService = {
         isRunning = true;
 
         console.log('[GraphBuilder] Starting Knowledge Graph Builder Service...');
-        console.log(`[GraphBuilder] Monitoring folders: ${SOURCE_FOLDERS.join(', ')}, knowledge/Voice Memos`);
+        console.log('[GraphBuilder] Monitoring: knowledge/Voice Memos/ (voice recordings)');
+        console.log('[GraphBuilder] Also processes: Memory archives, Manual notes');
         console.log(`[GraphBuilder] Will check for new content every ${SYNC_INTERVAL_MS / 1000} seconds`);
 
         // Initial run
