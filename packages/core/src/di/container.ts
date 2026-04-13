@@ -48,7 +48,11 @@ const memoryRepo = new MemoryRepo(WorkDir);
 const memoryManager = new MemoryManager(memoryRepo, {
     agentMaxChars: 2200,
     userMaxChars: 1375,
-    delimiter: '§',
+    delimiter: '\n§\n', // Hermes format for multiline entries
+});
+// Initialize frozen snapshot at startup
+memoryManager.initialize().catch(err => {
+    console.error('Failed to initialize memory manager:', err);
 });
 setMemoryManager(memoryManager);
 

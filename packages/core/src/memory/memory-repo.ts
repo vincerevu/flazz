@@ -1,16 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { type Memory, type MemorySection, type IMemoryRepo } from './types.js';
 
 export class MemoryRepo implements IMemoryRepo {
   private agentPath: string;
   private userPath: string;
-  private delimiter = '§';
+  private readonly delimiter = '\n§\n'; // Hermes format
 
   constructor(workspacePath: string) {
     const memoryDir = path.join(workspacePath, 'memory');
-    this.agentPath = path.join(memoryDir, 'agent.md');
-    this.userPath = path.join(memoryDir, 'user.md');
+    this.agentPath = path.join(memoryDir, 'MEMORY.md');
+    this.userPath = path.join(memoryDir, 'USER.md');
   }
 
   async ensureMemoryDir(): Promise<void> {
@@ -21,13 +22,13 @@ export class MemoryRepo implements IMemoryRepo {
     try {
       await fs.access(this.agentPath);
     } catch {
-      await fs.writeFile(this.agentPath, '# Agent Memory\n\n', 'utf-8');
+      await fs.writeFile(this.agentPath, '', 'utf-8');
     }
 
     try {
       await fs.access(this.userPath);
     } catch {
-      await fs.writeFile(this.userPath, '# User Profile\n\n', 'utf-8');
+      await fs.writeFile(this.userPath, '', 'utf-8');
     }
   }
 
@@ -46,30 +47,27 @@ export class MemoryRepo implements IMemoryRepo {
   }
 
   private parseMemory(content: string): MemorySection[] {
-    const sections: MemorySection[] = [];
-    const lines = content.split('\n');
-
-    for (const line of lines) {
-      if (line.startsWith(this.delimiter)) {
-        const match = line.match(/^§\s*(\d{4}-\d{2}-\d{2}[^:]*):(.+)$/);
-        if (match) {
-          sections.push({
-            timestamp: match[1].trim(),
-            content: match[2].trim(),
-          });
-        }
-      }
+    if (!content.trim()) {
+      return [];
     }
 
-    return sections;
+    // Split by delimiter and filter empty entries
+    const entries = content
+      .split(this.delimiter)
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0);
+
+    // Deduplicate (keep first occurrence)
+    const unique = Array.from(new Set(entries));
+
+    return unique.map((content) => ({ content }));
   }
 
   async write(section: 'agent' | 'user', content: string): Promise<void> {
     await this.ensureMemoryDir();
 
     const filePath = section === 'agent' ? this.agentPath : this.userPath;
-    const timestamp = new Date().toISOString().split('T')[0];
-    const entry = `${this.delimiter} ${timestamp}: ${content}\n`;
+    const entry = `${this.delimiter}${content}`;
 
     await fs.appendFile(filePath, entry, 'utf-8');
   }
@@ -86,8 +84,39 @@ export class MemoryRepo implements IMemoryRepo {
 
   async clear(section: 'agent' | 'user'): Promise<void> {
     const filePath = section === 'agent' ? this.agentPath : this.userPath;
-    const header =
-      section === 'agent' ? '# Agent Memory\n\n' : '# User Profile\n\n';
-    await fs.writeFile(filePath, header, 'utf-8');
+    await fs.writeFile(filePath, '', 'utf-8');
+  }
+
+  // Atomic write using temp file (Hermes pattern)
+  async atomicWrite(
+    section: 'agent' | 'user',
+    entries: MemorySection[]
+  ): Promise<void> {
+    await this.ensureMemoryDir();
+
+    const filePath = section === 'agent' ? this.agentPath : this.userPath;
+    const content = entries.length > 0
+      ? entries.map((e) => e.content).join(this.delimiter)
+      : '';
+
+    // Write to temp file in same directory
+    const tmpPath = path.join(
+      path.dirname(filePath),
+      `.mem_${Date.now()}_${Math.random().toString(36).slice(2)}.tmp`
+    );
+
+    try {
+      await fs.writeFile(tmpPath, content, 'utf-8');
+      // Atomic rename (same filesystem)
+      await fs.rename(tmpPath, filePath);
+    } catch (error) {
+      // Clean up temp file on error
+      try {
+        await fs.unlink(tmpPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+      throw error;
+    }
   }
 }

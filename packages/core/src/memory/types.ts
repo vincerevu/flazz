@@ -1,6 +1,5 @@
 export interface MemorySection {
-  timestamp: string;
-  content: string;
+  content: string; // Multiline content, no timestamp prefix
 }
 
 export interface Memory {
@@ -11,7 +10,7 @@ export interface Memory {
 export interface MemoryConfig {
   agentMaxChars: number; // 2200
   userMaxChars: number; // 1375
-  delimiter: string; // '§'
+  delimiter: string; // '\n§\n' for multiline entries
 }
 
 export interface IMemoryRepo {
@@ -19,4 +18,5 @@ export interface IMemoryRepo {
   write(section: 'agent' | 'user', content: string): Promise<void>;
   search(query: string): Promise<MemorySection[]>;
   clear(section: 'agent' | 'user'): Promise<void>;
+  atomicWrite(section: 'agent' | 'user', entries: MemorySection[]): Promise<void>;
 }
