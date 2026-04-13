@@ -1,5 +1,5 @@
 import { z, ZodType } from "zod";
-import { workspaceTools, shellTools, mcpTools, researchTools, integrationTools, agentTools } from "./tools/index.js";
+import { workspaceTools, shellTools, mcpTools, researchTools, integrationTools, agentTools, memoryTools } from "./tools/index.js";
 
 
 export const BuiltinToolsSchema = z.record(z.string(), z.object({
@@ -19,4 +19,5 @@ export const BuiltinTools: z.infer<typeof BuiltinToolsSchema> = {
     ...researchTools,
     ...integrationTools,
     ...agentTools,
+    ...memoryTools,
 };
