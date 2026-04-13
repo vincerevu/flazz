@@ -173,6 +173,17 @@ export class DefaultComposioAdapter implements ComposioAdapter {
 
                     if (accountStatus.status === 'ACTIVE') {
                         this.emitComposioEvent({ toolkitSlug, success: true });
+                        
+                        // Trigger immediate sync for Gmail/Calendar after successful connection
+                        if (toolkitSlug === 'gmail') {
+                            console.log('[Composio] Gmail connected - triggering immediate sync');
+                            const { triggerSync } = await import('@flazz/core/dist/knowledge/sync_gmail_composio.js');
+                            triggerSync();
+                        } else if (toolkitSlug === 'googlecalendar') {
+                            console.log('[Composio] Calendar connected - triggering immediate sync');
+                            const { triggerSync } = await import('@flazz/core/dist/knowledge/sync_calendar_composio.js');
+                            triggerSync();
+                        }
                     } else {
                         this.emitComposioEvent({
                             toolkitSlug,

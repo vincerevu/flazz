@@ -1,11 +1,10 @@
 import type { BackgroundService } from "../services/background_service.js";
 import fs from 'fs';
 import path from 'path';
-import { google, calendar_v3 as cal, drive_v3 as drive } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
-import { NodeHtmlMarkdown } from 'node-html-markdown'
+import { NodeHtmlMarkdown } from 'node-html-markdown';
 import { WorkDir } from '../config/config.js';
-import { GoogleClientFactory } from './google-client-factory.js';
+import { composioAccountsRepo } from '../composio/repo.js';
+import { executeAction } from '../composio/client.js';
 import { serviceLogger } from '../services/service_logger.js';
 import { limitEventItems } from './limit_event_items.js';
 
@@ -13,10 +12,6 @@ import { limitEventItems } from './limit_event_items.js';
 const SYNC_DIR = path.join(WorkDir, 'calendar_sync');
 const SYNC_INTERVAL_MS = 60 * 60 * 1000; // Check every 1 hour
 const LOOKBACK_DAYS = 14;
-const REQUIRED_SCOPES = [
-    'https://www.googleapis.com/auth/calendar.events.readonly',
-    'https://www.googleapis.com/auth/drive.readonly'
-];
 const nhm = new NodeHtmlMarkdown();
 
 // --- Wake Signal for Immediate Sync Trigger ---
@@ -24,7 +19,7 @@ let wakeResolve: (() => void) | null = null;
 
 export function triggerSync(): void {
     if (wakeResolve) {
-        console.log('[Calendar] Triggered - waking up immediately');
+        console.log('[Calendar Composio] Triggered - waking up immediately');
         wakeResolve();
         wakeResolve = null;
     }
@@ -49,6 +44,52 @@ function cleanFilename(name: string): string {
     return name.replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "_").substring(0, 100).trim();
 }
 
+// --- Composio API Calls ---
+
+async function listEvents(accountId: string, timeMin: string, timeMax: string): Promise<any[]> {
+    console.log(`[Calendar Composio] Listing events from ${timeMin} to ${timeMax}`);
+    
+    const result = await executeAction(
+        'GOOGLECALENDAR_LIST_EVENTS',
+        accountId,
+        {
+            calendarId: 'primary',
+            timeMin,
+            timeMax,
+            singleEvents: true,
+            orderBy: 'startTime'
+        }
+    );
+
+    if (!result.success) {
+        throw new Error(`Failed to list events: ${result.error}`);
+    }
+
+    return (result.data as any)?.items || [];
+}
+
+async function getEvent(accountId: string, eventId: string): Promise<any> {
+    console.log(`[Calendar Composio] Getting event: ${eventId}`);
+    
+    const result = await executeAction(
+        'GOOGLECALENDAR_GET_EVENT',
+        accountId,
+        {
+            calendarId: 'primary',
+            eventId
+        }
+    );
+
+    if (!result.success) {
+        throw new Error(`Failed to get event: ${result.error}`);
+    }
+
+    return result.data;
+}
+
+// Note: Google Drive integration for meeting notes would require separate Drive toolkit
+// For now, we'll just save event metadata
+
 // --- Sync Logic ---
 
 function cleanUpOldFiles(currentEventIds: Set<string>, syncDir: string): string[] {
@@ -56,22 +97,15 @@ function cleanUpOldFiles(currentEventIds: Set<string>, syncDir: string): string[
 
     const files = fs.readdirSync(syncDir);
     const deleted: string[] = [];
+    
     for (const filename of files) {
         if (filename === 'sync_state.json') continue;
-
-        // We expect files like:
-        // {eventId}.json
-        // {eventId}_doc_{docId}.md
 
         let eventId: string | null = null;
 
         if (filename.endsWith('.json')) {
             eventId = filename.replace('.json', '');
         } else if (filename.endsWith('.md')) {
-            // Try to extract eventId from prefix
-            // Assuming eventId doesn't contain underscores usually, but if it does, this split might be fragile.
-            // Google Calendar IDs are usually alphanumeric.
-            // Let's rely on the delimiter we use: "_doc_"
             const parts = filename.split('_doc_');
             if (parts.length > 1) {
                 eventId = parts[0];
@@ -88,10 +122,11 @@ function cleanUpOldFiles(currentEventIds: Set<string>, syncDir: string): string[
             }
         }
     }
+    
     return deleted;
 }
 
-async function saveEvent(event: cal.Schema$Event, syncDir: string): Promise<{ changed: boolean; isNew: boolean; title: string }> {
+async function saveEvent(event: any, syncDir: string): Promise<{ changed: boolean; isNew: boolean; title: string }> {
     const eventId = event.id;
     if (!eventId) return { changed: false, isNew: false, title: 'Unknown' };
 
@@ -115,63 +150,7 @@ async function saveEvent(event: cal.Schema$Event, syncDir: string): Promise<{ ch
     }
 }
 
-async function processAttachments(drive: drive.Drive, event: cal.Schema$Event, syncDir: string): Promise<number> {
-    if (!event.attachments || event.attachments.length === 0) return 0;
-
-    const eventId = event.id;
-    const eventTitle = event.summary || 'Untitled';
-    const eventDate = event.start?.dateTime || event.start?.date || 'Unknown';
-    const organizer = event.organizer?.email || 'Unknown';
-
-    let savedCount = 0;
-
-    for (const att of event.attachments) {
-        // We only care about Google Docs
-        if (att.mimeType === 'application/vnd.google-apps.document') {
-            const fileId = att.fileId;
-            const safeTitle = cleanFilename(att.title || 'Untitled');
-            // Unique filename linked to event
-            const filename = `${eventId}_doc_${safeTitle}.md`;
-            const filePath = path.join(syncDir, filename);
-
-            // Simple cache check: if file exists, skip. 
-            // Ideally we check modifiedTime, but that requires an extra API call per file.
-            // Given the loop interval, we can just check existence to save quota.
-            // If user updates notes, they might want them re-synced. 
-            // For now, let's just check existence. To be smarter, we'd need a state file or check API.
-            if (fs.existsSync(filePath)) continue;
-
-            try {
-                const res = await drive.files.export({
-                    fileId: fileId ?? '',
-                    mimeType: 'text/html'
-                });
-
-                const html = res.data as string;
-                const md = nhm.translate(html);
-
-                const frontmatter = [
-                    `# ${att.title}`,
-                    `**Event:** ${eventTitle}`,
-                    `**Date:** ${eventDate}`,
-                    `**Organizer:** ${organizer}`,
-                    `**Link:** ${att.fileUrl}`,
-                    `---`,
-                    ``
-                ].join('\n');
-
-                fs.writeFileSync(filePath, frontmatter + md);
-                savedCount++;
-                console.log(`Synced Note: ${att.title} for event ${eventTitle}`);
-            } catch (e) {
-                console.error(`Failed to download note ${att.title}:`, e);
-            }
-        }
-    }
-    return savedCount;
-}
-
-async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackDays: number) {
+async function syncCalendarWindow(accountId: string, syncDir: string, lookbackDays: number) {
     // Calculate window
     const now = new Date();
     const lookbackMs = lookbackDays * 24 * 60 * 60 * 1000;
@@ -180,24 +159,20 @@ async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackD
     const timeMin = new Date(now.getTime() - lookbackMs).toISOString();
     const timeMax = new Date(now.getTime() + twoWeeksForwardMs).toISOString();
 
-    console.log(`Syncing calendar from ${timeMin} to ${timeMax} (lookback: ${lookbackDays} days)...`);
-
-    const calendar = google.calendar({ version: 'v3', auth });
-    const drive = google.drive({ version: 'v3', auth });
+    console.log(`[Calendar Composio] Syncing calendar from ${timeMin} to ${timeMax} (lookback: ${lookbackDays} days)...`);
 
     let runId: string | null = null;
     let runStartedAt = 0;
     let newCount = 0;
     let updatedCount = 0;
     let deletedCount = 0;
-    let attachmentCount = 0;
     const changedTitles: string[] = [];
 
     const ensureRun = async () => {
         if (!runId) {
             const run = await serviceLogger.startRun({
                 service: 'calendar',
-                message: 'Syncing calendar',
+                message: 'Syncing calendar (Composio)',
                 trigger: 'timer',
             });
             runId = run.runId;
@@ -206,25 +181,17 @@ async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackD
     };
 
     try {
-        const res = await calendar.events.list({
-            calendarId: 'primary',
-            timeMin: timeMin,
-            timeMax: timeMax,
-            singleEvents: true,
-            orderBy: 'startTime'
-        });
-
-        const events = res.data.items || [];
+        const events = await listEvents(accountId, timeMin, timeMax);
         const currentEventIds = new Set<string>();
 
         if (events.length === 0) {
-            console.log("No events found in this window.");
+            console.log('[Calendar Composio] No events found in this window.');
         } else {
-            console.log(`Found ${events.length} events.`);
+            console.log(`[Calendar Composio] Found ${events.length} events.`);
+            
             for (const event of events) {
                 if (event.id) {
                     const result = await saveEvent(event, syncDir);
-                    const attachmentsSaved = await processAttachments(drive, event, syncDir);
                     currentEventIds.add(event.id);
 
                     if (result.changed) {
@@ -235,11 +202,6 @@ async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackD
                         } else {
                             updatedCount++;
                         }
-                    }
-
-                    if (attachmentsSaved > 0) {
-                        await ensureRun();
-                        attachmentCount += attachmentsSaved;
                     }
                 }
             }
@@ -252,8 +214,9 @@ async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackD
         }
 
         if (runId) {
-            const totalChanges = newCount + updatedCount + deletedCount + attachmentCount;
+            const totalChanges = newCount + updatedCount + deletedCount;
             const limitedTitles = limitEventItems(changedTitles);
+            
             await serviceLogger.log({
                 type: 'changes_identified',
                 service: 'calendar',
@@ -264,11 +227,11 @@ async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackD
                     newEvents: newCount,
                     updatedEvents: updatedCount,
                     deletedFiles: deletedCount,
-                    attachments: attachmentCount,
                 },
                 items: limitedTitles.items,
                 truncated: limitedTitles.truncated,
             });
+            
             await serviceLogger.log({
                 type: 'run_complete',
                 service: 'calendar',
@@ -281,13 +244,13 @@ async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackD
                     newEvents: newCount,
                     updatedEvents: updatedCount,
                     deletedFiles: deletedCount,
-                    attachments: attachmentCount,
                 },
             });
         }
 
     } catch (error) {
-        console.error("An error occurred during calendar sync:", error);
+        console.error('[Calendar Composio] An error occurred during calendar sync:', error);
+        
         if (runId) {
             await serviceLogger.log({
                 type: 'error',
@@ -307,53 +270,45 @@ async function syncCalendarWindow(auth: OAuth2Client, syncDir: string, lookbackD
                 outcome: 'error',
             });
         }
-        // If 401, clear tokens to force re-auth next run
-        const e = error as { response?: { status?: number } };
-        if (e.response?.status === 401) {
-            console.log("401 Unauthorized, clearing cache");
-            GoogleClientFactory.clearCache();
-        }
-        throw error; // Re-throw to be handled by performSync
+        
+        throw error;
     }
 }
 
 async function performSync(syncDir: string, lookbackDays: number) {
     try {
-
-        if (!fs.existsSync(SYNC_DIR)) {
-            fs.mkdirSync(SYNC_DIR, { recursive: true });
+        if (!fs.existsSync(syncDir)) {
+            fs.mkdirSync(syncDir, { recursive: true });
         }
 
-        const auth = await GoogleClientFactory.getClient();
-        if (!auth) {
-            console.log("No valid OAuth credentials available.");
+        // Check if Google Calendar is connected via Composio
+        const account = composioAccountsRepo.getAccount('googlecalendar');
+        if (!account || account.status !== 'ACTIVE') {
+            console.log('[Calendar Composio] Google Calendar not connected via Composio. Skipping sync.');
             return;
         }
 
-        console.log("Authorization successful. Starting sync...");
-        await syncCalendarWindow(auth, syncDir, lookbackDays);
-        console.log("Sync completed.");
+        console.log('[Calendar Composio] Starting sync...');
+        await syncCalendarWindow(account.id, syncDir, lookbackDays);
+        console.log('[Calendar Composio] Sync completed.');
+        
     } catch (error) {
-        console.error("Error during sync:", error);
-        // If 401, clear tokens to force re-auth next run
-        const e = error as { response?: { status?: number } };
-        if (e.response?.status === 401) {
-            console.log("401 Unauthorized, clearing cache");
-            GoogleClientFactory.clearCache();
-        }
+        console.error('[Calendar Composio] Error during sync:', error);
     }
 }
+
+// --- Background Service ---
 
 let isRunning = false;
 
 export const calendarSyncService: BackgroundService = {
-    name: 'CalendarSync',
+    name: 'CalendarSyncComposio',
     async start(): Promise<void> {
         if (isRunning) return;
         isRunning = true;
 
-        console.log("Starting Google Calendar & Notes Sync (TS)...");
-        console.log(`Will sync every ${SYNC_INTERVAL_MS / 1000} seconds.`);
+        console.log('[Calendar Composio] Starting Google Calendar Sync (Composio)...');
+        console.log(`[Calendar Composio] Will sync every ${SYNC_INTERVAL_MS / 1000} seconds.`);
 
         // Initial small delay to let other things boot up
         await new Promise(r => setTimeout(r, 1000));
@@ -362,26 +317,19 @@ export const calendarSyncService: BackgroundService = {
         (async () => {
             while (isRunning) {
                 try {
-                    // Check if credentials are available with required scopes
-                    const hasCredentials = await GoogleClientFactory.hasValidCredentials(REQUIRED_SCOPES);
-
-                    if (!hasCredentials) {
-                        console.log("Google OAuth credentials not available or missing required Calendar/Drive scopes. Sleeping...");
-                    } else {
-                        // Perform one sync
-                        await performSync(SYNC_DIR, LOOKBACK_DAYS);
-                    }
+                    await performSync(SYNC_DIR, LOOKBACK_DAYS);
                 } catch (error) {
-                    console.error("Error in main loop:", error);
+                    console.error('[Calendar Composio] Error in main loop:', error);
                 }
 
                 if (!isRunning) break;
-                // Sleep for N minutes before next check (can be interrupted by triggerSync)
-                console.log(`Sleeping for ${SYNC_INTERVAL_MS / 1000} seconds...`);
+                
+                console.log(`[Calendar Composio] Sleeping for ${SYNC_INTERVAL_MS / 1000} seconds...`);
                 await interruptibleSleep(SYNC_INTERVAL_MS);
             }
         })();
     },
+    
     async stop(): Promise<void> {
         isRunning = false;
         if (wakeResolve) {
