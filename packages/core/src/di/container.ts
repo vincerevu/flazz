@@ -17,6 +17,9 @@ import { FSAgentScheduleStateRepo, IAgentScheduleStateRepo } from "../agent-sche
 import { MemoryRepo } from "../memory/memory-repo.js";
 import { MemoryManager } from "../memory/memory-manager.js";
 import { setMemoryManager } from "../application/lib/tools/memory-tools.js";
+import { SkillRepo } from "../skills/skill-repo.js";
+import { SkillManager } from "../skills/skill-manager.js";
+import { setSkillManager } from "../application/lib/tools/skill-tools.js";
 import { WorkDir } from "../config/config.js";
 
 const container = createContainer({
@@ -55,5 +58,10 @@ memoryManager.initialize().catch(err => {
     console.error('Failed to initialize memory manager:', err);
 });
 setMemoryManager(memoryManager);
+
+// Initialize Skills System
+const skillRepo = new SkillRepo(WorkDir);
+const skillManager = new SkillManager(skillRepo);
+setSkillManager(skillManager);
 
 export default container;
