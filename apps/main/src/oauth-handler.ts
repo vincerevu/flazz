@@ -8,9 +8,6 @@ import container from '@flazz/core/dist/di/container.js';
 import { IOAuthRepo } from '@flazz/core/dist/auth/repo.js';
 import { IClientRegistrationRepo } from '@flazz/core/dist/auth/client-repo.js';
 import { Server } from 'node:http';
-import { triggerSync as triggerGmailSync } from '@flazz/core/dist/knowledge/sync_gmail.js';
-import { triggerSync as triggerCalendarSync } from '@flazz/core/dist/knowledge/sync_calendar.js';
-import { triggerSync as triggerFirefliesSync } from '@flazz/core/dist/knowledge/sync_fireflies.js';
 import { OAuthAdapter } from './oauth-adapter.js';
 
 const REDIRECT_URI = 'http://localhost:8080/oauth/callback';
@@ -208,12 +205,13 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
                     }
                     await oauthRepo.upsert(provider, { error: null });
 
-                    if (provider === 'google') {
-                        triggerGmailSync();
-                        triggerCalendarSync();
-                    } else if (provider === 'fireflies-ai') {
-                        triggerFirefliesSync();
-                    }
+                    // Sync services removed - no longer trigger sync after OAuth
+                    // if (provider === 'google') {
+                    //     triggerGmailSync();
+                    //     triggerCalendarSync();
+                    // } else if (provider === 'fireflies-ai') {
+                    //     triggerFirefliesSync();
+                    // }
 
                     this.emitOAuthEvent({ provider, success: true });
                 } catch (error) {

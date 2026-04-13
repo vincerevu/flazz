@@ -1,8 +1,5 @@
 import * as mcpCore from '@flazz/core/dist/mcp/mcp.js';
 import * as composioHandler from '../composio-handler.js';
-import container from '@flazz/core/dist/di/container.js';
-import { IGranolaConfigRepo } from '@flazz/core/dist/knowledge/granola/repo.js';
-import { triggerSync as triggerGranolaSync } from '@flazz/core/dist/knowledge/granola/sync.js';
 import type { InvokeHandlers } from '../ipc.js';
 
 export function registerIntegrationHandlers(handlers: Partial<InvokeHandlers>) {
@@ -13,22 +10,9 @@ export function registerIntegrationHandlers(handlers: Partial<InvokeHandlers>) {
     return { result: await mcpCore.executeTool(args.serverName, args.toolName, args.input) };
   };
 
-  handlers['granola:getConfig'] = async () => {
-    const repo = container.resolve<IGranolaConfigRepo>('granolaConfigRepo');
-    const config = await repo.getConfig();
-    return { enabled: config.enabled };
-  };
-  handlers['granola:setConfig'] = async (_event, args) => {
-    const repo = container.resolve<IGranolaConfigRepo>('granolaConfigRepo');
-    await repo.setConfig({ enabled: args.enabled });
-
-    // Trigger sync immediately when enabled
-    if (args.enabled) {
-      triggerGranolaSync();
-    }
-
-    return { success: true };
-  };
+  // Granola integration removed - service no longer used
+  // handlers['granola:getConfig'] = async () => { ... };
+  // handlers['granola:setConfig'] = async (_event, args) => { ... };
 
   // Composio integration handlers
   handlers['composio:is-configured'] = async () => {
