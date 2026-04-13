@@ -14,6 +14,10 @@ import { FSGranolaConfigRepo, IGranolaConfigRepo } from "../knowledge/granola/re
 import { IAbortRegistry, InMemoryAbortRegistry } from "../runs/abort-registry.js";
 import { FSAgentScheduleRepo, IAgentScheduleRepo } from "../agent-schedule/repo.js";
 import { FSAgentScheduleStateRepo, IAgentScheduleStateRepo } from "../agent-schedule/state-repo.js";
+import { MemoryRepo } from "../memory/memory-repo.js";
+import { MemoryManager } from "../memory/memory-manager.js";
+import { setMemoryManager } from "../application/lib/tools/memory-tools.js";
+import { WorkDir } from "../config/config.js";
 
 const container = createContainer({
     injectionMode: InjectionMode.PROXY,
@@ -38,5 +42,14 @@ container.register({
     agentScheduleRepo: asClass<IAgentScheduleRepo>(FSAgentScheduleRepo).singleton(),
     agentScheduleStateRepo: asClass<IAgentScheduleStateRepo>(FSAgentScheduleStateRepo).singleton(),
 });
+
+// Initialize Memory System
+const memoryRepo = new MemoryRepo(WorkDir);
+const memoryManager = new MemoryManager(memoryRepo, {
+    agentMaxChars: 2200,
+    userMaxChars: 1375,
+    delimiter: '§',
+});
+setMemoryManager(memoryManager);
 
 export default container;
