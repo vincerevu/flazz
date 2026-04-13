@@ -97,7 +97,7 @@ async function listThreads(accountId: string, afterDate: string): Promise<any[]>
         throw new Error(`Failed to list threads: ${result.error}`);
     }
 
-    const threads = result.data?.threads || [];
+    const threads = (result.data as any)?.threads || [];
     console.log(`[Gmail Composio] Fetched ${threads.length} threads`);
     
     return threads;

@@ -65,7 +65,7 @@ async function listEvents(accountId: string, timeMin: string, timeMax: string): 
         throw new Error(`Failed to list events: ${result.error}`);
     }
 
-    return result.data?.items || [];
+    return (result.data as any)?.items || [];
 }
 
 async function getEvent(accountId: string, eventId: string): Promise<any> {
