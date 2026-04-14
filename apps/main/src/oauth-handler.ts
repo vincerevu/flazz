@@ -248,6 +248,14 @@ export class DefaultOAuthAdapter implements OAuthAdapter {
             return { success: true };
         } catch (error) {
             console.error('OAuth connection failed:', error);
+            
+            // IMPORTANT: Cleanup server if error occurs
+            if (this.activeFlow) {
+                clearTimeout(this.activeFlow.cleanupTimeout);
+                this.activeFlow.server.close();
+                this.activeFlow = null;
+            }
+            
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error',
