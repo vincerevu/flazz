@@ -15,7 +15,7 @@ function ensureDirs() {
     ensure(WorkDir);
     ensure(path.join(WorkDir, "agents"));
     ensure(path.join(WorkDir, "config"));
-    ensure(path.join(WorkDir, "knowledge"));
+    ensure(path.join(WorkDir, "memory"));  // Changed from "knowledge"
 }
 
 function ensureDefaultConfigs() {
@@ -82,8 +82,8 @@ Flazz is still evolving, and your workflow matters.
 `;
 
 function ensureWelcomeFile() {
-    // Create Welcome.md in knowledge directory if it doesn't exist
-    const welcomeDest = path.join(WorkDir, "knowledge", "Welcome.md");
+    // Create Welcome.md in memory directory if it doesn't exist
+    const welcomeDest = path.join(WorkDir, "memory", "Welcome.md");
     if (!fs.existsSync(welcomeDest)) {
         fs.writeFileSync(welcomeDest, WELCOME_CONTENT);
     }
