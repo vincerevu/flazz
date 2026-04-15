@@ -219,7 +219,7 @@ function SystemFileCard({ filePath }: { filePath: string }) {
 export function FilePathCard({ filePath }: { filePath: string }) {
   const trimmed = filePath.trim()
 
-  if (trimmed.startsWith('knowledge/')) {
+  if (trimmed.startsWith('memory/') || trimmed.startsWith('knowledge/')) {
     return <KnowledgeFileCard filePath={trimmed} />
   }
 

@@ -1,4 +1,4 @@
-import { FinishReasonMap, NormalizedFinishReason, ProviderFinishReason } from "./types.js";
+import { FinishReasonMap, ProviderFinishReason } from "./types.js";
 
 /**
  * Maps provider-specific finish reasons to normalized finish reasons

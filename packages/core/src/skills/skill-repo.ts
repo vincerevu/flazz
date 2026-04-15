@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml } from 'yaml';
 import { type Skill, type SkillFrontmatter, type ISkillRepo } from './types.js';
 import { fuzzyFindAndReplace } from './fuzzy-match.js';
 
@@ -10,7 +10,7 @@ export class SkillRepo implements ISkillRepo {
   private readonly ALLOWED_SUBDIRS = ['references', 'templates', 'scripts', 'assets'];
 
   constructor(workspacePath: string) {
-    this.skillsDir = path.join(workspacePath, 'skills');
+    this.skillsDir = path.join(workspacePath, 'memory', 'Skills');
   }
 
   async ensureSkillsDir(): Promise<void> {
@@ -214,7 +214,7 @@ export class SkillRepo implements ISkillRepo {
         content,
         supportingFiles,
       };
-    } catch (error) {
+    } catch {
       return null;
     }
   }

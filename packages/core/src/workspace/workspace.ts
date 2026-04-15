@@ -280,8 +280,8 @@ export async function writeFile(
   const stat = statToSchema(stats, 'file');
   const etag = computeEtag(stats.size, stats.mtimeMs);
 
-  // Schedule a debounced version history commit for knowledge files
-  if (relPath.startsWith('knowledge/') && relPath.endsWith('.md')) {
+  // Schedule a debounced version history commit for memory files
+  if (relPath.startsWith('memory/') && relPath.endsWith('.md')) {
     scheduleKnowledgeCommit(path.basename(relPath));
   }
 

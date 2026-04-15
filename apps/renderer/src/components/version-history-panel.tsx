@@ -37,8 +37,12 @@ export function VersionHistoryPanel({
   const [selectedOid, setSelectedOid] = useState<string | null>(null) // null = current/latest
   const [error, setError] = useState<string | null>(null)
 
-  // Strip "knowledge/" prefix for IPC calls
-  const relPath = path.startsWith('knowledge/') ? path.slice('knowledge/'.length) : path
+  // Strip "memory/" or "knowledge/" prefix for IPC calls (backward compat)
+  const relPath = path.startsWith('memory/') 
+    ? path.slice('memory/'.length) 
+    : path.startsWith('knowledge/') 
+    ? path.slice('knowledge/'.length) 
+    : path
 
   const loadHistory = useCallback(async () => {
     setLoading(true)

@@ -283,7 +283,7 @@ export function KnowledgeCollectionView({
     }
     let cancelled = false
     searchIpc
-      .query(debouncedSearch, 200, ['knowledge'])
+      .query(debouncedSearch, 200, ['memory'])
       .then((result) => {
         if (!cancelled) {
           const withinCollection = result.results

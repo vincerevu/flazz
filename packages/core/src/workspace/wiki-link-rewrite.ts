@@ -2,23 +2,32 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const WIKI_LINK_REGEX = /\[\[([^[\]]+)\]\]/g;
-const KNOWLEDGE_PREFIX = 'knowledge/';
+const MEMORY_PREFIX = 'memory/';
 const MARKDOWN_EXTENSION = '.md';
 
 function normalizeRelPath(relPath: string): string {
   return relPath.replace(/\\/g, '/');
 }
 
-function isKnowledgeMarkdownPath(relPath: string): boolean {
+function isMemoryMarkdownPath(relPath: string): boolean {
   const normalized = normalizeRelPath(relPath).replace(/^\/+/, '');
   const lower = normalized.toLowerCase();
-  return lower.startsWith(KNOWLEDGE_PREFIX) && lower.endsWith(MARKDOWN_EXTENSION);
+  return (lower.startsWith(MEMORY_PREFIX) || lower.startsWith(MEMORY_PREFIX)) && lower.endsWith(MARKDOWN_EXTENSION);
 }
 
-function stripKnowledgePrefix(relPath: string): string {
+function stripMemoryPrefix(relPath: string): string {
   const normalized = normalizeRelPath(relPath).replace(/^\/+/, '');
-  if (!normalized.toLowerCase().startsWith(KNOWLEDGE_PREFIX)) return normalized;
-  return normalized.slice(KNOWLEDGE_PREFIX.length);
+  const lower = normalized.toLowerCase();
+  
+  // Support both memory/ and knowledge/ (legacy)
+  if (lower.startsWith(MEMORY_PREFIX)) {
+    return normalized.slice(MEMORY_PREFIX.length);
+  }
+  if (lower.startsWith(MEMORY_PREFIX)) {
+    return normalized.slice(MEMORY_PREFIX.length);
+  }
+  
+  return normalized;
 }
 
 function stripMarkdownExtension(wikiPath: string): string {
@@ -31,13 +40,19 @@ function toWikiPathCompareKey(wikiPath: string): string {
   return stripMarkdownExtension(wikiPath).toLowerCase();
 }
 
-function splitWikiPathPrefix(rawPath: string): { pathWithoutPrefix: string; hadKnowledgePrefix: boolean } {
+function splitWikiPathPrefix(rawPath: string): { pathWithoutPrefix: string; hadMemoryPrefix: boolean } {
   let normalized = rawPath.trim().replace(/^\/+/, '').replace(/^\.\//, '');
-  const hadKnowledgePrefix = /^knowledge\//i.test(normalized);
-  if (hadKnowledgePrefix) {
-    normalized = normalized.slice(KNOWLEDGE_PREFIX.length);
+  const lower = normalized.toLowerCase();
+  
+  // Support both memory/ and knowledge/ (legacy)
+  const hadMemoryPrefix = /^(memory|knowledge)\//i.test(lower);
+  if (lower.startsWith(MEMORY_PREFIX)) {
+    normalized = normalized.slice(MEMORY_PREFIX.length);
+  } else if (lower.startsWith('knowledge/')) {
+    normalized = normalized.slice('knowledge/'.length);
   }
-  return { pathWithoutPrefix: normalized, hadKnowledgePrefix };
+  
+  return { pathWithoutPrefix: normalized, hadMemoryPrefix };
 }
 
 function rewriteWikiLinksInMarkdown(
@@ -65,7 +80,7 @@ function rewriteWikiLinksInMarkdown(
     const rawPath = pathPart.trim();
     if (!rawPath) return fullMatch;
 
-    const { pathWithoutPrefix, hadKnowledgePrefix } = splitWikiPathPrefix(rawPath);
+    const { pathWithoutPrefix, hadMemoryPrefix } = splitWikiPathPrefix(rawPath);
     if (!pathWithoutPrefix) return fullMatch;
 
     const matchesFullPath = toWikiPathCompareKey(pathWithoutPrefix) === fromCompareKey;
@@ -85,7 +100,7 @@ function rewriteWikiLinksInMarkdown(
     const rewrittenPath = matchesBareSelfName
       ? (preserveMarkdownExtension ? `${toBaseName}.md` : toBaseName)
       : (preserveMarkdownExtension ? toWikiPath : toWikiPathWithoutExtension);
-    const finalPath = hadKnowledgePrefix ? `${KNOWLEDGE_PREFIX}${rewrittenPath}` : rewrittenPath;
+    const finalPath = hadMemoryPrefix ? `${MEMORY_PREFIX}${rewrittenPath}` : rewrittenPath;
 
     return `[[${leadingWhitespace}${finalPath}${trailingWhitespace}${anchorSuffix}${aliasSuffix}]]`;
   });
@@ -135,12 +150,12 @@ export async function rewriteWikiLinksForRenamedKnowledgeFile(
   const normalizedFrom = normalizeRelPath(fromRelPath);
   const normalizedTo = normalizeRelPath(toRelPath);
 
-  if (!isKnowledgeMarkdownPath(normalizedFrom) || !isKnowledgeMarkdownPath(normalizedTo)) {
+  if (!isMemoryMarkdownPath(normalizedFrom) || !isMemoryMarkdownPath(normalizedTo)) {
     return 0;
   }
 
-  const fromWikiPath = stripKnowledgePrefix(normalizedFrom);
-  const toWikiPath = stripKnowledgePrefix(normalizedTo);
+  const fromWikiPath = stripMemoryPrefix(normalizedFrom);
+  const toWikiPath = stripMemoryPrefix(normalizedTo);
   if (toWikiPathCompareKey(fromWikiPath) === toWikiPathCompareKey(toWikiPath)) return 0;
 
   const markdownFiles = await collectKnowledgeMarkdownFiles(workspaceRoot);
@@ -168,3 +183,4 @@ export async function rewriteWikiLinksForRenamedKnowledgeFile(
 
   return rewrittenFiles;
 }
+

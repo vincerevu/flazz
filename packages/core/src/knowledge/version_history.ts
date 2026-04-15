@@ -3,7 +3,7 @@ import path from 'node:path';
 import git from 'isomorphic-git';
 import { WorkDir } from '../config/config.js';
 
-const KNOWLEDGE_DIR = path.join(WorkDir, 'knowledge');
+const MEMORY_DIR = path.join(WorkDir, 'memory');
 
 // Simple promise-based mutex to serialize commits
 let commitLock: Promise<void> = Promise.resolve();
@@ -21,32 +21,32 @@ export function onCommit(listener: CommitListener): () => void {
 }
 
 /**
- * Initialize a git repo in the knowledge directory if one doesn't exist.
+ * Initialize a git repo in the memory directory if one doesn't exist.
  * Stages all existing .md files and makes an initial commit.
  */
 export async function initRepo(): Promise<void> {
-    const gitDir = path.join(KNOWLEDGE_DIR, '.git');
+    const gitDir = path.join(MEMORY_DIR, '.git');
     if (fs.existsSync(gitDir)) {
         return;
     }
 
-    // Ensure knowledge dir exists
-    if (!fs.existsSync(KNOWLEDGE_DIR)) {
-        fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true });
+    // Ensure memory dir exists
+    if (!fs.existsSync(MEMORY_DIR)) {
+        fs.mkdirSync(MEMORY_DIR, { recursive: true });
     }
 
-    await git.init({ fs, dir: KNOWLEDGE_DIR });
+    await git.init({ fs, dir: MEMORY_DIR });
 
     // Stage all existing .md files
-    const files = getAllMdFiles(KNOWLEDGE_DIR, '');
+    const files = getAllMdFiles(MEMORY_DIR, '');
     for (const file of files) {
-        await git.add({ fs, dir: KNOWLEDGE_DIR, filepath: file });
+        await git.add({ fs, dir: MEMORY_DIR, filepath: file });
     }
 
     if (files.length > 0) {
         await git.commit({
             fs,
-            dir: KNOWLEDGE_DIR,
+            dir: MEMORY_DIR,
             message: 'Initial snapshot',
             author: { name: 'Flazz', email: 'local' },
         });
@@ -54,7 +54,7 @@ export async function initRepo(): Promise<void> {
 }
 
 /**
- * Recursively find all .md files relative to the knowledge dir.
+ * Recursively find all .md files relative to the memory dir.
  */
 function getAllMdFiles(baseDir: string, relDir: string): string[] {
     const results: string[] = [];
@@ -97,7 +97,7 @@ export async function commitAll(message: string, authorName: string): Promise<vo
 }
 
 async function commitAllInner(message: string, authorName: string): Promise<void> {
-    const matrix = await git.statusMatrix({ fs, dir: KNOWLEDGE_DIR });
+    const matrix = await git.statusMatrix({ fs, dir: MEMORY_DIR });
 
     let hasChanges = false;
     for (const [filepath, head, workdir, stage] of matrix) {
@@ -112,10 +112,10 @@ async function commitAllInner(message: string, authorName: string): Promise<void
 
         if (workdir === 0) {
             // File deleted from workdir
-            await git.remove({ fs, dir: KNOWLEDGE_DIR, filepath });
+            await git.remove({ fs, dir: MEMORY_DIR, filepath });
         } else {
             // File added or modified
-            await git.add({ fs, dir: KNOWLEDGE_DIR, filepath });
+            await git.add({ fs, dir: MEMORY_DIR, filepath });
         }
     }
 
@@ -123,7 +123,7 @@ async function commitAllInner(message: string, authorName: string): Promise<void
 
     await git.commit({
         fs,
-        dir: KNOWLEDGE_DIR,
+        dir: MEMORY_DIR,
         message,
         author: { name: authorName, email: 'local' },
     });
@@ -147,13 +147,13 @@ const MAX_FILE_HISTORY = 50;
  * Returns commits where the file content changed, most recent first.
  * Capped at MAX_FILE_HISTORY entries.
  */
-export async function getFileHistory(knowledgeRelPath: string): Promise<CommitInfo[]> {
+export async function getFileHistory(memoryRelPath: string): Promise<CommitInfo[]> {
     // Normalize path separators for git (always forward slashes)
-    const filepath = knowledgeRelPath.replace(/\\/g, '/');
+    const filepath = memoryRelPath.replace(/\\/g, '/');
 
     let commits: Awaited<ReturnType<typeof git.log>>;
     try {
-        commits = await git.log({ fs, dir: KNOWLEDGE_DIR });
+        commits = await git.log({ fs, dir: MEMORY_DIR });
     } catch {
         return [];
     }
@@ -198,7 +198,7 @@ async function getBlobOidAtCommit(commitOid: string, filepath: string): Promise<
     try {
         const result = await git.readBlob({
             fs,
-            dir: KNOWLEDGE_DIR,
+            dir: MEMORY_DIR,
             oid: commitOid,
             filepath,
         });
@@ -212,11 +212,11 @@ async function getBlobOidAtCommit(commitOid: string, filepath: string): Promise<
 /**
  * Read file content at a specific commit.
  */
-export async function getFileAtCommit(knowledgeRelPath: string, oid: string): Promise<string> {
-    const filepath = knowledgeRelPath.replace(/\\/g, '/');
+export async function getFileAtCommit(memoryRelPath: string, oid: string): Promise<string> {
+    const filepath = memoryRelPath.replace(/\\/g, '/');
     const result = await git.readBlob({
         fs,
-        dir: KNOWLEDGE_DIR,
+        dir: MEMORY_DIR,
         oid,
         filepath,
     });
@@ -226,9 +226,9 @@ export async function getFileAtCommit(knowledgeRelPath: string, oid: string): Pr
 /**
  * Restore a file to its content at a given commit, then commit the restoration.
  */
-export async function restoreFile(knowledgeRelPath: string, oid: string): Promise<void> {
-    const content = await getFileAtCommit(knowledgeRelPath, oid);
-    const absPath = path.join(KNOWLEDGE_DIR, knowledgeRelPath);
+export async function restoreFile(memoryRelPath: string, oid: string): Promise<void> {
+    const content = await getFileAtCommit(memoryRelPath, oid);
+    const absPath = path.join(MEMORY_DIR, memoryRelPath);
 
     // Ensure parent directory exists
     const dir = path.dirname(absPath);
@@ -238,6 +238,6 @@ export async function restoreFile(knowledgeRelPath: string, oid: string): Promis
 
     fs.writeFileSync(absPath, content, 'utf-8');
 
-    const filename = path.basename(knowledgeRelPath);
+    const filename = path.basename(memoryRelPath);
     await commitAll(`Restored ${filename}`, 'You');
 }

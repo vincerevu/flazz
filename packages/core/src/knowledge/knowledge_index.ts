@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { WorkDir } from '../config/config.js';
 
-const KNOWLEDGE_DIR = path.join(WorkDir, 'knowledge');
+const MEMORY_DIR = path.join(WorkDir, 'memory');
 
 /**
  * Index entry for a person note
@@ -110,7 +110,7 @@ function extractTitle(content: string): string {
  */
 function parsePersonNote(filePath: string, content: string): PersonEntry {
     const name = extractTitle(content);
-    const relativePath = path.relative(KNOWLEDGE_DIR, filePath);
+    const relativePath = path.relative(MEMORY_DIR, filePath);
 
     return {
         file: relativePath,
@@ -127,7 +127,7 @@ function parsePersonNote(filePath: string, content: string): PersonEntry {
  */
 function parseOrganizationNote(filePath: string, content: string): OrganizationEntry {
     const name = extractTitle(content);
-    const relativePath = path.relative(KNOWLEDGE_DIR, filePath);
+    const relativePath = path.relative(MEMORY_DIR, filePath);
 
     return {
         file: relativePath,
@@ -142,7 +142,7 @@ function parseOrganizationNote(filePath: string, content: string): OrganizationE
  */
 function parseProjectNote(filePath: string, content: string): ProjectEntry {
     const name = extractTitle(content);
-    const relativePath = path.relative(KNOWLEDGE_DIR, filePath);
+    const relativePath = path.relative(MEMORY_DIR, filePath);
 
     return {
         file: relativePath,
@@ -157,7 +157,7 @@ function parseProjectNote(filePath: string, content: string): ProjectEntry {
  */
 function parseTopicNote(filePath: string, content: string): TopicEntry {
     const name = extractTitle(content);
-    const relativePath = path.relative(KNOWLEDGE_DIR, filePath);
+    const relativePath = path.relative(MEMORY_DIR, filePath);
 
     return {
         file: relativePath,
@@ -172,7 +172,7 @@ function parseTopicNote(filePath: string, content: string): TopicEntry {
  */
 function parseOtherNote(filePath: string, content: string): OtherEntry {
     const name = extractTitle(content);
-    const relativePath = path.relative(KNOWLEDGE_DIR, filePath);
+    const relativePath = path.relative(MEMORY_DIR, filePath);
     // Get the folder name (first part of relative path)
     const folder = relativePath.split(path.sep)[0] || 'root';
 
@@ -214,7 +214,7 @@ function scanDirectoryRecursive(dir: string): string[] {
  * Determine which folder a file belongs to based on its path
  */
 function getFolderType(filePath: string): string {
-    const relativePath = path.relative(KNOWLEDGE_DIR, filePath);
+    const relativePath = path.relative(MEMORY_DIR, filePath);
     const parts = relativePath.split(path.sep);
 
     // If file is directly in knowledge folder (no subfolder)
@@ -242,7 +242,7 @@ export async function buildKnowledgeIndex(): Promise<KnowledgeIndex> {
     };
 
     // Scan entire knowledge directory recursively
-    const allFiles = scanDirectoryRecursive(KNOWLEDGE_DIR);
+    const allFiles = scanDirectoryRecursive(MEMORY_DIR);
 
     await Promise.all(allFiles.map(async (filePath) => {
         try {
@@ -355,3 +355,4 @@ export function formatIndexForPrompt(index: KnowledgeIndex): string {
 
     return output;
 }
+

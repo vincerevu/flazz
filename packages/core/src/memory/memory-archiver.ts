@@ -9,7 +9,7 @@ export interface IMemoryArchiver {
 }
 
 export class MemoryArchiver implements IMemoryArchiver {
-  private knowledgeDir = path.join(WorkDir, 'knowledge');
+  private memoryDir = path.join(WorkDir, 'memory');
 
   constructor(private memoryRepo: IMemoryRepo) {}
 
@@ -34,10 +34,10 @@ export class MemoryArchiver implements IMemoryArchiver {
       throw new Error('Target path must end with .md');
     }
 
-    // Ensure path is within knowledge directory
-    const fullPath = path.join(this.knowledgeDir, targetPath);
-    if (!fullPath.startsWith(this.knowledgeDir)) {
-      throw new Error('Target path must be within knowledge directory');
+    // Ensure path is within memory directory
+    const fullPath = path.join(this.memoryDir, targetPath);
+    if (!fullPath.startsWith(this.memoryDir)) {
+      throw new Error('Target path must be within memory directory');
     }
 
     // Ensure parent directory exists
@@ -64,7 +64,7 @@ export class MemoryArchiver implements IMemoryArchiver {
     // Clear memory section
     await this.memoryRepo.atomicWrite(section, []);
 
-    // Rebuild knowledge index (this updates the graph)
+    // Rebuild memory index (this updates the graph)
     await buildKnowledgeIndex();
   }
 }
