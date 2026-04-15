@@ -1,4 +1,4 @@
-import { type Memory, type MemoryConfig, type IMemoryRepo } from './types.js';
+import { type MemoryConfig, type IMemoryRepo } from './types.js';
 
 export class MemoryManager {
   // Frozen snapshot for system prompt (captured at session start)

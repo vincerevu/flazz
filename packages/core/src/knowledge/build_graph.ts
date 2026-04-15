@@ -28,8 +28,6 @@ const NOTE_CREATION_AGENT = 'note_creation';
 
 // Configuration for the graph builder service
 const SYNC_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
-// Note: gmail_sync, fireflies_transcripts, granola_notes removed (not used)
-const SOURCE_FOLDERS: string[] = [];
 
 // Voice memos are now created directly in memory/Voice Memos/<date>/
 const VOICE_MEMOS_MEMORY_DIR = path.join(NOTES_OUTPUT_DIR, 'Voice Memos');
@@ -556,7 +554,6 @@ async function processAllSources(): Promise<void> {
         console.error('[GraphBuilder] Error processing voice memos:', error);
     }
 
-    // Note: SOURCE_FOLDERS is now empty (gmail_sync, fireflies, granola removed)
     // Graph builder now focuses on:
     // 1. Voice memos (built-in feature)
     // 2. Memory archiving (Phase 3)

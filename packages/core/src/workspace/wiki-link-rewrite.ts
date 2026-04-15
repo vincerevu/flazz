@@ -3,7 +3,6 @@ import path from 'node:path';
 
 const WIKI_LINK_REGEX = /\[\[([^[\]]+)\]\]/g;
 const MEMORY_PREFIX = 'memory/';
-const KNOWLEDGE_PREFIX = 'knowledge/'; // Legacy support for backward compatibility
 const MARKDOWN_EXTENSION = '.md';
 
 function normalizeRelPath(relPath: string): string {
@@ -49,8 +48,8 @@ function splitWikiPathPrefix(rawPath: string): { pathWithoutPrefix: string; hadM
   const hadMemoryPrefix = /^(memory|knowledge)\//i.test(lower);
   if (lower.startsWith(MEMORY_PREFIX)) {
     normalized = normalized.slice(MEMORY_PREFIX.length);
-  } else if (lower.startsWith(MEMORY_PREFIX)) {
-    normalized = normalized.slice(MEMORY_PREFIX.length);
+  } else if (lower.startsWith('knowledge/')) {
+    normalized = normalized.slice('knowledge/'.length);
   }
   
   return { pathWithoutPrefix: normalized, hadMemoryPrefix };

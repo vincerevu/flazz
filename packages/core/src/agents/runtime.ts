@@ -253,7 +253,7 @@ function shouldContinueLoop(finishReason: string | null): boolean {
     if (!finishReason) {
         return false;
     }
-    return isToolCallFinishReason(finishReason as any);
+    return isToolCallFinishReason(finishReason);
 }
 
 function buildEmptyAssistantFallback(): z.infer<typeof AssistantMessage> {
@@ -316,8 +316,16 @@ export async function* streamAgent({
     // set up agent
     const agent = await loadAgent(state.agentName!);
 
-    // set up tools
-    const requestedTools = await buildTools(agent);
+    // Extract first user message for tool filtering
+    const firstUserMessage = state.messages.find(m => m.role === 'user');
+    const userMessage = firstUserMessage 
+        ? (typeof firstUserMessage.content === 'string' 
+            ? firstUserMessage.content 
+            : firstUserMessage.content.map(c => c.type === 'text' ? c.text : '').join(' '))
+        : '';
+
+    // set up tools with smart filtering
+    const requestedTools = await buildTools(agent, userMessage);
     const executionPolicy = getModelExecutionPolicy(modelConfig.provider);
     const tools = executionPolicy.toolExecutionMode === "full" ? requestedTools : {};
 
@@ -495,9 +503,20 @@ export async function* streamAgent({
         const messageBuilder = new StreamStepMessageBuilder({
             sanitizeTextArtifacts: executionPolicy.sanitizeTextArtifacts,
         });
+        
+        // Limit conversation history to prevent context overflow
+        const MAX_HISTORY = 20;
+        const recentMessages = state.messages.length > MAX_HISTORY 
+            ? state.messages.slice(-MAX_HISTORY)
+            : state.messages;
+        
+        if (state.messages.length > MAX_HISTORY) {
+            loopLogger.log(`truncating conversation history: ${state.messages.length} -> ${MAX_HISTORY} messages`);
+        }
+        
         for await (const event of streamLlm(
             model,
-            state.messages,
+            recentMessages,
             instructionsWithDateTime,
             tools,
             signal,

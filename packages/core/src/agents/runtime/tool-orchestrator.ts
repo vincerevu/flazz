@@ -8,7 +8,6 @@ import { RunEvent } from "@flazz/shared";
 import { execTool } from "../../application/lib/exec-tool.js";
 import { IAbortRegistry } from "../../runs/abort-registry.js";
 import { loadAgent } from "../runtime.js";
-import { AgentState } from "./agent-state.js";
 
 export const MappedToolCall = z.object({
     toolCall: ToolCallPart,
@@ -57,10 +56,43 @@ export async function mapAgentTool(t: z.infer<typeof ToolAttachment>): Promise<T
     }
 }
 
-export async function buildTools(agent: z.infer<typeof Agent>): Promise<ToolSet> {
+/**
+ * Extract keywords from text for tool filtering
+ */
+function extractKeywords(text: string): Set<string> {
+    return new Set(
+        text.toLowerCase()
+            .split(/\W+/)
+            .filter(w => w.length > 3)
+    );
+}
+
+/**
+ * Build tools for agent, with smart filtering for MCP tools
+ * Only loads MCP tools that are relevant to the user message
+ */
+export async function buildTools(
+    agent: z.infer<typeof Agent>,
+    userMessage?: string
+): Promise<ToolSet> {
     const tools: ToolSet = {};
+    const messageKeywords = userMessage ? extractKeywords(userMessage) : null;
+    
     for (const [name, agentTool] of Object.entries(agent.tools ?? {})) {
         try {
+            // Smart filtering for MCP tools - only load if relevant to message
+            if (agentTool.type === 'mcp' && messageKeywords) {
+                const toolKeywords = extractKeywords(agentTool.description);
+                const hasMatch = Array.from(messageKeywords).some(k => 
+                    toolKeywords.has(k)
+                );
+                
+                if (!hasMatch) {
+                    console.log(`[Tools] Skipping MCP tool ${name} (not relevant to message)`);
+                    continue;
+                }
+            }
+            
             // Skip builtin tools that declare themselves unavailable
             if (agentTool.type === 'builtin') {
                 const builtin = BuiltinTools[agentTool.name];

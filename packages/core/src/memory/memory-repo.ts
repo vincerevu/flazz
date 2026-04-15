@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import { type Memory, type MemorySection, type IMemoryRepo } from './types.js';
 
 export class MemoryRepo implements IMemoryRepo {
