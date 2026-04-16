@@ -53,6 +53,7 @@ export const SkillLearningStats = z.object({
   promotedCandidateCount: z.number(),
   rejectedCandidateCount: z.number(),
   trackedSkillCount: z.number(),
+  repairCandidateCount: z.number(),
 });
 
 export const SkillRevision = z.object({
@@ -64,6 +65,18 @@ export const SkillRevision = z.object({
   summary: z.string().optional(),
   previousContent: z.string().optional(),
   nextContent: z.string(),
+});
+
+export const SkillRepairCandidate = z.object({
+  id: z.string(),
+  skillName: z.string(),
+  runId: z.string(),
+  status: z.enum(["pending", "applied", "rejected"]),
+  failureCategory: z.string(),
+  evidenceSummary: z.string(),
+  proposedPatch: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
 });
 
 export const ListSkillRevisionsResponse = z.object({
@@ -78,6 +91,11 @@ export const ListSkillsResponse = z.object({
 
 export const ListSkillCandidatesResponse = z.object({
   candidates: z.array(SkillCandidate),
+  count: z.number(),
+});
+
+export const ListSkillRepairCandidatesResponse = z.object({
+  repairs: z.array(SkillRepairCandidate),
   count: z.number(),
 });
 

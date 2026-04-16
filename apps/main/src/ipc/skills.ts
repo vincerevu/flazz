@@ -20,6 +20,9 @@ export function registerSkillsHandlers(handlers: Partial<InvokeHandlers>) {
   handlers['skills:getLearningStats'] = async () => {
     return skillsCore.getSkillLearningStats();
   };
+  handlers['skills:listRepairCandidates'] = async () => {
+    return skillsCore.listSkillRepairCandidates();
+  };
   handlers['skills:listRevisions'] = async (_event, args) => {
     return skillsCore.listSkillRevisions(args.name);
   };

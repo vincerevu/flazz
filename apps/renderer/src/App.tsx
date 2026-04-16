@@ -94,6 +94,8 @@ function App() {
     selectedRevision,
     selectedRevisionId,
     setSelectedRevisionId,
+    relatedRepairs,
+    relatedRunMemories,
     mutatingCandidateId,
     rollingBackRevisionId,
     promoteCandidate,
@@ -1030,6 +1032,8 @@ function App() {
             selectedRevision={selectedRevision}
             selectedRevisionId={selectedRevisionId}
             setSelectedRevisionId={setSelectedRevisionId}
+            relatedRepairs={relatedRepairs}
+            relatedRunMemories={relatedRunMemories}
             mutatingCandidateId={mutatingCandidateId}
             rollingBackRevisionId={rollingBackRevisionId}
             onPromoteCandidate={promoteCandidate}

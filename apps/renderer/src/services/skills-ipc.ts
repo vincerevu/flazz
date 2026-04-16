@@ -27,6 +27,10 @@ export const skillsIpc = {
     return window.ipc.invoke('skills:getLearningStats', null)
   },
 
+  listRepairCandidates() {
+    return window.ipc.invoke('skills:listRepairCandidates', null)
+  },
+
   listRevisions(name: string) {
     return window.ipc.invoke('skills:listRevisions', { name })
   },
