@@ -57,9 +57,9 @@ interface OtherEntry {
 }
 
 /**
- * The complete knowledge index
+ * The complete memory index
  */
-export interface KnowledgeIndex {
+export interface MemoryIndex {
     people: PersonEntry[];
     organizations: OrganizationEntry[];
     projects: ProjectEntry[];
@@ -217,7 +217,7 @@ function getFolderType(filePath: string): string {
     const relativePath = path.relative(MEMORY_DIR, filePath);
     const parts = relativePath.split(path.sep);
 
-    // If file is directly in knowledge folder (no subfolder)
+    // If file is directly in memory folder (no subfolder)
     if (parts.length === 1) {
         return 'root';
     }
@@ -227,12 +227,12 @@ function getFolderType(filePath: string): string {
 }
 
 /**
- * Build a complete index of the knowledge base
+ * Build a complete index of workspace memory
  * Scans all notes recursively and extracts searchable fields using folder-based parsing
  */
-export async function buildKnowledgeIndex(): Promise<KnowledgeIndex> {
-    console.time('build-knowledge-index');
-    const index: KnowledgeIndex = {
+export async function buildMemoryIndex(): Promise<MemoryIndex> {
+    console.time('build-memory-index');
+    const index: MemoryIndex = {
         people: [],
         organizations: [],
         projects: [],
@@ -241,7 +241,7 @@ export async function buildKnowledgeIndex(): Promise<KnowledgeIndex> {
         buildTime: new Date().toISOString(),
     };
 
-    // Scan entire knowledge directory recursively
+    // Scan entire memory directory recursively
     const allFiles = scanDirectoryRecursive(MEMORY_DIR);
 
     await Promise.all(allFiles.map(async (filePath) => {
@@ -273,15 +273,15 @@ export async function buildKnowledgeIndex(): Promise<KnowledgeIndex> {
         }
     }));
 
-    console.timeEnd('build-knowledge-index');
+    console.timeEnd('build-memory-index');
     return index;
 }
 
 /**
  * Format the index as a string for inclusion in agent prompts
  */
-export function formatIndexForPrompt(index: KnowledgeIndex): string {
-    let output = '# Existing Knowledge Base Index\n\n';
+export function formatIndexForPrompt(index: MemoryIndex): string {
+    let output = '# Existing Memory Index\n\n';
     output += `Built at: ${index.buildTime}\n\n`;
 
     // People
@@ -355,4 +355,5 @@ export function formatIndexForPrompt(index: KnowledgeIndex): string {
 
     return output;
 }
+
 

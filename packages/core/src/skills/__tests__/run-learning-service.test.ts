@@ -1,0 +1,212 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Run as RunSchema } from '@flazz/shared';
+import { z } from 'zod';
+import { LearningStateRepo } from '../learning-state-repo.js';
+import { SkillRepo } from '../skill-repo.js';
+import {
+  buildRunSignature,
+  getLoadedSkills,
+  runHasFailureSignal,
+  shouldConsiderRun,
+} from '../run-learning-service.js';
+
+type Run = z.infer<typeof RunSchema>;
+
+function createRunFixture(options?: {
+  toolNames?: string[];
+  withError?: boolean;
+  withStop?: boolean;
+  loadSkillResult?: { name: string; source: 'workspace' | 'builtin' | 'unknown' };
+}): Run {
+  const toolNames = options?.toolNames ?? ['workspace-readFile', 'workspace-grep', 'loadSkill', 'workspace-writeFile', 'skill_view'];
+  const log: Run['log'] = [
+    {
+      runId: 'run-1',
+      type: 'message' as const,
+      messageId: 'm1',
+      subflow: [],
+      message: {
+        role: 'user' as const,
+        content: 'Please prepare a reusable deployment workflow and remember it for next time.',
+      },
+    },
+    ...toolNames.map((toolName, index): Run['log'][number] => ({
+      runId: 'run-1',
+      type: 'tool-invocation',
+      toolCallId: `t${index + 1}`,
+      toolName,
+      input: '{}',
+      subflow: [],
+    })),
+    {
+      runId: 'run-1',
+      type: 'message' as const,
+      messageId: 'm2',
+      subflow: [],
+      message: {
+        role: 'assistant' as const,
+        content: 'Done. I created the deployment workflow and documented the steps.',
+      },
+    },
+  ];
+
+  if (options?.loadSkillResult) {
+    log.push({
+      runId: 'run-1',
+      type: 'tool-result',
+      toolCallId: 'loaded-1',
+      toolName: 'loadSkill',
+      result: {
+        success: true,
+        skillName: options.loadSkillResult.name,
+        source: options.loadSkillResult.source,
+        content: 'skill content',
+      },
+      subflow: [],
+    });
+  }
+
+  if (options?.withError) {
+    log.push({
+      runId: 'run-1',
+      type: 'error',
+      error: 'boom',
+      subflow: [],
+    });
+  }
+
+  if (options?.withStop) {
+    log.push({
+      runId: 'run-1',
+      type: 'run-stopped',
+      reason: 'user-requested',
+      subflow: [],
+    });
+  }
+
+  return {
+    id: 'run-1',
+    createdAt: new Date().toISOString(),
+    agentId: 'copilot',
+    log,
+  };
+}
+
+test('shouldConsiderRun accepts successful complex runs', () => {
+  const run = createRunFixture();
+  assert.deepEqual(shouldConsiderRun(run), { ok: true });
+});
+
+test('shouldConsiderRun rejects failed runs and reports the reason', () => {
+  const run = createRunFixture({ withError: true });
+  assert.deepEqual(shouldConsiderRun(run), {
+    ok: false,
+    reason: 'run ended with error or stop',
+  });
+});
+
+test('buildRunSignature is stable across duplicate tool ordering noise', () => {
+  const a = createRunFixture({ toolNames: ['loadSkill', 'workspace-readFile', 'workspace-writeFile', 'workspace-readFile', 'workspace-grep'] });
+  const b = createRunFixture({ toolNames: ['workspace-grep', 'workspace-writeFile', 'loadSkill', 'workspace-readFile'] });
+
+  assert.equal(buildRunSignature(a), buildRunSignature(b));
+});
+
+test('getLoadedSkills extracts successful loadSkill tool results', () => {
+  const run = createRunFixture({
+    loadSkillResult: {
+      name: 'deploy-workflow',
+      source: 'workspace',
+    },
+  });
+
+  assert.deepEqual(getLoadedSkills(run), [
+    { name: 'deploy-workflow', source: 'workspace' },
+  ]);
+});
+
+test('runHasFailureSignal detects both error and stop events', () => {
+  assert.equal(runHasFailureSignal(createRunFixture({ withError: true })), true);
+  assert.equal(runHasFailureSignal(createRunFixture({ withStop: true })), true);
+  assert.equal(runHasFailureSignal(createRunFixture()), false);
+});
+
+test('LearningStateRepo tracks candidate promotion and failure stats', () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-learning-'));
+  try {
+    const repo = new LearningStateRepo(tempDir);
+    const candidate = repo.bumpCandidate('sig-1', 'run-1', 'deploy-workflow');
+    assert.equal(candidate.occurrences, 1);
+
+    repo.updateCandidateDraft('sig-1', {
+      proposedCategory: 'devops',
+      proposedDescription: 'Deploy app changes safely',
+      draftContent: '---\nname: deploy-workflow\ndescription: Deploy app changes safely\n---\n## Steps\n- Do it',
+    });
+    repo.recordSkillFailure('deploy-workflow');
+    repo.recordSkillUpdated('deploy-workflow');
+    repo.markCandidatePromoted('sig-1', 'deploy-workflow');
+
+    const state = repo.getState();
+    assert.equal(state.candidates['sig-1']?.status, 'promoted');
+    assert.equal(state.skills['deploy-workflow']?.failureCount, 1);
+    assert.ok(state.skills['deploy-workflow']?.lastUpdatedAt);
+    assert.ok((state.candidates['sig-1']?.confidence ?? 0) > 0.5);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('rejected candidates return to pending and gain confidence only after recurrence', () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-learning-'));
+  try {
+    const repo = new LearningStateRepo(tempDir);
+    repo.bumpCandidate('sig-2', 'run-1', 'triage-workflow');
+    repo.rejectCandidate('sig-2');
+    const retried = repo.bumpCandidate('sig-2', 'run-2', 'triage-workflow');
+
+    assert.equal(retried.status, 'pending');
+    assert.equal(retried.occurrences, 2);
+    assert.ok(retried.confidence >= 0.5);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('SkillRepo persists revisions for create and update flows', async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-revisions-'));
+  try {
+    const repo = new SkillRepo(tempDir);
+    const initial = [
+      '---',
+      'name: deploy-workflow',
+      'description: Deploy safely',
+      '---',
+      '## Steps',
+      '- Build',
+    ].join('\n');
+    const updated = [
+      '---',
+      'name: deploy-workflow',
+      'description: Deploy safely',
+      '---',
+      '## Steps',
+      '- Build',
+      '- Roll out',
+    ].join('\n');
+
+    await repo.create('deploy-workflow', initial);
+    await repo.update('deploy-workflow', updated);
+
+    const revisions = await repo.listRevisions('deploy-workflow');
+    assert.equal(revisions.length, 2);
+    assert.equal(revisions[0]?.reason, 'update');
+    assert.equal(revisions[1]?.reason, 'create');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

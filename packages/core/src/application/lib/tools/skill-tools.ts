@@ -1,10 +1,16 @@
 import { z } from 'zod';
 import type { SkillManager } from '../../../skills/skill-manager.js';
+import type { RunLearningService } from '../../../skills/run-learning-service.js';
 
 let skillManager: SkillManager | null = null;
+let runLearningService: RunLearningService | null = null;
 
 export function setSkillManager(manager: SkillManager): void {
   skillManager = manager;
+}
+
+export function setRunLearningService(service: RunLearningService): void {
+  runLearningService = service;
 }
 
 export const skillTools = {
@@ -12,7 +18,7 @@ export const skillTools = {
     description:
       'Manage skills (create, update, delete). Skills are your procedural ' +
       'memory — reusable approaches for recurring task types. ' +
-      'New skills go to ~/Flazz/skills/; existing skills can be modified wherever they live.\n\n' +
+      'New skills go to ~/Flazz/memory/Skills/; existing workspace skills can be modified in place.\n\n' +
       'Actions: create (full SKILL.md + optional category), ' +
       'patch (old_string/new_string — preferred for fixes), ' +
       'edit (full SKILL.md rewrite — major overhauls only), ' +
@@ -233,6 +239,130 @@ export const skillTools = {
           content: skill.content,
           supportingFiles: skill.supportingFiles,
         },
+      };
+    },
+  },
+
+  skill_revision_review: {
+    description:
+      'Review revision history for workspace skills. Use this to list revisions, inspect a specific revision, and compare current skill content with prior versions when autonomous learning updates a skill.',
+    inputSchema: z.object({
+      action: z.enum(['list_revisions', 'view_revision', 'rollback_revision']).describe('Revision review action.'),
+      name: z.string().describe('Skill name to inspect.'),
+      revision_id: z.string().optional().describe('Revision id. Required for view_revision.'),
+    }),
+    execute: async ({
+      action,
+      name,
+      revision_id,
+    }: {
+      action: 'list_revisions' | 'view_revision' | 'rollback_revision';
+      name: string;
+      revision_id?: string;
+    }) => {
+      if (!skillManager) {
+        return { success: false, error: 'Skill system not initialized' };
+      }
+
+      if (action === 'list_revisions') {
+        const revisions = await skillManager.listRevisions(name);
+        return {
+          success: true,
+          revisions: revisions.map((revision) => ({
+            id: revision.id,
+            createdAt: revision.createdAt,
+            reason: revision.reason,
+            actor: revision.actor,
+            summary: revision.summary,
+          })),
+          count: revisions.length,
+        };
+      }
+
+      if (!revision_id) {
+        return {
+          success: false,
+          error: 'revision_id is required for this action.',
+        };
+      }
+
+      if (action === 'rollback_revision') {
+        return await skillManager.rollbackToRevision(name, revision_id);
+      }
+
+      const revision = await skillManager.getRevision(name, revision_id);
+      if (!revision) {
+        return {
+          success: false,
+          error: `Revision '${revision_id}' not found for skill '${name}'.`,
+        };
+      }
+
+      return {
+        success: true,
+        revision,
+      };
+    },
+  },
+
+  skill_learning_review: {
+    description:
+      'Review autonomous skill-learning candidates and their promotion state. ' +
+      'Use this to inspect pending candidates, manually promote a candidate into a real skill, reject a bad candidate, or inspect learning stats.',
+    inputSchema: z.object({
+      action: z
+        .enum(['list_candidates', 'promote_candidate', 'reject_candidate', 'stats'])
+        .describe('Review action to perform.'),
+      signature: z
+        .string()
+        .optional()
+        .describe('Candidate signature. Required for promote_candidate and reject_candidate.'),
+    }),
+    execute: async ({
+      action,
+      signature,
+    }: {
+      action: 'list_candidates' | 'promote_candidate' | 'reject_candidate' | 'stats';
+      signature?: string;
+    }) => {
+      if (!runLearningService) {
+        return { success: false, error: 'Skill learning service is not initialized' };
+      }
+
+      if (action === 'list_candidates') {
+        const candidates = runLearningService.listCandidates();
+        return {
+          success: true,
+          candidates,
+          count: candidates.length,
+        };
+      }
+
+      if (action === 'stats') {
+        return {
+          success: true,
+          stats: runLearningService.getLearningStats(),
+        };
+      }
+
+      if (!signature) {
+        return {
+          success: false,
+          error: 'signature is required for this action.',
+        };
+      }
+
+      if (action === 'promote_candidate') {
+        return await runLearningService.promoteCandidate(signature);
+      }
+
+      if (action === 'reject_candidate') {
+        return runLearningService.rejectCandidate(signature);
+      }
+
+      return {
+        success: false,
+        error: `Unknown action '${action}'.`,
       };
     },
   },

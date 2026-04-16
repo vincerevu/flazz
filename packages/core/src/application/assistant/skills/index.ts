@@ -15,42 +15,42 @@ import webSearchSkill from "./web-search/skill.js";
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CATALOG_PREFIX = "src/application/assistant/skills";
 
-type SkillDefinition = {
+export type SkillDefinition = {
   id: string;  // Also used as folder name
   title: string;
   summary: string;
   content: string;
 };
 
-type ResolvedSkill = {
+export type ResolvedSkill = {
   id: string;
   catalogPath: string;
   content: string;
 };
 
-const definitions: SkillDefinition[] = [
+export const builtInSkillDefinitions: SkillDefinition[] = [
   {
     id: "create-presentations",
     title: "Create Presentations",
-    summary: "Create PDF presentations and slide decks from natural language requests using knowledge base context.",
+    summary: "Create PDF presentations and slide decks from natural language requests using workspace memory context.",
     content: createPresentationsSkill,
   },
   {
     id: "doc-collab",
     title: "Document Collaboration",
-    summary: "Collaborate on documents - create, edit, and refine notes and documents in the knowledge base.",
+    summary: "Collaborate on documents - create, edit, and refine notes and documents in workspace memory.",
     content: docCollabSkill,
   },
   {
     id: "draft-emails",
     title: "Draft Emails",
-    summary: "Process incoming emails and create draft responses using calendar and knowledge base for context.",
+    summary: "Process incoming emails and create draft responses using calendar and workspace memory for context.",
     content: draftEmailsSkill,
   },
   {
     id: "meeting-prep",
     title: "Meeting Prep",
-    summary: "Prepare for meetings by gathering context about attendees from the knowledge base.",
+    summary: "Prepare for meetings by gathering context about attendees from workspace memory.",
     content: meetingPrepSkill,
   },
   {
@@ -97,12 +97,12 @@ const definitions: SkillDefinition[] = [
   },
 ];
 
-const skillEntries = definitions.map((definition) => ({
+export const builtInSkillEntries = builtInSkillDefinitions.map((definition) => ({
   ...definition,
   catalogPath: `${CATALOG_PREFIX}/${definition.id}/skill.ts`,
 }));
 
-const catalogSections = skillEntries.map((entry) => [
+const catalogSections = builtInSkillEntries.map((entry) => [
   `## ${entry.title}`,
   `- **Skill file:** \`${entry.catalogPath}\``,
   `- **Use it for:** ${entry.summary}`,
@@ -148,7 +148,7 @@ const registerAliasVariants = (alias: string, entry: ResolvedSkill) => {
   }
 };
 
-for (const entry of skillEntries) {
+for (const entry of builtInSkillEntries) {
   const absoluteTs = path.join(CURRENT_DIR, entry.id, "skill.ts");
   const absoluteJs = path.join(CURRENT_DIR, entry.id, "skill.js");
   const resolvedEntry: ResolvedSkill = {
@@ -175,7 +175,7 @@ for (const entry of skillEntries) {
   }
 }
 
-export const availableSkills = skillEntries.map((entry) => entry.id);
+export const availableSkills = builtInSkillEntries.map((entry) => entry.id);
 
 export function resolveSkill(identifier: string): ResolvedSkill | null {
   const normalized = normalizeIdentifier(identifier);

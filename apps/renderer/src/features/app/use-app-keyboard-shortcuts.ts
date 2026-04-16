@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from 'react'
 
-import { GRAPH_TAB_PATH } from '@/features/knowledge/types'
+import { GRAPH_TAB_PATH } from '@/features/memory/types'
 import type { FileTab, ChatTab } from '@/components/tab-bar'
 
 interface HistoryHandlers {
@@ -106,10 +106,10 @@ export function useAppKeyboardShortcuts({
         ? (isRightPaneMaximized ? 'right' : activeShortcutPane)
         : 'left'
       const inFileView = targetPane === 'left' && Boolean(selectedPath || isGraphOpen)
-      const selectedKnowledgePath = isGraphOpen ? GRAPH_TAB_PATH : selectedPath
+      const selectedMemoryPath = isGraphOpen ? GRAPH_TAB_PATH : selectedPath
       const targetFileTabId = activeFileTabId ?? (
-        selectedKnowledgePath
-          ? (fileTabs.find((tab) => tab.path === selectedKnowledgePath)?.id ?? null)
+        selectedMemoryPath
+          ? (fileTabs.find((tab) => tab.path === selectedMemoryPath)?.id ?? null)
           : null
       )
 

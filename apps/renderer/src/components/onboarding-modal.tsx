@@ -31,7 +31,6 @@ import { toast } from "sonner"
 import { oauthIpc } from "@/services/oauth-ipc"
 import { composioIpc } from "@/services/composio-ipc"
 import { composioActionsIpc } from "@/services/composio-actions-ipc"
-import { granolaIpc } from "@/services/granola-ipc"
 import { modelsActionsIpc } from "@/services/models-actions-ipc"
 import { modelsIpc } from "@/services/models-ipc"
 
@@ -64,14 +63,14 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const [modelsCatalog, setModelsCatalog] = useState<Record<string, LlmModelOption[]>>({})
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
-  const [providerConfigs, setProviderConfigs] = useState<Record<LlmProviderFlavor, { apiKey: string; baseURL: string; model: string; knowledgeGraphModel: string }>>({
-    openai: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    anthropic: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    google: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    openrouter: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    aigateway: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    ollama: { apiKey: "", baseURL: "http://localhost:11434", model: "", knowledgeGraphModel: "" },
-    "openai-compatible": { apiKey: "", baseURL: "http://localhost:1234/v1", model: "", knowledgeGraphModel: "" },
+  const [providerConfigs, setProviderConfigs] = useState<Record<LlmProviderFlavor, { apiKey: string; baseURL: string; model: string; memoryGraphModel: string }>>({
+    openai: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    anthropic: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    google: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    openrouter: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    aigateway: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    ollama: { apiKey: "", baseURL: "http://localhost:11434", model: "", memoryGraphModel: "" },
+    "openai-compatible": { apiKey: "", baseURL: "http://localhost:1234/v1", model: "", memoryGraphModel: "" },
   })
   const [testState, setTestState] = useState<{ status: "idle" | "testing" | "success" | "error"; error?: string }>({
     status: "idle",
@@ -82,9 +81,6 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const [providerStates, setProviderStates] = useState<Record<string, ProviderState>>({})
   const [googleClientIdOpen, setGoogleClientIdOpen] = useState(false)
 
-  // Granola state
-  const [granolaEnabled, setGranolaEnabled] = useState(false)
-  const [granolaLoading, setGranolaLoading] = useState(true)
   const [showMoreProviders, setShowMoreProviders] = useState(false)
 
   // Composio/Slack state
@@ -94,7 +90,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
   const [slackConnecting, setSlackConnecting] = useState(false)
 
   const updateProviderConfig = useCallback(
-    (provider: LlmProviderFlavor, updates: Partial<{ apiKey: string; baseURL: string; model: string; knowledgeGraphModel: string }>) => {
+    (provider: LlmProviderFlavor, updates: Partial<{ apiKey: string; baseURL: string; model: string; memoryGraphModel: string }>) => {
       setProviderConfigs(prev => ({
         ...prev,
         [provider]: { ...prev[provider], ...updates },
@@ -190,35 +186,6 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     })
   }, [modelsCatalog])
 
-  // Load Granola config
-  const refreshGranolaConfig = useCallback(async () => {
-    try {
-      setGranolaLoading(true)
-      const result = await granolaIpc.getConfig()
-      setGranolaEnabled(result.enabled)
-    } catch (error) {
-      console.error('Failed to load Granola config:', error)
-      setGranolaEnabled(false)
-    } finally {
-      setGranolaLoading(false)
-    }
-  }, [])
-
-  // Update Granola config
-  const handleGranolaToggle = useCallback(async (enabled: boolean) => {
-    try {
-      setGranolaLoading(true)
-      await granolaIpc.setConfig(enabled)
-      setGranolaEnabled(enabled)
-      toast.success(enabled ? 'Granola sync enabled' : 'Granola sync disabled')
-    } catch (error) {
-      console.error('Failed to update Granola config:', error)
-      toast.error('Failed to update Granola sync settings')
-    } finally {
-      setGranolaLoading(false)
-    }
-  }, [])
-
   // Load Slack connection status
   const refreshSlackStatus = useCallback(async () => {
     try {
@@ -294,7 +261,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       const apiKey = activeConfig.apiKey.trim() || undefined
       const baseURL = activeConfig.baseURL.trim() || undefined
       const model = activeConfig.model.trim()
-      const knowledgeGraphModel = activeConfig.knowledgeGraphModel.trim() || undefined
+      const memoryGraphModel = activeConfig.memoryGraphModel.trim() || undefined
       const providerConfig = {
         provider: {
           flavor: llmProvider,
@@ -302,7 +269,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
           baseURL,
         },
         model,
-        knowledgeGraphModel,
+        memoryGraphModel,
       }
       const result = await modelsActionsIpc.test(providerConfig)
       if (result.success) {
@@ -323,9 +290,6 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
 
   // Check connection status for all providers
   const refreshAllStatuses = useCallback(async () => {
-    // Refresh Granola
-    refreshGranolaConfig()
-
     // Refresh Slack status
     refreshSlackStatus()
 
@@ -356,7 +320,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
     }
 
     setProviderStates(newStates)
-  }, [providers, refreshGranolaConfig, refreshSlackStatus])
+  }, [providers, refreshSlackStatus])
 
   // Refresh statuses when modal opens or providers list changes
   useEffect(() => {
@@ -524,33 +488,6 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
       </div>
     )
   }
-
-  // Render Granola row
-  const renderGranolaRow = () => (
-    <div className="flex items-center justify-between gap-3 rounded-md px-3 py-3 hover:bg-accent">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="flex size-10 items-center justify-center rounded-md bg-muted">
-          <Mic className="size-5" />
-        </div>
-        <div className="flex flex-col min-w-0">
-          <span className="text-sm font-medium truncate">Granola</span>
-          <span className="text-xs text-muted-foreground truncate">
-            Local meeting notes
-          </span>
-        </div>
-      </div>
-      <div className="shrink-0 flex items-center gap-2">
-        {granolaLoading && (
-          <Loader2 className="size-3 animate-spin" />
-        )}
-        <Switch
-          checked={granolaEnabled}
-          onCheckedChange={handleGranolaToggle}
-          disabled={granolaLoading}
-        />
-      </div>
-    </div>
-  )
 
   // Render Slack row
   /*
@@ -746,7 +683,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
             </div>
 
             <div className="space-y-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Knowledge graph model</span>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Memory extraction model</span>
               {modelsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
@@ -754,14 +691,14 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                 </div>
               ) : showModelInput ? (
                 <Input
-                  value={activeConfig.knowledgeGraphModel}
-                  onChange={(e) => updateProviderConfig(llmProvider, { knowledgeGraphModel: e.target.value })}
+                  value={activeConfig.memoryGraphModel}
+                  onChange={(e) => updateProviderConfig(llmProvider, { memoryGraphModel: e.target.value })}
                   placeholder={activeConfig.model || "Enter model"}
                 />
               ) : (
                 <Select
-                  value={activeConfig.knowledgeGraphModel || "__same__"}
-                  onValueChange={(value) => updateProviderConfig(llmProvider, { knowledgeGraphModel: value === "__same__" ? "" : value })}
+                  value={activeConfig.memoryGraphModel || "__same__"}
+                  onValueChange={(value) => updateProviderConfig(llmProvider, { memoryGraphModel: value === "__same__" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a model" />
@@ -861,14 +798,14 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
               </div>
             )}
 
-            {/* Meeting Notes Section */}
-            <div className="space-y-2">
-              <div className="px-3">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Meeting Notes</span>
+            {providers.includes('fireflies-ai') && (
+              <div className="space-y-2">
+                <div className="px-3">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Meeting Notes</span>
+                </div>
+                {renderOAuthProvider('fireflies-ai', 'Fireflies', <Mic className="size-5" />, 'AI meeting transcripts')}
               </div>
-              {renderGranolaRow()}
-              {providers.includes('fireflies-ai') && renderOAuthProvider('fireflies-ai', 'Fireflies', <Mic className="size-5" />, 'AI meeting transcripts')}
-            </div>
+            )}
 
           </>
         )}
@@ -887,7 +824,7 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
 
   // Step 2: Completion
   const renderCompletionStep = () => {
-    const hasConnections = connectedProviders.length > 0 || granolaEnabled || slackConnected
+    const hasConnections = connectedProviders.length > 0 || slackConnected
 
     return (
       <div className="flex flex-col items-center text-center">
@@ -920,12 +857,6 @@ export function OnboardingModal({ open, onComplete }: OnboardingModalProps) {
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="size-4 text-green-600" />
                     <span>Fireflies (Meeting transcripts)</span>
-                  </div>
-                )}
-                {granolaEnabled && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="size-4 text-green-600" />
-                    <span>Granola (Local meeting notes)</span>
                   </div>
                 )}
                 {slackConnected && (

@@ -14,16 +14,16 @@ import { cn } from '@/lib/utils'
 import { searchIpc } from '@/services/search-ipc'
 
 interface SearchResult {
-  type: 'knowledge' | 'chat'
+  type: 'memory' | 'chat'
   title: string
   preview: string
   path: string
 }
 
-type SearchType = 'knowledge' | 'chat'
+type SearchType = 'memory' | 'chat'
 
 function activeTabToTypes(section: ActiveSection): SearchType[] {
-  if (section === 'knowledge') return ['knowledge']
+  if (section === 'memory') return ['memory']
   return ['chat'] // "tasks" tab maps to chat
 }
 
@@ -64,7 +64,7 @@ export function SearchDialog({ open, onOpenChange, onSelectFile, onSelectRun }: 
     let cancelled = false
     setIsSearching(true)
 
-    const types = Array.from(activeTypes) as ('knowledge' | 'chat')[]
+    const types = Array.from(activeTypes) as ('memory' | 'chat')[]
     searchIpc.query(debouncedQuery, 20, types)
       .then((res) => {
         if (!cancelled) {
@@ -96,14 +96,14 @@ export function SearchDialog({ open, onOpenChange, onSelectFile, onSelectRun }: 
 
   const handleSelect = useCallback((result: SearchResult) => {
     onOpenChange(false)
-    if (result.type === 'knowledge') {
+    if (result.type === 'memory') {
       onSelectFile(result.path)
     } else {
       onSelectRun(result.path)
     }
   }, [onOpenChange, onSelectFile, onSelectRun])
 
-  const knowledgeResults = results.filter(r => r.type === 'knowledge')
+  const memoryResults = results.filter(r => r.type === 'memory')
   const chatResults = results.filter(r => r.type === 'chat')
 
   return (
@@ -111,7 +111,7 @@ export function SearchDialog({ open, onOpenChange, onSelectFile, onSelectRun }: 
       open={open}
       onOpenChange={onOpenChange}
       title="Search"
-      description="Search across knowledge and chats"
+      description="Search across workspace memory and chats"
       showCloseButton={false}
       className="top-[20%] translate-y-0"
     >
@@ -122,10 +122,10 @@ export function SearchDialog({ open, onOpenChange, onSelectFile, onSelectRun }: 
       />
       <div className="flex items-center gap-1.5 px-3 py-2 border-b">
         <FilterToggle
-          active={activeTypes.has('knowledge')}
-          onClick={() => toggleType('knowledge')}
+          active={activeTypes.has('memory')}
+          onClick={() => toggleType('memory')}
           icon={<FileTextIcon className="size-3" />}
-          label="Knowledge"
+          label="Memory"
         />
         <FilterToggle
           active={activeTypes.has('chat')}
@@ -141,12 +141,12 @@ export function SearchDialog({ open, onOpenChange, onSelectFile, onSelectRun }: 
         {query.trim() && !isSearching && results.length === 0 && (
           <CommandEmpty>No results found.</CommandEmpty>
         )}
-        {knowledgeResults.length > 0 && (
-          <CommandGroup heading="Knowledge">
-            {knowledgeResults.map((result) => (
+        {memoryResults.length > 0 && (
+          <CommandGroup heading="Memory">
+            {memoryResults.map((result) => (
               <CommandItem
-                key={`knowledge-${result.path}`}
-                value={`knowledge-${result.title}-${result.path}`}
+                key={`memory-${result.path}`}
+                value={`memory-${result.title}-${result.path}`}
                 onSelect={() => handleSelect(result)}
               >
                 <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />

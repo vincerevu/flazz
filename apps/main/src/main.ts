@@ -9,7 +9,7 @@ import { dirname } from "node:path";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 
 import { ServiceRegistry } from "@flazz/core/dist/services/service_registry.js";
-import { graphBuilderService } from "@flazz/core/dist/knowledge/build_graph.js";
+import { graphBuilderService } from "@flazz/core/dist/memory-graph/build-graph.js";
 import { agentRunnerService } from "@flazz/core/dist/agent-schedule/runner.js";
 import { workspaceWatcherService, runsWatcherService, servicesWatcherService } from "./ipc.js";
 import { initConfigs } from "@flazz/core/dist/config/initConfigs.js";

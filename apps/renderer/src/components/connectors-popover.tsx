@@ -15,13 +15,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { ComposioApiKeyModal } from "@/components/composio-api-key-modal"
 import { oauthIpc } from "@/services/oauth-ipc"
 import { composioIpc } from "@/services/composio-ipc"
 import { composioActionsIpc } from "@/services/composio-actions-ipc"
-import { granolaIpc } from "@/services/granola-ipc"
 import { GoogleClientIdModal } from "@/components/google-client-id-modal"
 import { getGoogleOAuthCredentials, setGoogleOAuthCredentials, clearGoogleOAuthCredentials } from "@/lib/google-client-id-store"
 import { toast } from "sonner"
@@ -55,10 +53,6 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
   const [googleClientIdOpen, setGoogleClientIdOpen] = useState(false)
   const [googleClientIdDescription, setGoogleClientIdDescription] = useState<string | undefined>(undefined)
 
-  // Granola state
-  const [granolaEnabled, setGranolaEnabled] = useState(false)
-  const [granolaLoading, setGranolaLoading] = useState(true)
-
   // Composio/Slack state
   const [composioApiKeyOpen, setComposioApiKeyOpen] = useState(false)
   const [slackConnected, setSlackConnected] = useState(false)
@@ -80,35 +74,6 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
       }
     }
     loadProviders()
-  }, [])
-
-  // Load Granola config
-  const refreshGranolaConfig = useCallback(async () => {
-    try {
-      setGranolaLoading(true)
-      const result = await granolaIpc.getConfig()
-      setGranolaEnabled(result.enabled)
-    } catch (error) {
-      console.error('Failed to load Granola config:', error)
-      setGranolaEnabled(false)
-    } finally {
-      setGranolaLoading(false)
-    }
-  }, [])
-
-  // Update Granola config
-  const handleGranolaToggle = useCallback(async (enabled: boolean) => {
-    try {
-      setGranolaLoading(true)
-      await granolaIpc.setConfig(enabled)
-      setGranolaEnabled(enabled)
-      toast.success(enabled ? 'Granola sync enabled' : 'Granola sync disabled')
-    } catch (error) {
-      console.error('Failed to update Granola config:', error)
-      toast.error('Failed to update Granola sync settings')
-    } finally {
-      setGranolaLoading(false)
-    }
   }, [])
 
   // Load Slack connection status
@@ -188,9 +153,6 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
 
   // Check connection status for all providers
   const refreshAllStatuses = useCallback(async () => {
-    // Refresh Granola
-    refreshGranolaConfig()
-
     // Refresh Slack status
     refreshSlackStatus()
 
@@ -230,7 +192,7 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
     }
 
     setProviderStates(newStates)
-  }, [providers, refreshGranolaConfig, refreshSlackStatus])
+  }, [providers, refreshSlackStatus])
 
   // Refresh statuses when popover opens or providers list changes
   useEffect(() => {
@@ -537,40 +499,15 @@ export function ConnectorsPopover({ children, tooltip, open: openProp, onOpenCha
                 </>
               )}
 
-              {/* Meeting Notes Section - Granola & Fireflies */}
-              <div className="px-2 py-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Meeting Notes</span>
-              </div>
-
-              {/* Granola */}
-              <div className="flex items-center justify-between gap-3 rounded-md px-3 py-2 hover:bg-accent">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex size-8 items-center justify-center rounded-md bg-muted">
-                    <Mic className="size-4" />
+              {providers.includes('fireflies-ai') && (
+                <>
+                  <div className="px-2 py-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Meeting Notes</span>
                   </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-medium truncate">Granola</span>
-                    <span className="text-xs text-muted-foreground truncate">
-                      Local meeting notes
-                    </span>
-                  </div>
-                </div>
-                <div className="shrink-0 flex items-center gap-2">
-                  {granolaLoading && (
-                    <Loader2 className="size-3 animate-spin" />
-                  )}
-                  <Switch
-                    checked={granolaEnabled}
-                    onCheckedChange={handleGranolaToggle}
-                    disabled={granolaLoading}
-                  />
-                </div>
-              </div>
-
-              {/* Fireflies */}
-              {providers.includes('fireflies-ai') && renderOAuthProvider('fireflies-ai', 'Fireflies', <Mic className="size-4" />, 'AI meeting transcripts')}
-
-              <Separator className="my-2" />
+                  {renderOAuthProvider('fireflies-ai', 'Fireflies', <Mic className="size-4" />, 'AI meeting transcripts')}
+                  <Separator className="my-2" />
+                </>
+              )}
 
               {/* Team Communication Section - Slack */}
               <div className="px-2 py-1.5">

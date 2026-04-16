@@ -31,6 +31,26 @@ export interface SkillConfig {
 export interface ISkillRepo {
   list(): Promise<Skill[]>;
   get(name: string): Promise<Skill | null>;
+  listRevisions?(name: string): Promise<Array<{
+    id: string;
+    createdAt: string;
+    reason: string;
+    actor: 'system' | 'agent' | 'user';
+    runId?: string;
+    summary?: string;
+    previousContent?: string;
+    nextContent: string;
+  }>>;
+  getRevision?(name: string, revisionId: string): Promise<{
+    id: string;
+    createdAt: string;
+    reason: string;
+    actor: 'system' | 'agent' | 'user';
+    runId?: string;
+    summary?: string;
+    previousContent?: string;
+    nextContent: string;
+  } | null>;
   create(name: string, content: string, category?: string): Promise<void>;
   update(name: string, content: string): Promise<void>;
   patch(

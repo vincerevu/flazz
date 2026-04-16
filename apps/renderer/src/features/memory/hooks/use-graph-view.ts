@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { GraphNode, GraphEdge } from '@/components/graph-view'
-import { stripKnowledgePrefix, wikiLabel, toKnowledgePath } from '@/lib/wiki-links'
+import { stripMemoryPrefix, wikiLabel, toMemoryPath } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
 // Vibrant color palette - works well in both dark and light themes
@@ -20,7 +20,7 @@ const clampNumber = (value: number, min: number, max: number) =>
 
 const wikiLinkRegex = /\[\[([^[\]]+)\]\]/g
 
-export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[]) {
+export function useGraphView(isGraphOpen: boolean, memoryFilePaths: string[]) {
   const [graphData, setGraphData] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] }>({
     nodes: [],
     edges: [],
@@ -29,7 +29,7 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
   const [graphError, setGraphError] = useState<string | null>(null)
 
   const buildGraph = useCallback(async (cancelledRef: { cancelled: boolean }) => {
-    if (knowledgeFilePaths.length === 0) {
+    if (memoryFilePaths.length === 0) {
       setGraphData({ nodes: [], edges: [] })
       setGraphStatus('ready')
       return
@@ -40,17 +40,17 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
 
     try {
       const edges: GraphEdge[] = []
-      const nodeSet = new Set(knowledgeFilePaths)
+      const nodeSet = new Set(memoryFilePaths)
       const edgeKeys = new Set<string>()
 
-      for (const path of knowledgeFilePaths) {
+      for (const path of memoryFilePaths) {
         if (cancelledRef.cancelled) return
         const result = await workspaceIpc.readFile(path)
         const markdown = result.data
         const matches = markdown.matchAll(wikiLinkRegex)
         for (const match of matches) {
           const rawTarget = match[1].split('|')[0].split('#')[0].trim()
-          const targetPath = toKnowledgePath(rawTarget)
+          const targetPath = toMemoryPath(rawTarget)
           if (!targetPath || targetPath === path) continue
           if (!nodeSet.has(targetPath)) continue
           const edgeKey = path < targetPath ? `${path}|${targetPath}` : `${targetPath}|${path}`
@@ -76,7 +76,7 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
       }
 
       const getNodeGroup = (path: string) => {
-        const normalized = stripKnowledgePrefix(path)
+        const normalized = stripMemoryPrefix(path)
         const parts = normalized.split('/').filter(Boolean)
         if (parts.length <= 1) {
           return { group: 'root', depth: 0 }
@@ -99,7 +99,7 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
         }
       }
 
-      const nodes = knowledgeFilePaths.map((path) => {
+      const nodes = memoryFilePaths.map((path) => {
         const degree = degreeMap.get(path) ?? 0
         const radius = 6 + Math.min(18, degree * 2)
         const { group, depth } = getNodeGroup(path)
@@ -127,7 +127,7 @@ export function useGraphView(isGraphOpen: boolean, knowledgeFilePaths: string[])
         setGraphError(err instanceof Error ? err.message : 'Failed to build graph')
       }
     }
-  }, [knowledgeFilePaths])
+  }, [memoryFilePaths])
 
   useEffect(() => {
     if (!isGraphOpen) return

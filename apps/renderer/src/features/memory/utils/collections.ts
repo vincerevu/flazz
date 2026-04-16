@@ -1,39 +1,39 @@
 const KNOWN_COLLECTION_META: Record<string, { label: string; description: string }> = {
-  'knowledge/Meetings': {
+  'memory/Meetings': {
     label: 'Meetings',
     description: 'Structured meeting notes, recaps, and preparation docs.',
   },
-  'knowledge/Agent Notes': {
+  'memory/Agent Notes': {
     label: 'Agent Notes',
     description: 'AI-generated working memory, summaries, and operating notes.',
   },
-  'knowledge/People': {
+  'memory/People': {
     label: 'People',
     description: 'Contact intelligence, relationship notes, and people context.',
   },
-  'knowledge/Organizations': {
+  'memory/Organizations': {
     label: 'Organizations',
-    description: 'Company profiles, teams, and org-level knowledge.',
+    description: 'Company profiles, teams, and org-level memory.',
   },
-  'knowledge/Projects': {
+  'memory/Projects': {
     label: 'Projects',
     description: 'Project updates, plans, decisions, and working documents.',
   },
-  'knowledge/Topics': {
+  'memory/Topics': {
     label: 'Topics',
     description: 'Topic-driven notes, references, and reusable research.',
   },
-  'knowledge/topic': {
+  'memory/topic': {
     label: 'Topics',
     description: 'Topic-driven notes, references, and reusable research.',
   },
-  'knowledge/Notes': {
+  'memory/Notes': {
     label: 'My Notes',
     description: 'General notes and scratch work across your workspace.',
   },
 }
 
-export type KnowledgeCollectionPath = string
+export type MemoryCollectionPath = string
 
 function toCollectionLabel(path: string): string {
   const known = KNOWN_COLLECTION_META[path]
@@ -45,13 +45,13 @@ function toCollectionLabel(path: string): string {
     .join(' ')
 }
 
-export function isKnowledgeCollectionPath(path: string | null | undefined): path is KnowledgeCollectionPath {
+export function isMemoryCollectionPath(path: string | null | undefined): path is MemoryCollectionPath {
   if (!path) return false
-  return path === 'knowledge' || path.startsWith('knowledge/')
+  return path === 'memory' || path.startsWith('memory/')
 }
 
-export function getKnowledgeCollectionMeta(path: string | null | undefined) {
-  if (!path || !isKnowledgeCollectionPath(path)) return null
+export function getMemoryCollectionMeta(path: string | null | undefined) {
+  if (!path || !isMemoryCollectionPath(path)) return null
   const known = KNOWN_COLLECTION_META[path]
   if (known) {
     return { path, ...known }

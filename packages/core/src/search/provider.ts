@@ -1,5 +1,5 @@
 export interface SearchResult {
-  type: 'knowledge' | 'chat';
+  type: 'memory' | 'chat';
   title: string;
   preview: string;
   path: string;

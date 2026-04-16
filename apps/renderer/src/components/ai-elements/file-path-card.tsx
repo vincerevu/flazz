@@ -69,10 +69,10 @@ function CardShell({
   )
 }
 
-// --- Knowledge File Card ---
+// --- Memory File Card ---
 
-function KnowledgeFileCard({ filePath }: { filePath: string }) {
-  const { onOpenKnowledgeFile } = useFileCard()
+function MemoryFileCard({ filePath }: { filePath: string }) {
+  const { onOpenMemoryFile } = useFileCard()
   const { setActiveSection } = useSidebarSection()
   const label = wikiLabel(filePath)
   const ext = getExtension(filePath)
@@ -82,8 +82,8 @@ function KnowledgeFileCard({ filePath }: { filePath: string }) {
     <CardShell
       icon={<BookOpen className="h-5 w-5 text-muted-foreground" />}
       title={label}
-      subtitle={extLabel ? `Knowledge \u00b7 ${extLabel}` : 'Knowledge'}
-      onClick={() => { setActiveSection('knowledge'); onOpenKnowledgeFile(filePath) }}
+      subtitle={extLabel ? `Memory \u00b7 ${extLabel}` : 'Memory'}
+      onClick={() => { setActiveSection('memory'); onOpenMemoryFile(filePath) }}
       action={
         <Button variant="outline" size="sm" className="shrink-0 text-xs h-8 rounded-lg pointer-events-none">
           Open
@@ -219,8 +219,8 @@ function SystemFileCard({ filePath }: { filePath: string }) {
 export function FilePathCard({ filePath }: { filePath: string }) {
   const trimmed = filePath.trim()
 
-  if (trimmed.startsWith('memory/') || trimmed.startsWith('knowledge/')) {
-    return <KnowledgeFileCard filePath={trimmed} />
+  if (trimmed.startsWith('memory/')) {
+    return <MemoryFileCard filePath={trimmed} />
   }
 
   const ext = getExtension(trimmed)

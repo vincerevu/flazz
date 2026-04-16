@@ -11,14 +11,14 @@ export function WikiLink({
   path: string
   className?: string 
 }) {
-  const { onOpenKnowledgeFile } = useFileCard()
+  const { onOpenMemoryFile } = useFileCard()
   const label = wikiLabel(path)
 
   return (
     <HoverCard openDelay={200} closeDelay={100}>
       <HoverCardTrigger asChild>
         <button
-          onClick={() => onOpenKnowledgeFile(path)}
+          onClick={() => onOpenMemoryFile(path)}
           className={cn(
             "text-primary hover:underline font-mono text-[0.9em] opacity-80 hover:opacity-100 transition-opacity",
             className
@@ -41,13 +41,13 @@ export function FileCard({
   path: string
   onClick?: (path: string) => void 
 }) {
-  const { onOpenKnowledgeFile } = useFileCard()
+  const { onOpenMemoryFile } = useFileCard()
   
   const handleClick = () => {
     if (onClick) {
       onClick(path)
     } else {
-      onOpenKnowledgeFile(path)
+      onOpenMemoryFile(path)
     }
   }
 

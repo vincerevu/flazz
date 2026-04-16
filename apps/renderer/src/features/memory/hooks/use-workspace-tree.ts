@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import type { TreeNode, DirEntry } from '../types'
-import { stripKnowledgePrefix, toKnowledgePath } from '@/lib/wiki-links'
+import { stripMemoryPrefix, toMemoryPath } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
 // Sort nodes (dirs first, then alphabetically)
@@ -70,7 +70,7 @@ export function useWorkspaceTree() {
 
   const loadDirectory = useCallback(async () => {
     try {
-      const result = await workspaceIpc.readdir('knowledge', { recursive: true, includeHidden: false })
+      const result = await workspaceIpc.readdir('memory', { recursive: true, includeHidden: false })
       return buildTree(result)
     } catch (err) {
       console.error('Failed to load directory:', err)
@@ -129,20 +129,20 @@ export function useWorkspaceTree() {
     })
   }, [])
 
-  const knowledgeFiles = useMemo(() => {
+  const memoryFiles = useMemo(() => {
     const files = collectFilePaths(tree).filter((path) => path.endsWith('.md'))
-    return Array.from(new Set(files.map(stripKnowledgePrefix)))
+    return Array.from(new Set(files.map(stripMemoryPrefix)))
   }, [tree])
 
-  const knowledgeFilePaths = useMemo(() => (
-    knowledgeFiles.reduce<string[]>((acc, filePath) => {
-      const resolved = toKnowledgePath(filePath)
+  const memoryFilePaths = useMemo(() => (
+    memoryFiles.reduce<string[]>((acc, filePath) => {
+      const resolved = toMemoryPath(filePath)
       if (resolved) acc.push(resolved)
       return acc
     }, [])
-  ), [knowledgeFiles])
+  ), [memoryFiles])
 
-  const visibleKnowledgeFiles = useMemo(() => {
+  const visibleMemoryFiles = useMemo(() => {
     const visible: string[] = []
     const isPathVisible = (path: string) => {
       const parts = path.split('/')
@@ -154,14 +154,14 @@ export function useWorkspaceTree() {
       return true
     }
 
-    for (const file of knowledgeFiles) {
-      const fullPath = toKnowledgePath(file)
+    for (const file of memoryFiles) {
+      const fullPath = toMemoryPath(file)
       if (fullPath && isPathVisible(fullPath)) {
         visible.push(file)
       }
     }
     return visible
-  }, [knowledgeFiles, expandedPaths])
+  }, [memoryFiles, expandedPaths])
 
   const expandAll = useCallback(() => setExpandedPaths(new Set(collectDirPaths(tree))), [tree])
   const collapseAll = useCallback(() => setExpandedPaths(new Set()), [])
@@ -177,8 +177,8 @@ export function useWorkspaceTree() {
     expandAncestors,
     expandAll,
     collapseAll,
-    knowledgeFiles,
-    knowledgeFilePaths,
-    visibleKnowledgeFiles,
+    memoryFiles,
+    memoryFilePaths,
+    visibleMemoryFiles,
   }
 }

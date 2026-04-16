@@ -8,6 +8,7 @@ import { AgentScheduleState } from './agent-schedule-state.js';
 import { ServiceEvent } from './service-events.js';
 import { UserMessageContent } from './message.js';
 import { ZListToolkitsResponse } from './composio.js';
+import { ListSkillsResponse, ListSkillCandidatesResponse, ListSkillRevisionsResponse, Skill, SkillLearningStats, SkillRevision } from './skills.js';
 
 // ============================================================================
 // Runtime Validation Schemas (Single Source of Truth)
@@ -220,6 +221,74 @@ const ipcSchemas = {
     }),
     res: z.object({ success: z.boolean() }),
   },
+  'skills:list': {
+    req: z.null(),
+    res: ListSkillsResponse,
+  },
+  'skills:view': {
+    req: z.object({
+      name: z.string(),
+    }),
+    res: z.object({
+      success: z.boolean(),
+      skill: Skill.optional(),
+      error: z.string().optional(),
+    }),
+  },
+  'skills:listCandidates': {
+    req: z.null(),
+    res: ListSkillCandidatesResponse,
+  },
+  'skills:promoteCandidate': {
+    req: z.object({
+      signature: z.string(),
+    }),
+    res: z.object({
+      success: z.boolean(),
+      skillName: z.string().optional(),
+      error: z.string().optional(),
+    }),
+  },
+  'skills:rejectCandidate': {
+    req: z.object({
+      signature: z.string(),
+    }),
+    res: z.object({
+      success: z.boolean(),
+      error: z.string().optional(),
+    }),
+  },
+  'skills:getLearningStats': {
+    req: z.null(),
+    res: SkillLearningStats,
+  },
+  'skills:listRevisions': {
+    req: z.object({
+      name: z.string(),
+    }),
+    res: ListSkillRevisionsResponse,
+  },
+  'skills:viewRevision': {
+    req: z.object({
+      name: z.string(),
+      revisionId: z.string(),
+    }),
+    res: z.object({
+      success: z.boolean(),
+      revision: SkillRevision.optional(),
+      error: z.string().optional(),
+    }),
+  },
+  'skills:rollbackToRevision': {
+    req: z.object({
+      name: z.string(),
+      revisionId: z.string(),
+    }),
+    res: z.object({
+      success: z.boolean(),
+      error: z.string().optional(),
+    }),
+  },
   'runs:events': {
     req: z.null(),
     res: z.null(),
@@ -297,20 +366,6 @@ const ipcSchemas = {
       error: z.string().optional(),
     }),
     res: z.null(),
-  },
-  'granola:getConfig': {
-    req: z.null(),
-    res: z.object({
-      enabled: z.boolean(),
-    }),
-  },
-  'granola:setConfig': {
-    req: z.object({
-      enabled: z.boolean(),
-    }),
-    res: z.object({
-      success: z.literal(true),
-    }),
   },
   'onboarding:getStatus': {
     req: z.null(),
@@ -442,8 +497,8 @@ const ipcSchemas = {
     req: z.object({ path: z.string() }),
     res: z.object({ data: z.string(), mimeType: z.string(), size: z.number() }),
   },
-  // Knowledge version history channels
-  'knowledge:history': {
+  // Memory version history channels
+  'memory:history': {
     req: z.object({ path: RelPath }),
     res: z.object({
       commits: z.array(z.object({
@@ -454,15 +509,15 @@ const ipcSchemas = {
       })),
     }),
   },
-  'knowledge:fileAtCommit': {
+  'memory:fileAtCommit': {
     req: z.object({ path: RelPath, oid: z.string() }),
     res: z.object({ content: z.string() }),
   },
-  'knowledge:restore': {
+  'memory:restore': {
     req: z.object({ path: RelPath, oid: z.string() }),
     res: z.object({ ok: z.literal(true) }),
   },
-  'knowledge:didCommit': {
+  'memory:didCommit': {
     req: z.object({}),
     res: z.null(),
   },
@@ -471,11 +526,11 @@ const ipcSchemas = {
     req: z.object({
       query: z.string(),
       limit: z.number().optional(),
-      types: z.array(z.enum(['knowledge', 'chat'])).optional(),
+      types: z.array(z.enum(['memory', 'chat'])).optional(),
     }),
     res: z.object({
       results: z.array(z.object({
-        type: z.enum(['knowledge', 'chat']),
+        type: z.enum(['memory', 'chat']),
         title: z.string(),
         preview: z.string(),
         path: z.string(),

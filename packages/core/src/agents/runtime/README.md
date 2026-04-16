@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Context Builder is responsible for intelligently selecting and formatting context for agent execution. It implements a 2-layer knowledge architecture:
+The Context Builder is responsible for intelligently selecting and formatting context for agent execution. It implements a 2-layer memory architecture:
 
 1. **Hot Memory** (Layer 1) - Always included, free via prefix cache
 2. **Cold Storage** (Layer 2) - Conditionally included when needed
@@ -14,7 +14,7 @@ The Context Builder is responsible for intelligently selecting and formatting co
 │                  CONTEXT BUILDER                         │
 │                                                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ Hot Memory   │  │   Skills     │  │  Knowledge   │  │
+│  │ Hot Memory   │  │   Skills     │  │   Memory     │  │
 │  │ (Always)     │  │ (Relevant)   │  │ (Conditional)│  │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
 │         │                 │                 │           │
@@ -41,8 +41,8 @@ Main class that orchestrates context building.
 **Options:**
 - `includeMemory` (default: true) - Include hot memory
 - `includeSkills` (default: true) - Include relevant skills
-- `includeKnowledge` (default: false) - Include knowledge search results
-- `knowledgeLimit` (default: 5) - Max knowledge results
+- `includeMemorySearch` (default: false) - Include memory search results
+- `memorySearchLimit` (default: 5) - Max memory results
 
 ### Memory Integration
 
@@ -58,11 +58,11 @@ Skills are loaded based on relevance to the query:
 - Only relevant skills are included
 - Formatted with clear section headers
 
-### Knowledge Integration
+### Memory Search Integration
 
-Knowledge is conditionally included:
-- Only when `includeKnowledge: true`
-- Uses KnowledgeSearchProvider for semantic search
+Memory search is conditionally included:
+- Only when `includeMemorySearch: true`
+- Uses MemorySearchProvider for structured search
 - Returns preview + path (agent can read full content if needed)
 - Configurable limit (default: 5 results)
 
@@ -77,7 +77,7 @@ import { contextBuilder } from '../../di/container.js';
 const contextParts = await contextBuilder.buildContext(query, {
   includeMemory: true,
   includeSkills: true,
-  includeKnowledge: false,
+  includeMemorySearch: false,
 });
 
 // Inject into system prompt
@@ -92,17 +92,17 @@ const systemPrompt = `${agent.instructions}\n\n${contextSection}`;
 {
   includeMemory: true,    // Always include hot memory
   includeSkills: true,    // Include relevant skills
-  includeKnowledge: false // Don't auto-search knowledge
+  includeMemorySearch: false // Don't auto-search memory
 }
 ```
 
-**Knowledge-heavy agent:**
+**Memory-heavy agent:**
 ```typescript
 {
   includeMemory: true,
   includeSkills: true,
-  includeKnowledge: true,  // Enable knowledge search
-  knowledgeLimit: 10       // More results
+  includeMemorySearch: true,  // Enable memory search
+  memorySearchLimit: 10       // More results
 }
 ```
 
@@ -111,7 +111,7 @@ const systemPrompt = `${agent.instructions}\n\n${contextSection}`;
 {
   includeMemory: true,
   includeSkills: false,
-  includeKnowledge: false
+  includeMemorySearch: false
 }
 ```
 
@@ -176,23 +176,23 @@ Steps to create a new React + TypeScript project:
 ---
 ```
 
-### Knowledge Section
+### Memory Section
 
 ```
 ══════════════════════════════════════════════
-RELEVANT KNOWLEDGE (3 notes)
+RELEVANT MEMORY NOTES (3 notes)
 ══════════════════════════════════════════════
 
 ### TypeScript Best Practices
-Path: knowledge/Topics/typescript-best-practices.md
+Path: memory/Topics/typescript-best-practices.md
 Preview: Use strict mode, avoid any, prefer interfaces over types...
 
 ### Flazz Architecture
-Path: knowledge/Projects/flazz-architecture.md
+Path: memory/Projects/flazz-architecture.md
 Preview: Flazz is organized into layers: renderer, main, core, shared...
 
 ### React Performance Tips
-Path: knowledge/Topics/react-performance.md
+Path: memory/Topics/react-performance.md
 Preview: Use React.memo, useMemo, useCallback for optimization...
 
 Use workspace-readFile to read full content if needed.
@@ -210,7 +210,7 @@ Use workspace-readFile to read full content if needed.
 - **Cost:** Free (file-based)
 - **Size:** Variable (typically 1-5KB per skill)
 
-### Knowledge
+### Memory Search
 - **Load time:** ~100ms (search)
 - **Cost:** Included in prompt tokens
 - **Size:** Variable (preview only, ~500 chars per result)
@@ -222,25 +222,25 @@ Use workspace-readFile to read full content if needed.
 - **Optional** for specialized agents (note_creation, email-draft)
 
 ### When to Include Skills
-- **Always** for copilot agent (procedural knowledge)
+- **Always** for copilot agent (procedural memory)
 - **Selective** for specialized agents (only relevant skills)
 
-### When to Include Knowledge
+### When to Include Memory Search
 - **Never by default** (too expensive)
 - **Only when needed** (user asks about past notes, historical context)
 - **Use search tool instead** (let agent decide when to search)
 
 ## Integration with Memory Archiver
 
-When memory gets full, use MemoryArchiver to move content to knowledge:
+When memory gets full, use MemoryArchiver to move content into durable workspace notes:
 
 ```typescript
 import { memoryArchiver } from '../../di/container.js';
 
-// Archive agent memory to knowledge
+// Archive agent memory into a durable note
 await memoryArchiver.archive('agent', 'Projects/my-project.md');
 
-// Memory is cleared, content is in knowledge
+// Memory is cleared, content is stored in workspace memory
 // Graph is updated automatically
 ```
 
@@ -262,7 +262,7 @@ Add graph traversal for related concepts:
 Optimize caching for different context types:
 - Memory: Always cached (frozen snapshot)
 - Skills: Cache per-skill (stable content)
-- Knowledge: No caching (dynamic search)
+- Memory search: No caching (dynamic search)
 
 ### Adaptive Context Selection
 Dynamically adjust context based on:

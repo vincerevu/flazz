@@ -335,9 +335,9 @@ summariser:
 
 ## Complete Multi-Agent Workflow Example
 
-**Email digest workflow** - This is all done through agents calling other agents:
+**Daily workspace digest workflow** - This is all done through agents calling other agents:
 
-**1. Task-specific agent** (` + "`agents/email_reader.md`" + `):
+**1. Task-specific agent** (` + "`agents/memory_reader.md`" + `):
 ` + "```markdown" + `
 ---
 model: gpt-5.1
@@ -349,10 +349,10 @@ tools:
     type: builtin
     name: workspace-readdir
 ---
-# Email Reader Agent
+# Memory Reader Agent
 
-Read emails from the gmail_sync folder and extract key information.
-Look for unread or recent emails and summarize the sender, subject, and key points.
+Read recent notes from memory/ and extract the most important updates.
+Look for new voice memos, project changes, and people or org notes with recent edits.
 Don't ask for human input.
 ` + "```" + `
 
@@ -361,16 +361,16 @@ Don't ask for human input.
 ---
 model: gpt-5.1
 tools:
-  email_reader:
+  memory_reader:
     type: agent
-    name: email_reader
+    name: memory_reader
   write_file:
     type: builtin
     name: workspace-writeFile
 ---
 # Daily Summary Agent
 
-1. Use the email_reader tool to get email summaries
+1. Use the memory_reader tool to get recent workspace updates
 2. Create a consolidated daily digest
 3. Save the digest to ~/Desktop/daily_digest.md
 
@@ -403,7 +403,7 @@ tools:
 
 Create a morning briefing:
 
-1. Get email digest using daily_summary
+1. Get workspace digest using daily_summary
 2. Search for relevant news using the search tool
 3. Compile a comprehensive morning briefing
 

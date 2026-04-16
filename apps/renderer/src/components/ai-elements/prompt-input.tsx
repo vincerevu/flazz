@@ -49,7 +49,7 @@ import {
 import { nanoid } from "nanoid";
 import { useMentionDetection } from "@/hooks/use-mention-detection";
 import { MentionPopover } from "@/components/mention-popover";
-import { toKnowledgePath, wikiLabel } from "@/lib/wiki-links";
+import { toMemoryPath, wikiLabel } from "@/lib/wiki-links";
 import { getMentionHighlightSegments } from "@/lib/mention-highlights";
 import {
   type ChangeEvent,
@@ -89,7 +89,7 @@ export type AttachmentsContext = {
 
 export type FileMention = {
   id: string;
-  path: string;         // "memory/notes.md" or "knowledge/notes.md" (legacy)
+  path: string;         // "memory/notes.md"
   displayName: string;  // "notes"
 };
 
@@ -164,21 +164,22 @@ export const useProviderMentions = () => {
 
 const useOptionalProviderMentions = () => useContext(ProviderMentionsContext);
 
-export type KnowledgeFilesContext = {
+export type MemoryFilesContext = {
   files: string[];
   recentFiles: string[];
   visibleFiles: string[];
 };
 
-const ProviderKnowledgeFilesContext = createContext<KnowledgeFilesContext | null>(null);
+const ProviderMemoryFilesContext = createContext<MemoryFilesContext | null>(null);
 
-export const useProviderKnowledgeFiles = () => {
-  return useContext(ProviderKnowledgeFilesContext);
+export const useProviderMemoryFiles = () => {
+  return useContext(ProviderMemoryFilesContext);
 };
+
 
 export type PromptInputProviderProps = PropsWithChildren<{
   initialInput?: string;
-  knowledgeFiles?: string[];
+  memoryFiles?: string[];
   recentFiles?: string[];
   visibleFiles?: string[];
 }>;
@@ -189,7 +190,7 @@ export type PromptInputProviderProps = PropsWithChildren<{
  */
 export function PromptInputProvider({
   initialInput: initialTextInput = "",
-  knowledgeFiles = [],
+  memoryFiles = [],
   recentFiles = [],
   visibleFiles = [],
   children,
@@ -329,18 +330,18 @@ export function PromptInputProvider({
     [textInput, clearInput, attachments, mentions, __registerFileInput]
   );
 
-  const knowledgeFilesContext = useMemo<KnowledgeFilesContext>(
-    () => ({ files: knowledgeFiles, recentFiles, visibleFiles }),
-    [knowledgeFiles, recentFiles, visibleFiles]
+  const memoryFilesContext = useMemo<MemoryFilesContext>(
+    () => ({ files: memoryFiles, recentFiles, visibleFiles }),
+    [memoryFiles, recentFiles, visibleFiles]
   );
 
   return (
     <PromptInputController.Provider value={controller}>
       <ProviderAttachmentsContext.Provider value={attachments}>
         <ProviderMentionsContext.Provider value={mentions}>
-          <ProviderKnowledgeFilesContext.Provider value={knowledgeFilesContext}>
-            {children}
-          </ProviderKnowledgeFilesContext.Provider>
+      <ProviderMemoryFilesContext.Provider value={memoryFilesContext}>
+        {children}
+      </ProviderMemoryFilesContext.Provider>
         </ProviderMentionsContext.Provider>
       </ProviderAttachmentsContext.Provider>
     </PromptInputController.Provider>
@@ -921,7 +922,7 @@ export const PromptInputTextarea = ({
   const controller = useOptionalPromptInputController();
   const attachments = usePromptInputAttachments();
   const mentionsCtx = useOptionalProviderMentions();
-  const knowledgeFilesCtx = useProviderKnowledgeFiles();
+  const memoryFilesCtx = useProviderMemoryFiles();
   const [isComposing, setIsComposing] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -946,24 +947,24 @@ export const PromptInputTextarea = ({
   const highlightRef = useRef<HTMLDivElement>(null);
 
   const currentValue = controller?.textInput.value ?? "";
-  const knowledgeFiles = knowledgeFilesCtx?.files ?? [];
-  const recentFiles = knowledgeFilesCtx?.recentFiles ?? [];
-  const visibleFiles = knowledgeFilesCtx?.visibleFiles ?? [];
+  const memoryFiles = memoryFilesCtx?.files ?? [];
+  const recentFiles = memoryFilesCtx?.recentFiles ?? [];
+  const visibleFiles = memoryFilesCtx?.visibleFiles ?? [];
 
   // Build mention labels for highlighting (handles multi-word names like "AI Agents")
   const mentionLabels = useMemo(() => {
-    if (knowledgeFiles.length === 0) return [];
-    const labels = knowledgeFiles
+    if (memoryFiles.length === 0) return [];
+    const labels = memoryFiles
       .map((path) => wikiLabel(path))
       .map((label) => label.trim())
       .filter(Boolean);
     return Array.from(new Set(labels));
-  }, [knowledgeFiles]);
+  }, [memoryFiles]);
 
   const { activeMention, cursorCoords } = useMentionDetection(
     textareaRef,
     currentValue,
-    knowledgeFiles.length > 0
+    memoryFiles.length > 0
   );
 
   // Use proper regex-based highlight segmentation that handles multi-word names
@@ -1000,8 +1001,8 @@ export const PromptInputTextarea = ({
       const newText = `${beforeAt}@${displayName} ${afterQuery}`;
       controller.textInput.setInput(newText);
 
-      // Convert to knowledge path and add mention
-      const fullPath = toKnowledgePath(path);
+      // Convert to memory path and add mention
+      const fullPath = toMemoryPath(path);
       if (fullPath && mentionsCtx) {
         mentionsCtx.addMention(fullPath, displayName);
       }
@@ -1190,9 +1191,9 @@ export const PromptInputTextarea = ({
         {...props}
         {...controlledProps}
       />
-      {knowledgeFiles.length > 0 && (
+      {memoryFiles.length > 0 && (
         <MentionPopover
-          files={knowledgeFiles}
+          files={memoryFiles}
           recentFiles={recentFiles}
           visibleFiles={visibleFiles}
           query={activeMention?.query ?? ""}

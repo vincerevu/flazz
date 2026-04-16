@@ -50,7 +50,7 @@ export const mockWorkflows: WorkflowBlueprint[] = [
       { id: "trigger", title: "Transcript detected", kind: "trigger", note: "Starts when a new transcript appears in the workspace." },
       { id: "extract", title: "Extract decisions", kind: "agent", note: "Collect action items, owners, and key decisions." },
       { id: "review", title: "Check open questions", kind: "review", note: "Call out unanswered items for the team." },
-      { id: "publish", title: "Update knowledge", kind: "output", note: "Create a note and link it into related topics." },
+  { id: "publish", title: "Update memory", kind: "output", note: "Create a note and link it into related topics." },
     ],
   },
   {

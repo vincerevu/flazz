@@ -518,7 +518,7 @@
   color: color-mix(in srgb, var(--foreground) 40%, transparent);
 }
 
-/* Keep knowledge text width readable while margins collapse on narrow panes. */
+/* Keep memory note text width readable while margins collapse on narrow panes. */
 .tiptap-editor .ProseMirror {
   width: 100%;
   max-width: min(56rem, calc(100% - clamp(0.5rem, 2.5vw, 2rem)));

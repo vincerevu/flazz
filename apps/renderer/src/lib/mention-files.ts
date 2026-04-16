@@ -1,4 +1,4 @@
-import { stripKnowledgePrefix } from '@/lib/wiki-links'
+import { stripMemoryPrefix } from '@/lib/wiki-links'
 
 type BuildMentionFileListOptions = {
   files: string[]
@@ -13,12 +13,12 @@ export const buildMentionFileList = ({
 }: BuildMentionFileListOptions) => {
   const ordered: string[] = []
   const seen = new Set<string>()
-  const normalizedFiles = files.map(stripKnowledgePrefix)
+  const normalizedFiles = files.map(stripMemoryPrefix)
   const fileSet = new Set(normalizedFiles)
 
   const addFile = (path?: string | null) => {
     if (!path) return
-    const normalized = stripKnowledgePrefix(path)
+    const normalized = stripMemoryPrefix(path)
     if (!fileSet.has(normalized) || seen.has(normalized)) {
       return
     }

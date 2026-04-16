@@ -9,7 +9,7 @@ import {
 } from '../utils/wiki-logic'
 import { useDebounce } from '@/hooks/use-debounce'
 import type { FileTab } from '@/components/tab-bar'
-import { stripKnowledgePrefix, toKnowledgePath, wikiLabel } from '@/lib/wiki-links'
+import { stripMemoryPrefix, toMemoryPath, wikiLabel } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
 const GRAPH_TAB_PATH = '__Flazz_graph_view__'
@@ -200,7 +200,7 @@ export function useFileEditor({
   // Recent wiki files
   useEffect(() => {
     if (!selectedPath || !selectedPath.endsWith('.md')) return
-    const wikiPath = stripKnowledgePrefix(selectedPath)
+    const wikiPath = stripMemoryPrefix(selectedPath)
     setRecentWikiFiles((prev) => {
       const next = [wikiPath, ...prev.filter((path) => path !== wikiPath)]
       return next.slice(0, 50)
@@ -228,7 +228,7 @@ export function useFileEditor({
           wasActiveAtStart &&
           selectedPathRef.current === pathAtStart &&
           !renameInProgressRef.current &&
-          pathAtStart.startsWith('knowledge/')
+          pathAtStart.startsWith('memory/')
         ) {
           const currentBase = getBaseName(pathAtStart)
           if (isUntitledPlaceholderName(currentBase)) {
@@ -431,8 +431,8 @@ export function useFileEditor({
     }
   }, [fileTabs, navigateToFile, navigateToView])
 
-  const knowledgeActions = useMemo(() => ({
-    createNote: async (parentPath: string = 'knowledge') => {
+  const memoryActions = useMemo(() => ({
+    createNote: async (parentPath: string = 'memory') => {
       try {
         let index = 0
         let name = untitledBaseName
@@ -451,7 +451,7 @@ export function useFileEditor({
         throw err
       }
     },
-    createFolder: async (parentPath: string = 'knowledge') => {
+    createFolder: async (parentPath: string = 'memory') => {
       try {
         let index = 0
         let name = 'new-folder'
@@ -541,7 +541,7 @@ export function useFileEditor({
   }), [selectedPath, workspaceRoot, navigateToFile, openFileInNewTab, fileTabs, closeFileTab, removeEditorCacheForPath])
 
   const ensureWikiFile = useCallback(async (wikiPath: string) => {
-    const resolvedPath = toKnowledgePath(wikiPath)
+      const resolvedPath = toMemoryPath(wikiPath)
     if (!resolvedPath) return null
     try {
       const exists = await workspaceIpc.exists(resolvedPath)
@@ -581,7 +581,7 @@ export function useFileEditor({
     editorSessionByTabId,
     fileHistoryHandlersRef,
     recentWikiFiles,
-    knowledgeActions,
+    memoryActions,
     ensureFileTabForPath,
     ensureGraphFileTab,
     switchFileTab,

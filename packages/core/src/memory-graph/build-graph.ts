@@ -2,7 +2,6 @@ import type { BackgroundService } from "../services/background_service.js";
 import fs from 'fs';
 import path from 'path';
 import { WorkDir } from '../config/config.js';
-import { autoConfigureStrictnessIfNeeded } from '../config/strictness_analyzer.js';
 import { createRun, createMessage } from '../runs/runs.js';
 import { bus } from '../runs/bus.js';
 import { serviceLogger, type ServiceRunContext } from '../services/service_logger.js';
@@ -13,14 +12,14 @@ import {
     markFileAsProcessed,
     resetState,
     type GraphState,
-} from './graph_state.js';
-import { buildKnowledgeIndex, formatIndexForPrompt } from './knowledge_index.js';
-import { limitEventItems } from './limit_event_items.js';
-import { commitAll } from './version_history.js';
+} from './state.js';
+import { buildMemoryIndex, formatIndexForPrompt } from './memory-index.js';
+import { limitEventItems } from './limit-event-items.js';
+import { commitAll } from './version-history.js';
 
 /**
- * Build obsidian-style knowledge graph by running topic extraction
- * and note creation agents sequentially on content files
+ * Build a markdown memory graph by running note creation over
+ * local memory sources and updating notes in memory/
  */
 
 const NOTES_OUTPUT_DIR = path.join(WorkDir, 'memory');
@@ -175,7 +174,7 @@ async function waitForRunCompletion(runId: string): Promise<void> {
 async function createNotesFromBatch(
     files: { path: string; content: string }[],
     batchNumber: number,
-    knowledgeIndex: string
+    memoryIndex: string
 ): Promise<{ runId: string; notesCreated: Set<string>; notesModified: Set<string> }> {
     // Ensure notes output directory exists
     if (!fs.existsSync(NOTES_OUTPUT_DIR)) {
@@ -188,18 +187,18 @@ async function createNotesFromBatch(
     });
 
     // Build message with index and all files in the batch
-    let message = `Process the following ${files.length} source files and create/update obsidian notes.\n\n`;
+    let message = `Process the following ${files.length} source files and create/update memory notes.\n\n`;
     message += `**Instructions:**\n`;
-    message += `- Use the KNOWLEDGE BASE INDEX below to resolve entities - DO NOT grep/search for existing notes\n`;
+    message += `- Use the MEMORY INDEX below to resolve entities - DO NOT grep/search for existing notes\n`;
     message += `- Extract entities (people, organizations, projects, topics) from ALL files below\n`;
     message += `- Create or update notes in "memory" directory (workspace-relative paths like "memory/People/Name.md")\n`;
     message += `- If the same entity appears in multiple files, merge the information into a single note\n`;
     message += `- Use workspace tools to read existing notes (when you need full content) and write updates\n`;
     message += `- Follow the note templates and guidelines in your instructions\n\n`;
 
-    // Add the knowledge base index
+    // Add the memory index
     message += `---\n\n`;
-    message += knowledgeIndex;
+    message += memoryIndex;
     message += `\n---\n\n`;
 
     // Add each file's content
@@ -241,7 +240,7 @@ async function createNotesFromBatch(
 }
 
 /**
- * Build the knowledge graph from all content files in the specified source directory
+ * Build the memory graph from all content files in the specified source directory
  * Only processes new or changed files based on state tracking
  */
 type BatchResult = {
@@ -291,9 +290,9 @@ async function buildGraphWithFiles(
 
         try {
             // Build fresh index before each batch to include notes from previous batches
-            console.log(`Building knowledge index for batch ${batchNumber}...`);
+            console.log(`Building memory index for batch ${batchNumber}...`);
             const indexStartTime = Date.now();
-            const index = await buildKnowledgeIndex();
+            const index = await buildMemoryIndex();
             const indexForPrompt = formatIndexForPrompt(index);
             const indexDuration = ((Date.now() - indexStartTime) / 1000).toFixed(2);
             console.log(`Index built in ${indexDuration}s: ${index.people.length} people, ${index.organizations.length} orgs, ${index.projects.length} projects, ${index.topics.length} topics, ${index.other.length} other`);
@@ -334,9 +333,9 @@ async function buildGraphWithFiles(
             // This ensures partial progress is saved even if later batches fail
             saveState(state);
 
-            // Commit knowledge changes to version history
+// Commit memory note changes to version history
             try {
-                await commitAll('Knowledge update', 'Flazz');
+        await commitAll('Memory update', 'Flazz');
             } catch (err) {
                 console.error(`[GraphBuilder] Failed to commit version history:`, err);
             }
@@ -362,7 +361,7 @@ async function buildGraphWithFiles(
     state.lastBuildTime = new Date().toISOString();
     saveState(state);
 
-    console.log(`Knowledge graph build complete. Processed ${processedFiles.length} files.`);
+    console.log(`Memory graph build complete. Processed ${processedFiles.length} files.`);
     return { processedFiles, notesCreated, notesModified, hadError };
 }
 
@@ -389,7 +388,7 @@ export async function buildGraph(sourceDir: string): Promise<void> {
  * Process voice memos from memory/Voice Memos/ and run entity extraction on them
  * Voice memos are now created directly in the memory directory by the UI.
  */
-async function processVoiceMemosForKnowledge(): Promise<boolean> {
+async function processVoiceMemosForMemory(): Promise<boolean> {
     console.log(`[GraphBuilder] Starting voice memo processing...`);
     const state = loadState();
 
@@ -453,9 +452,9 @@ async function processVoiceMemosForKnowledge(): Promise<boolean> {
         const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
 
         try {
-            // Build knowledge index
-            console.log(`[GraphBuilder] Building knowledge index for batch ${batchNumber}...`);
-            const index = await buildKnowledgeIndex();
+            // Build memory index
+            console.log(`[GraphBuilder] Building memory index for batch ${batchNumber}...`);
+            const index = await buildMemoryIndex();
             const indexForPrompt = formatIndexForPrompt(index);
 
             console.log(`[GraphBuilder] Processing batch ${batchNumber}/${totalBatches} (${batch.length} files)...`);
@@ -488,9 +487,9 @@ async function processVoiceMemosForKnowledge(): Promise<boolean> {
             // Save state after each batch
             saveState(state);
 
-            // Commit knowledge changes to version history
+        // Commit memory note changes to version history
             try {
-                await commitAll('Knowledge update', 'Flazz');
+        await commitAll('Memory update', 'Flazz');
             } catch (err) {
                 console.error(`[GraphBuilder] Failed to commit version history:`, err);
             }
@@ -532,21 +531,17 @@ async function processVoiceMemosForKnowledge(): Promise<boolean> {
 }
 
 /**
- * Process all configured source directories
- * Currently only processes voice memos (created directly in knowledge/)
- * and manual notes created by user/agent
+ * Process all configured source directories.
+ * The active automatic source is voice memo transcripts created directly in memory/.
  */
 async function processAllSources(): Promise<void> {
     console.log('[GraphBuilder] Checking for new content...');
 
-    // Auto-configure strictness on first run if not already done
-    autoConfigureStrictnessIfNeeded();
-
     let anyFilesProcessed = false;
 
-    // Process voice memos first (they get moved to knowledge/)
+    // Process voice memos first.
     try {
-        const voiceMemosProcessed = await processVoiceMemosForKnowledge();
+    const voiceMemosProcessed = await processVoiceMemosForMemory();
         if (voiceMemosProcessed) {
             anyFilesProcessed = true;
         }
@@ -554,10 +549,9 @@ async function processAllSources(): Promise<void> {
         console.error('[GraphBuilder] Error processing voice memos:', error);
     }
 
-    // Graph builder now focuses on:
-    // 1. Voice memos (built-in feature)
-    // 2. Memory archiving (Phase 3)
-    // 3. Manual notes created by user/agent
+    // Graph builder now focuses on automatic extraction from voice memos.
+    // Manual notes and archived memory become part of workspace memory
+    // because the memory index scans memory/ directly.
 
     if (!anyFilesProcessed) {
         console.log('[GraphBuilder] No new content to process');
@@ -567,11 +561,11 @@ async function processAllSources(): Promise<void> {
 }
 
 /**
- * Reset the knowledge graph state - forces reprocessing of all files on next run
+ * Reset the memory graph state - forces reprocessing of all files on next run
  * Useful for debugging or when you want to rebuild everything from scratch
  */
 export function resetGraphState(): void {
-    console.log('Resetting knowledge graph state...');
+    console.log('Resetting memory graph state...');
     resetState();
     console.log('State reset complete. All files will be reprocessed on next build.');
 }
@@ -598,9 +592,9 @@ export const graphBuilderService: BackgroundService = {
         if (isRunning) return;
         isRunning = true;
 
-        console.log('[GraphBuilder] Starting Knowledge Graph Builder Service...');
+    console.log('[GraphBuilder] Starting Memory Graph Builder Service...');
         console.log('[GraphBuilder] Monitoring: memory/Voice Memos/ (voice recordings)');
-        console.log('[GraphBuilder] Also processes: Memory archives, Manual notes');
+        console.log('[GraphBuilder] Also indexes: manual notes and archived memory already stored in memory/');
         console.log(`[GraphBuilder] Will check for new content every ${SYNC_INTERVAL_MS / 1000} seconds`);
 
         // Initial run

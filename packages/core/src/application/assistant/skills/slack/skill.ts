@@ -119,7 +119,7 @@ composio-executeAction({
 
 - **Always show drafts before sending** - Never send Slack messages without user confirmation
 - **Summarize, don't dump** - When showing channel history, summarize the key points
-- **Cross-reference with knowledge base** - Check if mentioned people have notes in the knowledge base
+- **Cross-reference with workspace memory** - Check if mentioned people have notes in workspace memory
 - **Use the tool catalog** - Prefer using known tool slugs from the catalog over calling composio-listTools
 
 ## Error Handling

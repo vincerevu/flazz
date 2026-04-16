@@ -20,10 +20,16 @@ import { setMemoryManager } from "../application/lib/tools/memory-tools.js";
 import { setMemoryArchiver } from "../application/lib/tools/memory-archive-tool.js";
 import { SkillRepo } from "../skills/skill-repo.js";
 import { SkillManager } from "../skills/skill-manager.js";
-import { setSkillManager } from "../application/lib/tools/skill-tools.js";
+import { setRunLearningService, setSkillManager } from "../application/lib/tools/skill-tools.js";
+import { setAgentsRepo, setSkillRegistry } from "../application/lib/tools/agent-tools.js";
 import { ContextBuilder } from "../agents/runtime/context-builder.js";
-import { KnowledgeSearchProvider } from "../search/knowledge_search.js";
+import { MemorySearchProvider } from "../search/memory_search.js";
 import { WorkDir } from "../config/config.js";
+import { WorkspaceSkillSource } from "../skills/workspace-skill-source.js";
+import { SkillRegistry } from "../skills/registry.js";
+import { SourceSkillSource } from "../application/assistant/skills/source-skill-source.js";
+import { RunLearningService } from "../skills/run-learning-service.js";
+import { LearningStateRepo } from "../skills/learning-state-repo.js";
 
 const container = createContainer({
     injectionMode: InjectionMode.PROXY,
@@ -48,6 +54,8 @@ container.register({
     agentScheduleStateRepo: asClass<IAgentScheduleStateRepo>(FSAgentScheduleStateRepo).singleton(),
 });
 
+setAgentsRepo(container.resolve<IAgentsRepo>("agentsRepo"));
+
 // Initialize Memory System
 const memoryRepo = new MemoryRepo(WorkDir);
 const memoryManager = new MemoryManager(memoryRepo, {
@@ -69,12 +77,24 @@ setMemoryArchiver(memoryArchiver);
 const skillRepo = new SkillRepo(WorkDir);
 const skillManager = new SkillManager(skillRepo);
 setSkillManager(skillManager);
+const workspaceSkillSource = new WorkspaceSkillSource(skillManager);
+const sourceSkillSource = new SourceSkillSource();
+const skillRegistry = new SkillRegistry([workspaceSkillSource, sourceSkillSource]);
+setSkillRegistry(skillRegistry);
+const learningStateRepo = new LearningStateRepo(WorkDir);
+const runLearningService = new RunLearningService(
+    skillManager,
+    skillRegistry,
+    learningStateRepo,
+    container.resolve<IModelConfigRepo>("modelConfigRepo"),
+);
+setRunLearningService(runLearningService);
 
 // Initialize Context Builder
-const knowledgeSearch = new KnowledgeSearchProvider();
-const contextBuilder = new ContextBuilder(memoryManager, skillManager, knowledgeSearch);
+const memorySearch = new MemorySearchProvider();
+const contextBuilder = new ContextBuilder(memoryManager, skillRegistry, memorySearch);
 
 // Export for use in agent runtime
-export { memoryManager, memoryArchiver, skillManager, contextBuilder };
+export { memoryManager, memoryArchiver, skillManager, skillRegistry, runLearningService, contextBuilder };
 
 export default container;

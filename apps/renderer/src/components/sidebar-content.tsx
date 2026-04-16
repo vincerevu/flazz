@@ -77,13 +77,13 @@ import { MainSidebarMenu } from "@/components/main-sidebar-menu"
 import { toast } from "@/lib/toast"
 import { ServiceEvent } from "@flazz/shared/src/service-events.js"
 import z from "zod"
-import type { TreeNode } from "@/features/knowledge/types"
+import type { TreeNode } from "@/features/memory/types"
 import { servicesIpc } from "@/services/services-ipc"
 import { workspaceIpc } from "@/services/workspace-ipc"
-import type { SkillPreset } from "@/features/skills/mock-skills"
+import type { SkillPanelItem } from "@/features/skills/types"
 import type { WorkflowBlueprint } from "@/features/workflow/mock-workflows"
 
-type KnowledgeActions = {
+type MemoryActions = {
   createNote: (parentPath?: string) => void
   createFolder: (parentPath?: string) => Promise<string | null | undefined> | string | null | undefined
   openGraph: () => void
@@ -128,8 +128,7 @@ const SERVICE_LABELS: Record<string, string> = {
   gmail: "Syncing Gmail",
   calendar: "Syncing Calendar",
   fireflies: "Syncing Fireflies",
-  granola: "Syncing Granola",
-  graph: "Updating knowledge",
+  graph: "Updating memory",
   voice_memo: "Processing voice memo",
 }
 
@@ -149,7 +148,7 @@ type SidebarContentPanelProps = {
   selectedPath: string | null
   expandedPaths: Set<string>
   onSelectFile: (path: string, kind: "file" | "dir") => void
-  knowledgeActions: KnowledgeActions
+  memoryActions: MemoryActions
   pendingFolderRenamePath?: string | null
   onPendingFolderRenameHandled?: (path: string | null) => void
   onVoiceNoteCreated?: (path: string) => void
@@ -159,7 +158,7 @@ type SidebarContentPanelProps = {
   tasksActions?: TasksActions
   backgroundTasks?: BackgroundTaskItem[]
   selectedBackgroundTask?: string | null
-  skills?: SkillPreset[]
+  skills?: SkillPanelItem[]
   selectedSkillId?: string
   onSelectSkill?: (skillId: string) => void
   workflows?: WorkflowBlueprint[]
@@ -372,7 +371,7 @@ export function SidebarContentPanel({
   selectedPath,
   expandedPaths,
   onSelectFile,
-  knowledgeActions,
+  memoryActions,
   pendingFolderRenamePath,
   onPendingFolderRenameHandled,
   onVoiceNoteCreated,
@@ -407,12 +406,12 @@ export function SidebarContentPanel({
       </SidebarHeader>
       <SidebarContent>
           {activeSection === "memory" && (
-            <KnowledgeSection
+            <MemorySection
               tree={tree}
               selectedPath={selectedPath}
               expandedPaths={expandedPaths}
               onSelectFile={onSelectFile}
-              actions={knowledgeActions}
+              actions={memoryActions}
               pendingFolderRenamePath={pendingFolderRenamePath}
               onPendingFolderRenameHandled={onPendingFolderRenameHandled}
               onVoiceNoteCreated={onVoiceNoteCreated}
@@ -671,8 +670,8 @@ ${transcript}
   )
 }
 
-// Knowledge Section
-function KnowledgeSection({
+// Memory Section
+function MemorySection({
   tree,
   selectedPath,
   expandedPaths,
@@ -686,7 +685,7 @@ function KnowledgeSection({
   selectedPath: string | null
   expandedPaths: Set<string>
   onSelectFile: (path: string, kind: "file" | "dir") => void
-  actions: KnowledgeActions
+  actions: MemoryActions
   pendingFolderRenamePath?: string | null
   onPendingFolderRenameHandled?: (path: string | null) => void
   onVoiceNoteCreated?: (path: string) => void
@@ -706,7 +705,7 @@ function KnowledgeSection({
       if (cancelled) return
       const container = treeContainerRef.current
       if (!container) return
-      const activeRow = container.querySelector<HTMLElement>('[data-knowledge-active="true"]')
+      const activeRow = container.querySelector<HTMLElement>('[data-memory-active="true"]')
       if (activeRow) {
         activeRow.scrollIntoView({ block: "nearest", inline: "nearest" })
         return
@@ -823,7 +822,7 @@ function Tree({
   selectedPath: string | null
   expandedPaths: Set<string>
   onSelect: (path: string, kind: "file" | "dir") => void
-  actions: KnowledgeActions
+  actions: MemoryActions
   autoRenamePath?: string | null
   onAutoRenameHandled?: (path: string | null) => void
 }) {
@@ -999,8 +998,8 @@ function Tree({
         <ContextMenuTrigger asChild>
           <SidebarMenuItem
             className="group/file-item"
-            data-knowledge-file-path={item.path}
-            data-knowledge-active={isSelected ? "true" : "false"}
+            data-memory-file-path={item.path}
+            data-memory-active={isSelected ? "true" : "false"}
           >
             <SidebarMenuButton
               isActive={isSelected}
@@ -1024,9 +1023,12 @@ function Tree({
   }
 
   const parts = item.path.split('/')
-  const isTopLevelKnowledgeFolder = isDir && parts.length === 2 && parts[0] === 'knowledge'
+  const isTopLevelMemoryFolder =
+    isDir &&
+    parts.length === 2 &&
+    parts[0] === 'memory'
 
-  if (isTopLevelKnowledgeFolder) {
+  if (isTopLevelMemoryFolder) {
     return (
       <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -1121,7 +1123,7 @@ function SkillsSection({
   selectedSkillId,
   onSelectSkill,
 }: {
-  skills?: SkillPreset[]
+  skills?: SkillPanelItem[]
   selectedSkillId?: string
   onSelectSkill?: (skillId: string) => void
 }) {
@@ -1152,7 +1154,7 @@ function SkillsSection({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs">{skill.name}</div>
                   <div className="truncate text-[10px] text-muted-foreground">
-                    {skill.category}
+                    {skill.category} · {skill.status}
                   </div>
                 </div>
               </SidebarMenuButton>

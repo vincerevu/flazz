@@ -78,7 +78,7 @@ Map each point to a slide layout from the Available Layout Types below. For a ty
 
 ## Workflow
 
-1. Use workspace-readFile to check knowledge/ for relevant context about the company, product, team, etc.
+1. Use workspace-readFile to check memory/ for relevant context about the company, product, team, etc.
 2. Ensure Playwright is installed: \`npm install playwright && npx playwright install chromium\`
 3. Use workspace-getRoot to get the workspace root path.
 4. Plan the narrative arc and slide outline (see Content Planning above).
@@ -1536,7 +1536,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
           <div class="bullet-icon">📈</div>
           <div class="bullet-text">
             <h4>Continuous Learning</h4>
-            <p>Each interaction makes the AI smarter — building a compounding knowledge base for your entire organization.</p>
+            <p>Each interaction makes the AI smarter — building a compounding memory base for your entire organization.</p>
           </div>
         </div>
       </div>
@@ -1581,7 +1581,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
         <div class="col">
           <div class="icon-circle">🔍</div>
           <h3>Deep Research</h3>
-          <p>Analyze millions of data points across your organization's knowledge base to surface critical insights and connections.</p>
+          <p>Analyze millions of data points across your organization's memory base to surface critical insights and connections.</p>
         </div>
         <div class="col">
           <div class="icon-circle">✍️</div>
@@ -1791,7 +1791,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
       <div class="tl">
         <div class="tl-item">
           <div class="year">Q1 2026</div>
-          <h4>Launch AI Knowledge Graph</h4>
+          <h4>Launch AI Memory Graph</h4>
           <p>Persistent memory layer that maps relationships across all work data — emails, meetings, docs.</p>
         </div>
         <div class="tl-item">
@@ -1899,7 +1899,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
           <li>Hours spent formatting reports and decks</li>
           <li>Context lost between meetings and tools</li>
           <li>Repetitive tasks drain creative energy</li>
-          <li>Knowledge silos across the org</li>
+          <li>Memory silos across the org</li>
         </ul>
       </div>
       <div class="vs-badge">VS</div>
@@ -1946,7 +1946,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
             <li>Unlimited integrations</li>
             <li>Unlimited messages</li>
             <li>Persistent memory</li>
-            <li>Knowledge graph</li>
+            <li>Memory graph</li>
           </ul>
         </div>
         <div class="tier">
@@ -2018,7 +2018,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
       </div>
       <div class="text-side">
         <h2>Your AI Coworker Remembers Everything</h2>
-        <p>Unlike session-based tools that forget after every chat, AI coworkers build persistent knowledge graphs from your emails, meetings, and documents — compounding intelligence over time.</p>
+          <p>Unlike session-based tools that forget after every chat, AI coworkers build persistent memory graphs from your emails, meetings, and documents — compounding intelligence over time.</p>
         <a class="cta" href="#">See It In Action →</a>
       </div>
     </div>
@@ -2574,7 +2574,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
         <div class="pc-col pros">
           <div class="pc-header">✓ Advantages</div>
           <ul class="pc-list">
-            <li>Instant access to organizational knowledge</li>
+            <li>Instant access to organizational memory</li>
             <li>24/7 availability across time zones</li>
             <li>Consistent quality on repetitive tasks</li>
             <li>Scales without proportional cost increase</li>
@@ -2628,7 +2628,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
             <td><span class="check">✓</span></td>
           </tr>
           <tr>
-            <td>Knowledge graph</td>
+            <td>Memory graph</td>
             <td><span class="cross">—</span></td>
             <td><span class="check">✓</span></td>
             <td><span class="check">✓</span></td>
@@ -2729,7 +2729,7 @@ Never use the same layout for consecutive slides. Alternate between dark and lig
       </div>
       <div class="cine-content">
         <div class="overline">A New Era Begins</div>
-        <h2>Every Knowledge Worker Deserves an AI Teammate</h2>
+        <h2>Every Team Deserves an AI Teammate</h2>
         <p>We're building toward a world where AI handles the busywork and humans do what they do best — think creatively, build relationships, and make decisions that matter.</p>
       </div>
     </div>
