@@ -40,8 +40,8 @@ import { extractAllFrontmatterValues, splitFrontmatter } from '@/lib/frontmatter
 import { useDebounce } from '@/hooks/use-debounce'
 import { searchIpc } from '@/services/search-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
-import type { TreeNode } from '@/features/knowledge/types'
-import { getKnowledgeCollectionMeta, type KnowledgeCollectionPath } from '@/features/knowledge/utils/collections'
+import type { TreeNode } from '@/features/memory/types'
+import { getMemoryCollectionMeta, type MemoryCollectionPath } from '@/features/memory/utils/collections'
 
 type NoteEntry = {
   path: string
@@ -159,18 +159,18 @@ function getSortValue(note: NoteEntry, column: string): string | number {
   return Array.isArray(value) ? value[0] ?? '' : value
 }
 
-export function KnowledgeCollectionView({
+export function MemoryCollectionView({
   collectionPath,
   tree,
   onSelectNote,
   onCreateNote,
 }: {
-  collectionPath: KnowledgeCollectionPath
+  collectionPath: MemoryCollectionPath
   tree: TreeNode[]
   onSelectNote: (path: string) => void
   onCreateNote: (path: string) => void
 }) {
-  const collection = getKnowledgeCollectionMeta(collectionPath)
+  const collection = getMemoryCollectionMeta(collectionPath)
   const collectionNode = useMemo(() => findNode(tree, collectionPath), [tree, collectionPath])
   const notes = useMemo<NoteEntry[]>(() => {
     const source = collectionNode?.children ?? []

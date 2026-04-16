@@ -19,7 +19,7 @@ export const memoryTools = {
       '- You discover something about the environment (OS, installed tools, project structure)\n' +
       '- You learn a convention, API quirk, or workflow specific to this user\'s setup\n' +
       '- You identify a stable fact that will be useful again in future sessions\n\n' +
-      'PRIORITY: User preferences and corrections > environment facts > procedural knowledge. ' +
+  'PRIORITY: User preferences and corrections > environment facts > procedural memory. ' +
       'The most valuable memory prevents the user from having to repeat themselves.\n\n' +
       'Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO ' +
       'state to memory.\n\n' +

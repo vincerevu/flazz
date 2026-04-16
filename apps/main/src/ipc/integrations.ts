@@ -9,11 +9,6 @@ export function registerIntegrationHandlers(handlers: Partial<InvokeHandlers>) {
   handlers['mcp:executeTool'] = async (_event, args) => {
     return { result: await mcpCore.executeTool(args.serverName, args.toolName, args.input) };
   };
-
-  // Granola integration removed - service no longer used
-  // handlers['granola:getConfig'] = async () => { ... };
-  // handlers['granola:setConfig'] = async (_event, args) => { ... };
-
   // Composio integration handlers
   handlers['composio:is-configured'] = async () => {
     return composioHandler.isConfigured();

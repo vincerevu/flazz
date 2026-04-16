@@ -12,21 +12,15 @@ function normalizeRelPath(relPath: string): string {
 function isMemoryMarkdownPath(relPath: string): boolean {
   const normalized = normalizeRelPath(relPath).replace(/^\/+/, '');
   const lower = normalized.toLowerCase();
-  return (lower.startsWith(MEMORY_PREFIX) || lower.startsWith(MEMORY_PREFIX)) && lower.endsWith(MARKDOWN_EXTENSION);
+  return lower.startsWith(MEMORY_PREFIX) && lower.endsWith(MARKDOWN_EXTENSION);
 }
 
 function stripMemoryPrefix(relPath: string): string {
   const normalized = normalizeRelPath(relPath).replace(/^\/+/, '');
   const lower = normalized.toLowerCase();
-  
-  // Support both memory/ and knowledge/ (legacy)
   if (lower.startsWith(MEMORY_PREFIX)) {
     return normalized.slice(MEMORY_PREFIX.length);
   }
-  if (lower.startsWith(MEMORY_PREFIX)) {
-    return normalized.slice(MEMORY_PREFIX.length);
-  }
-  
   return normalized;
 }
 
@@ -43,15 +37,10 @@ function toWikiPathCompareKey(wikiPath: string): string {
 function splitWikiPathPrefix(rawPath: string): { pathWithoutPrefix: string; hadMemoryPrefix: boolean } {
   let normalized = rawPath.trim().replace(/^\/+/, '').replace(/^\.\//, '');
   const lower = normalized.toLowerCase();
-  
-  // Support both memory/ and knowledge/ (legacy)
-  const hadMemoryPrefix = /^(memory|knowledge)\//i.test(lower);
+  const hadMemoryPrefix = lower.startsWith(MEMORY_PREFIX);
   if (lower.startsWith(MEMORY_PREFIX)) {
     normalized = normalized.slice(MEMORY_PREFIX.length);
-  } else if (lower.startsWith('knowledge/')) {
-    normalized = normalized.slice('knowledge/'.length);
   }
-  
   return { pathWithoutPrefix: normalized, hadMemoryPrefix };
 }
 
@@ -106,17 +95,23 @@ function rewriteWikiLinksInMarkdown(
   });
 }
 
-async function collectKnowledgeMarkdownFiles(workspaceRoot: string): Promise<string[]> {
-  const knowledgeRoot = path.join(workspaceRoot, 'knowledge');
+async function collectMemoryMarkdownFiles(workspaceRoot: string): Promise<string[]> {
+  const markdownFiles: string[] = [];
+  const rootPath = path.join(workspaceRoot, 'memory');
+  const pendingDirectories: string[] = [];
+
   try {
-    const stat = await fs.lstat(knowledgeRoot);
-    if (!stat.isDirectory()) return [];
+    const stat = await fs.lstat(rootPath);
+    if (stat.isDirectory()) {
+      pendingDirectories.push(rootPath);
+    }
   } catch {
-    return [];
+    // Memory root may not exist yet.
   }
 
-  const markdownFiles: string[] = [];
-  const pendingDirectories: string[] = [knowledgeRoot];
+  if (pendingDirectories.length === 0) {
+    return [];
+  }
 
   while (pendingDirectories.length > 0) {
     const currentDirectory = pendingDirectories.pop();
@@ -142,7 +137,7 @@ async function collectKnowledgeMarkdownFiles(workspaceRoot: string): Promise<str
   return markdownFiles;
 }
 
-export async function rewriteWikiLinksForRenamedKnowledgeFile(
+export async function rewriteWikiLinksForRenamedMemoryFile(
   workspaceRoot: string,
   fromRelPath: string,
   toRelPath: string
@@ -158,7 +153,7 @@ export async function rewriteWikiLinksForRenamedKnowledgeFile(
   const toWikiPath = stripMemoryPrefix(normalizedTo);
   if (toWikiPathCompareKey(fromWikiPath) === toWikiPathCompareKey(toWikiPath)) return 0;
 
-  const markdownFiles = await collectKnowledgeMarkdownFiles(workspaceRoot);
+  const markdownFiles = await collectMemoryMarkdownFiles(workspaceRoot);
   let rewrittenFiles = 0;
 
   const normalizedToLower = normalizedTo.toLowerCase();

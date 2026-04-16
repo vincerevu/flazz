@@ -102,7 +102,7 @@ export function GraphView({ nodes, edges, isLoading, error, onSelectNode }: Grap
       if (grouped.has(group)) return
       grouped.set(group, {
         group,
-        label: group === 'root' ? 'knowledge' : group,
+        label: group === 'root' ? 'memory' : group,
         color: node.color,
         stroke: node.stroke,
       })

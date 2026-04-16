@@ -412,7 +412,7 @@ function ChatInputInner({
 }
 
 export interface ChatInputWithMentionsProps {
-  knowledgeFiles: string[]
+  memoryFiles: string[]
   recentFiles: string[]
   visibleFiles: string[]
   onSubmit: (message: PromptInputMessage, mentions?: FileMention[], attachments?: StagedAttachment[]) => void
@@ -428,7 +428,7 @@ export interface ChatInputWithMentionsProps {
 }
 
 export function ChatInputWithMentions({
-  knowledgeFiles,
+  memoryFiles,
   recentFiles,
   visibleFiles,
   onSubmit,
@@ -443,7 +443,7 @@ export function ChatInputWithMentions({
   onDraftChange,
 }: ChatInputWithMentionsProps) {
   return (
-    <PromptInputProvider knowledgeFiles={knowledgeFiles} recentFiles={recentFiles} visibleFiles={visibleFiles}>
+    <PromptInputProvider memoryFiles={memoryFiles} recentFiles={recentFiles} visibleFiles={visibleFiles}>
       <ChatInputInner
         onSubmit={onSubmit}
         onStop={onStop}

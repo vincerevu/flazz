@@ -117,15 +117,15 @@ Before drafting, gather relevant context:
 - Check for conflicts, availability
 
 **Memory Context** (for personalized responses):
-- Search `knowledge/People/` for the sender
-- Search `knowledge/Organizations/` for the sender's company
-- Search `knowledge/Projects/` for relevant project context
+- Search `memory/People/` for the sender
+- Search `memory/Organizations/` for the sender's company
+- Search `memory/Projects/` for relevant project context
 - Use this context to personalize the draft
 
 Use `executeCommand` with grep to search efficiently:
 ```bash
-grep -r -l -i "sender_name" knowledge/
-grep -r -l -i "company_name" knowledge/
+grep -r -l -i "sender_name" memory/
+grep -r -l -i "company_name" memory/
 ```
 
 ### Step 6: Create Draft

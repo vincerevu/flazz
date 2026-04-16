@@ -1,27 +1,27 @@
 export const skill = String.raw`
 # Meeting Prep Skill
 
-You are helping the user prepare for meetings by gathering context from their knowledge base and calendar.
+You are helping the user prepare for meetings by gathering context from workspace memory and calendar.
 
 ## CRITICAL: Always Look Up Context First
 
-**BEFORE creating any meeting brief, you MUST look up the attendees in the knowledge base.**
+**BEFORE creating any meeting brief, you MUST look up the attendees in workspace memory.**
 
-**PATH REQUIREMENT:** Always use \`knowledge/\` as the path (not empty, not root, not \`~/Flazz\`).
+**PATH REQUIREMENT:** Always use \`memory/\` as the path (not empty, not root, not \`~/Flazz\`).
 - **WRONG:** \`path: ""\` or \`path: "."\`
-- **CORRECT:** \`path: "knowledge/"\`
+- **CORRECT:** \`path: "memory/"\`
 
 When the user asks to prep for a meeting or mentions attendees:
 
 1. **STOP** - Do not create a generic brief
-2. **SEARCH** - Look up each attendee in the knowledge base:
+2. **SEARCH** - Look up each attendee in workspace memory:
    \`\`\`
-   workspace-grep({ pattern: "Attendee Name", path: "knowledge/" })
+   workspace-grep({ pattern: "Attendee Name", path: "memory/" })
    \`\`\`
 3. **READ** - Read their notes to understand who they are:
    \`\`\`
-   workspace-readFile("knowledge/People/Attendee Name.md")
-   workspace-readFile("knowledge/Organizations/Their Company.md")
+   workspace-readFile("memory/People/Attendee Name.md")
+   workspace-readFile("memory/Organizations/Their Company.md")
    \`\`\`
 4. **UNDERSTAND** - Extract their role, organization, relationship history, past interactions, open items
 5. **THEN BRIEF** - Only now create the meeting brief, using this context
@@ -37,7 +37,7 @@ When the user asks to prep for a meeting or mentions attendees:
 - **CORRECT:** "I see you have meetings with Sarah (2pm) and John (4pm) today. Which one would you like me to prep?"
 
 **Be thorough, not generic:**
-- Once you know the meeting, gather ALL relevant context from knowledge base
+- Once you know the meeting, gather ALL relevant context from workspace memory
 - Include specific history, open items, and context - not generic talking points
 - Reference actual past interactions and commitments
 
@@ -62,19 +62,19 @@ Read the calendar event to extract:
 - Attendees (names and emails)
 - Description/agenda if available
 
-### Step 3: Gather Context from Knowledge Base
+### Step 3: Gather Context from Workspace Memory
 
-For each attendee, search the knowledge base (path MUST be \`knowledge/\`):
+For each attendee, search workspace memory (path MUST be \`memory/\`):
 
 **Search People notes:**
 \`\`\`
-workspace-grep({ pattern: "attendee_name", path: "knowledge/People/" })
-workspace-grep({ pattern: "attendee_email", path: "knowledge/People/" })
+workspace-grep({ pattern: "attendee_name", path: "memory/People/" })
+workspace-grep({ pattern: "attendee_email", path: "memory/People/" })
 \`\`\`
 
 If a person note exists, read it:
 \`\`\`
-workspace-readFile("knowledge/People/Attendee Name.md")
+workspace-readFile("memory/People/Attendee Name.md")
 \`\`\`
 
 Extract:
@@ -86,13 +86,13 @@ Extract:
 
 **Search Organization notes:**
 \`\`\`
-workspace-grep({ pattern: "company_name", path: "knowledge/Organizations/" })
+workspace-grep({ pattern: "company_name", path: "memory/Organizations/" })
 \`\`\`
 
 **Search Projects:**
 \`\`\`
-workspace-grep({ pattern: "attendee_name", path: "knowledge/Projects/" })
-workspace-grep({ pattern: "company_name", path: "knowledge/Projects/" })
+workspace-grep({ pattern: "attendee_name", path: "memory/Projects/" })
+workspace-grep({ pattern: "company_name", path: "memory/Projects/" })
 \`\`\`
 
 ### Step 4: Create Meeting Brief

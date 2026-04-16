@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState, useCallback } from 'react'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandItem, CommandList } from '@/components/ui/command'
-import { wikiLabel, stripKnowledgePrefix } from '@/lib/wiki-links'
+import { wikiLabel, stripMemoryPrefix } from '@/lib/wiki-links'
 import { FileTextIcon } from 'lucide-react'
 import type { CaretCoordinates } from '@/lib/textarea-caret'
 
@@ -69,7 +69,7 @@ export function MentionPopover({
     return ordered
       .filter((path) => {
         const label = wikiLabel(path).toLowerCase()
-        const normalized = stripKnowledgePrefix(path).toLowerCase()
+        const normalized = stripMemoryPrefix(path).toLowerCase()
         return label.includes(lowerQuery) || normalized.includes(lowerQuery)
       })
       .slice(0, MAX_VISIBLE_FILES)

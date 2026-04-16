@@ -1,19 +1,19 @@
 import { MemoryManager } from '../../memory/memory-manager.js';
-import { SkillManager } from '../../skills/skill-manager.js';
-import { KnowledgeSearchProvider } from '../../search/knowledge_search.js';
+import { SkillRegistry } from '../../skills/registry.js';
+import { MemorySearchProvider } from '../../search/memory_search.js';
 
 export interface ContextOptions {
   includeMemory?: boolean; // default: true
   includeSkills?: boolean; // default: true
-  includeKnowledge?: boolean; // default: false (only if needed)
-  knowledgeLimit?: number; // default: 5
+  includeMemorySearch?: boolean; // default: false
+  memorySearchLimit?: number; // default: 5
 }
 
 export class ContextBuilder {
   constructor(
     private memoryManager: MemoryManager,
-    private skillManager: SkillManager,
-    private knowledgeSearch: KnowledgeSearchProvider
+    private skillRegistry: SkillRegistry,
+    private memorySearch: MemorySearchProvider
   ) {}
 
   /**
@@ -40,13 +40,13 @@ export class ContextBuilder {
       }
     }
 
-    // 3. Search knowledge only if needed
-    if (options?.includeKnowledge) {
-      const limit = options.knowledgeLimit ?? 5;
-      const knowledgeResults = await this.knowledgeSearch.search(query, limit);
-      if (knowledgeResults.length > 0) {
-        const knowledgeContext = this.formatKnowledgeContext(knowledgeResults);
-        context.push(knowledgeContext);
+    // 3. Search workspace memory notes only if needed
+    if (options?.includeMemorySearch) {
+      const limit = options.memorySearchLimit ?? 5;
+      const memoryResults = await this.memorySearch.search(query, limit);
+      if (memoryResults.length > 0) {
+        const memoryContext = this.formatMemoryContext(memoryResults);
+        context.push(memoryContext);
       }
     }
 
@@ -60,27 +60,46 @@ export class ContextBuilder {
   private async findRelevantSkills(query: string): Promise<
     Array<{ name: string; description: string; content: string }>
   > {
-    const allSkills = await this.skillManager.list();
-    const queryLower = query.toLowerCase();
-    const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
+    const allSkills = (await this.skillRegistry.list()).filter(
+      (skill) => skill.source === 'workspace'
+    );
+    const queryWords = query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
 
-    const relevant = allSkills.filter((skill) => {
-      const searchText = [
-        skill.name,
-        skill.frontmatter.description,
-        ...(skill.frontmatter.tags || []),
-        skill.frontmatter.category || '',
-      ]
-        .join(' ')
-        .toLowerCase();
+    const scored = allSkills
+      .map((skill) => {
+        const haystacks = {
+          name: skill.name.toLowerCase(),
+          description: skill.description.toLowerCase(),
+          category: (skill.category || '').toLowerCase(),
+          tags: (skill.tags || []).join(' ').toLowerCase(),
+          content: skill.content.toLowerCase(),
+        };
 
-      // Match if any query word appears in skill metadata
-      return queryWords.some((word) => searchText.includes(word));
-    });
+        let score = 0;
+        for (const word of queryWords) {
+          if (haystacks.name.includes(word)) score += 6;
+          if (haystacks.tags.includes(word)) score += 4;
+          if (haystacks.category.includes(word)) score += 3;
+          if (haystacks.description.includes(word)) score += 2;
+          if (haystacks.content.includes(word)) score += 1;
+        }
 
-    return relevant.map((skill) => ({
+        if (haystacks.content.includes('## when to use')) score += 1;
+        if (haystacks.content.includes('## steps')) score += 1;
+
+        return { skill, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    return scored.map(({ skill }) => ({
       name: skill.name,
-      description: skill.frontmatter.description,
+      description: skill.description,
       content: skill.content,
     }));
   }
@@ -106,14 +125,14 @@ export class ContextBuilder {
   }
 
   /**
-   * Format knowledge search results for context
+   * Format memory search results for context
    */
-  private formatKnowledgeContext(
+  private formatMemoryContext(
     results: Array<{ type: string; title: string; preview: string; path: string }>
   ): string {
     const separator = '═'.repeat(46);
     let output = `${separator}\n`;
-    output += `RELEVANT KNOWLEDGE (${results.length} notes)\n`;
+    output += `RELEVANT MEMORY NOTES (${results.length} notes)\n`;
     output += `${separator}\n\n`;
 
     for (const result of results) {

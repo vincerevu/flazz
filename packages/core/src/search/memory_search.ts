@@ -7,7 +7,7 @@ import { WorkDir } from '../config/config.js';
 
 const MEMORY_DIR = path.join(WorkDir, 'memory');
 
-export class KnowledgeSearchProvider implements SearchProvider {
+export class MemorySearchProvider implements SearchProvider {
   async search(query: string, limit: number): Promise<SearchResult[]> {
     if (!fs.existsSync(MEMORY_DIR)) {
       return [];
@@ -42,7 +42,7 @@ export class KnowledgeSearchProvider implements SearchProvider {
 
         if (isMatch) {
           results.push({
-            type: 'knowledge',
+            type: 'memory',
             title: basename,
             preview,
             path: relPath,

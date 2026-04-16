@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react'
 import './App.css'
-import { useWorkspaceTree } from './features/knowledge/hooks/use-workspace-tree'
-import { useFileEditor } from './features/knowledge/hooks/use-file-editor'
-import { useGraphView } from './features/knowledge/hooks/use-graph-view'
-import { useVersionHistory } from './features/knowledge/hooks/use-version-history'
+import { useWorkspaceTree } from './features/memory/hooks/use-workspace-tree'
+import { useFileEditor } from './features/memory/hooks/use-file-editor'
+import { useGraphView } from './features/memory/hooks/use-graph-view'
+import { useVersionHistory } from './features/memory/hooks/use-version-history'
 import {
   GRAPH_TAB_PATH,
   isGraphTabPath,
   viewStatesEqual,
   type TreeNode,
   type ViewState,
-} from './features/knowledge/types'
-import { getBaseName } from './features/knowledge/utils/wiki-logic'
+} from './features/memory/types'
+import { getBaseName } from './features/memory/utils/wiki-logic'
 
 import { CheckIcon, HistoryIcon, LoaderIcon, Maximize2, Minimize2, RotateCcw, SquarePen } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,18 +34,18 @@ import { RendererAppShell } from '@/components/app-shell/renderer-app-shell'
 import { useChatRuntime } from '@/features/chat/use-chat-runtime'
 import { runsIpc } from '@/services/runs-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
-import { knowledgeIpc } from '@/services/knowledge-ipc'
+import { memoryIpc } from '@/services/memory-ipc'
 import { useDesktopWindow } from '@/features/app/use-desktop-window'
 import { useAppKeyboardShortcuts } from '@/features/app/use-app-keyboard-shortcuts'
 import { useBackgroundTasks } from '@/features/background-tasks/use-background-tasks'
 import { ChatMainPanel } from '@/features/chat/components/chat-main-panel'
-import { mockSkills } from '@/features/skills/mock-skills'
 import { SkillsMainPanel } from '@/features/skills/components/skills-main-panel'
+import { useSkillsData } from '@/features/skills/use-skills-data'
 import { mockWorkflows } from '@/features/workflow/mock-workflows'
 import { WorkflowMainPanel } from '@/features/workflow/components/workflow-main-panel'
 import { splitFrontmatter, joinFrontmatter } from '@/lib/frontmatter'
-import { getKnowledgeCollectionMeta, isKnowledgeCollectionPath } from '@/features/knowledge/utils/collections'
-import { KnowledgeCollectionView } from '@/features/knowledge/components/knowledge-collection-view'
+import { getMemoryCollectionMeta, isMemoryCollectionPath } from '@/features/memory/utils/collections'
+import { MemoryCollectionView } from '@/features/memory/components/memory-collection-view'
 
 function findTreeNode(nodes: TreeNode[], targetPath: string | null): TreeNode | null {
   if (!targetPath) return null
@@ -84,7 +84,22 @@ function App() {
     setSelectedBackgroundTask,
     handleToggleBackgroundTask,
   } = useBackgroundTasks()
-  const [selectedSkillId, setSelectedSkillId] = useState<string>(mockSkills[0]?.id ?? '')
+  const {
+    skills,
+    selectedSkill,
+    selectedSkillId,
+    setSelectedSkillId,
+    learningStats,
+    revisions,
+    selectedRevision,
+    selectedRevisionId,
+    setSelectedRevisionId,
+    mutatingCandidateId,
+    rollingBackRevisionId,
+    promoteCandidate,
+    rejectCandidate,
+    rollbackToRevision,
+  } = useSkillsData()
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(mockWorkflows[0]?.id ?? '')
   const [pendingFolderRenamePath, setPendingFolderRenamePath] = useState<string | null>(null)
 
@@ -121,7 +136,7 @@ function App() {
   const navigateToFileRefThunk = useCallback((path: string) => navigateRef.current({ type: 'file', path }), [])
   const navigateToViewRefThunk = useCallback((view: ViewState) => navigateRef.current(view), [])
 
-  // --- Knowledge Domain Hooks ---
+  // --- Memory Domain Hooks ---
   const {
     tree,
     expandedPaths,
@@ -129,9 +144,9 @@ function App() {
     expandPath,
     expandAll,
     collapseAll,
-    knowledgeFiles,
-    knowledgeFilePaths,
-    visibleKnowledgeFiles,
+    memoryFiles,
+    memoryFilePaths,
+    visibleMemoryFiles,
   } = useWorkspaceTree()
 
   const {
@@ -147,7 +162,7 @@ function App() {
     editorSessionByTabId,
     fileHistoryHandlersRef,
     recentWikiFiles,
-    knowledgeActions: baseKnowledgeActions,
+    memoryActions: baseMemoryActions,
     ensureFileTabForPath,
     ensureGraphFileTab,
     switchFileTab,
@@ -163,15 +178,15 @@ function App() {
     appendUnique,
   })
 
-  const knowledgeActions = useMemo(() => ({
-    ...baseKnowledgeActions,
+  const memoryActions = useMemo(() => ({
+    ...baseMemoryActions,
     createNote: async (parentPath?: string) => {
-      const result = await baseKnowledgeActions.createNote(parentPath)
+      const result = await baseMemoryActions.createNote(parentPath)
       await refreshTree()
       return result
     },
     createFolder: async (parentPath?: string) => {
-      const createdPath = await baseKnowledgeActions.createFolder(parentPath)
+      const createdPath = await baseMemoryActions.createFolder(parentPath)
       if (!createdPath) return createdPath
       const parentDir = createdPath.split('/').slice(0, -1).join('/')
       if (parentDir) expandPath(parentDir)
@@ -180,12 +195,12 @@ function App() {
       return createdPath
     },
     rename: async (path: string, newName: string, isDir: boolean) => {
-      const result = await baseKnowledgeActions.rename(path, newName, isDir)
+      const result = await baseMemoryActions.rename(path, newName, isDir)
       await refreshTree()
       return result
     },
     remove: async (path: string) => {
-      const result = await baseKnowledgeActions.remove(path)
+      const result = await baseMemoryActions.remove(path)
       await refreshTree()
       if (pendingFolderRenamePath === path) {
         setPendingFolderRenamePath(null)
@@ -195,9 +210,9 @@ function App() {
     openGraph: ensureGraphFileTab,
     expandAll,
     collapseAll,
-  }), [baseKnowledgeActions, collapseAll, ensureGraphFileTab, expandAll, expandPath, pendingFolderRenamePath, refreshTree])
+  }), [baseMemoryActions, collapseAll, ensureGraphFileTab, expandAll, expandPath, pendingFolderRenamePath, refreshTree])
 
-  const handleSelectKnowledgeItem = useCallback((path: string, kind: "file" | "dir") => {
+  const handleSelectMemoryItem = useCallback((path: string, kind: "file" | "dir") => {
     if (kind === 'dir') {
       navigateToFile(path)
       return
@@ -214,7 +229,7 @@ function App() {
     graphData,
     graphStatus,
     graphError,
-  } = useGraphView(isGraphOpen, knowledgeFilePaths)
+  } = useGraphView(isGraphOpen, memoryFilePaths)
 
   const {
     versionHistoryPath,
@@ -261,7 +276,7 @@ function App() {
       void navigateToView({ type: 'chat', runId: null })
     }, [activeChatTabId, activeFileTabId, clearToolOpenForTab, navigateToView])
 
-  const toggleKnowledgePane = useCallback(() => {
+  const toggleMemoryPane = useCallback(() => {
     setIsChatSidebarOpen(!isChatSidebarOpen)
   }, [isChatSidebarOpen])
 
@@ -520,8 +535,8 @@ function App() {
     ? backgroundTasks.find(t => t.name === selectedBackgroundTask)
     : null
   const selectedTreeNode = useMemo(() => findTreeNode(tree, selectedPath), [tree, selectedPath])
-  const selectedCollection = getKnowledgeCollectionMeta(selectedPath)
-  const isCollectionOpen = Boolean(selectedTreeNode?.kind === 'dir' && isKnowledgeCollectionPath(selectedPath))
+  const selectedCollection = getMemoryCollectionMeta(selectedPath)
+  const isCollectionOpen = Boolean(selectedTreeNode?.kind === 'dir' && isMemoryCollectionPath(selectedPath))
   const isRightPaneContext = Boolean(selectedPath || isGraphOpen)
   const isRightPaneOnlyMode = isRightPaneContext && isChatSidebarOpen && isRightPaneMaximized
   const shouldCollapseLeftPane = isRightPaneOnlyMode
@@ -556,9 +571,9 @@ function App() {
       isStopping={isStopping}
       onStop={handleStop}
       onSubmit={handlePromptSubmit}
-      knowledgeFiles={knowledgeFiles}
+      memoryFiles={memoryFiles}
       recentFiles={recentWikiFiles}
-      visibleFiles={visibleKnowledgeFiles}
+      visibleFiles={visibleMemoryFiles}
       runId={runId}
       presetMessage={presetMessage}
       onPresetMessageConsumed={() => setPresetMessage(undefined)}
@@ -571,7 +586,7 @@ function App() {
       onAskHumanResponse={handleAskHumanResponse}
       isToolOpenForTab={isToolOpenForTab}
       onToolOpenChangeForTab={setToolOpenForTab}
-      onOpenKnowledgeFile={(path) => { navigateToFile(path) }}
+      onOpenMemoryFile={(path) => { navigateToFile(path) }}
       onActivate={() => setActiveShortcutPane('right')}
     />
   )
@@ -596,8 +611,8 @@ function App() {
           tree={tree}
           selectedPath={selectedPath}
           expandedPaths={expandedPaths}
-          onSelectFile={handleSelectKnowledgeItem}
-          knowledgeActions={knowledgeActions}
+          onSelectFile={handleSelectMemoryItem}
+          memoryActions={memoryActions}
           pendingFolderRenamePath={pendingFolderRenamePath}
           onPendingFolderRenameHandled={setPendingFolderRenamePath}
           onVoiceNoteCreated={handleVoiceNoteCreated}
@@ -664,7 +679,7 @@ function App() {
           }}
           backgroundTasks={backgroundTasks}
           selectedBackgroundTask={selectedBackgroundTask}
-          skills={mockSkills}
+          skills={skills}
           selectedSkillId={selectedSkillId}
           onSelectSkill={setSelectedSkillId}
           workflows={mockWorkflows}
@@ -719,7 +734,7 @@ function App() {
                     ) : null}
                   </div>
                 )}
-                {selectedPath && !isCollectionOpen && selectedPath.startsWith('knowledge/') && selectedPath.endsWith('.md') && (
+                {selectedPath && !isCollectionOpen && selectedPath.startsWith('memory/') && selectedPath.endsWith('.md') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -736,7 +751,7 @@ function App() {
                     <TooltipContent side="bottom">Reload from disk</TooltipContent>
                   </Tooltip>
                 )}
-                {selectedPath && !isCollectionOpen && selectedPath.startsWith('knowledge/') && selectedPath.endsWith('.md') && (
+                {selectedPath && !isCollectionOpen && selectedPath.startsWith('memory/') && selectedPath.endsWith('.md') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -796,15 +811,15 @@ function App() {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={toggleKnowledgePane}
+                        onClick={toggleMemoryPane}
                         className="titlebar-no-drag flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors -mr-1 self-center shrink-0"
-                        aria-label={isChatSidebarOpen ? "Maximize knowledge view" : "Restore two-pane view"}
+                        aria-label={isChatSidebarOpen ? "Maximize memory view" : "Restore two-pane view"}
                       >
                         {isChatSidebarOpen ? <Maximize2 className="size-5" /> : <Minimize2 className="size-5" />}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
-                      {isChatSidebarOpen ? "Maximize knowledge view" : "Restore two-pane view"}
+                      {isChatSidebarOpen ? "Maximize memory view" : "Restore two-pane view"}
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -827,12 +842,12 @@ function App() {
               ) : selectedPath ? (
                 isCollectionOpen ? (
                   <div className="flex-1 min-h-0 overflow-hidden">
-                    <KnowledgeCollectionView
+                    <MemoryCollectionView
                       collectionPath={selectedPath}
                       tree={tree}
                       onSelectNote={navigateToFile}
                       onCreateNote={(parentPath) => {
-                        void knowledgeActions.createNote(parentPath)
+                        void memoryActions.createNote(parentPath)
                       }}
                     />
                   </div>
@@ -880,7 +895,7 @@ function App() {
                               }}
                               placeholder="Start writing..."
                               wikiLinks={{
-                                files: knowledgeFilePaths,
+                                files: memoryFilePaths,
                                 recent: recentWikiFiles,
                                 onOpen: (path) => {
                                   void openWikiLink(path)
@@ -918,10 +933,10 @@ function App() {
                         }}
                         onRestore={async (oid) => {
                           try {
-                            const restorePath = versionHistoryPath.startsWith('knowledge/')
-                              ? versionHistoryPath.slice('knowledge/'.length)
+                            const restorePath = versionHistoryPath.startsWith('memory/')
+                              ? versionHistoryPath.slice('memory/'.length)
                               : versionHistoryPath
-                            await knowledgeIpc.restore(restorePath, oid)
+                            await memoryIpc.restore(restorePath, oid)
                             // Reload file content
                             const result = await workspaceIpc.readFile(versionHistoryPath)
                             handleEditorChange(versionHistoryPath, result.data)
@@ -966,9 +981,9 @@ function App() {
                 isStopping={isStopping}
                 handleStop={handleStop}
                 handlePromptSubmit={handlePromptSubmit}
-                knowledgeFiles={knowledgeFiles}
+                memoryFiles={memoryFiles}
                 recentWikiFiles={recentWikiFiles}
-                visibleKnowledgeFiles={visibleKnowledgeFiles}
+                visibleMemoryFiles={visibleMemoryFiles}
                 presetMessage={presetMessage}
                 onSelectSuggestion={setPresetMessage}
                 onPresetMessageConsumed={() => setPresetMessage(undefined)}
@@ -989,7 +1004,7 @@ function App() {
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">Skills</div>
               <div className="truncate text-xs text-muted-foreground">
-                Reusable presets and operating playbooks
+                Learned procedures, built-ins, and review candidates
               </div>
             </div>
           </div>
@@ -1008,8 +1023,18 @@ function App() {
       sectionMainContent={{
         skills: (
           <SkillsMainPanel
-            skills={mockSkills}
-            selectedSkillId={selectedSkillId}
+            skills={skills}
+            selectedSkill={selectedSkill}
+            learningStats={learningStats}
+            revisions={revisions}
+            selectedRevision={selectedRevision}
+            selectedRevisionId={selectedRevisionId}
+            setSelectedRevisionId={setSelectedRevisionId}
+            mutatingCandidateId={mutatingCandidateId}
+            rollingBackRevisionId={rollingBackRevisionId}
+            onPromoteCandidate={promoteCandidate}
+            onRejectCandidate={rejectCandidate}
+            onRollbackRevision={rollbackToRevision}
           />
         ),
         workflow: (

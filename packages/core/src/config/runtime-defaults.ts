@@ -15,11 +15,11 @@ function ensureDirs() {
     ensure(WorkDir);
     ensure(path.join(WorkDir, "agents"));
     ensure(path.join(WorkDir, "config"));
-    ensure(path.join(WorkDir, "memory"));  // Changed from "knowledge"
+    ensure(path.join(WorkDir, "memory"));
 }
 
 function ensureDefaultConfigs() {
-    // Create note_creation.json with default strictness if it doesn't exist
+// Create note_creation.json with default strictness if it doesn't exist
     const noteCreationConfig = path.join(WorkDir, "config", "note_creation.json");
     if (!fs.existsSync(noteCreationConfig)) {
         fs.writeFileSync(noteCreationConfig, JSON.stringify({
@@ -34,7 +34,7 @@ const WELCOME_CONTENT = `# Welcome to Flazz
 
 This vault is your work memory.
 
-Flazz extracts context from your emails and meetings and turns it into long-lived, editable Markdown notes. The goal is not to store everything, but to preserve the context that stays useful over time.
+Flazz turns durable context from your local notes, voice memos, and archived memory into long-lived, editable Markdown notes. The goal is not to store everything, but to preserve the context that stays useful over time.
 
 ---
 
@@ -44,7 +44,7 @@ Flazz extracts context from your emails and meetings and turns it into long-live
 Notes represent people, projects, organizations, or topics that matter to your work.
 
 **Auto-updating context**
-As new emails and meetings come in, Flazz adds decisions, commitments, and relevant context to the appropriate notes.
+As new voice memos are processed and notes are archived, Flazz adds decisions, commitments, and relevant context to the appropriate notes.
 
 **Living notes**
 These are not static summaries. Context accumulates over time, and notes evolve as your work evolves.
@@ -55,7 +55,7 @@ These are not static summaries. Context accumulates over time, and notes evolve 
 
 Flazz uses this shared memory to help with everyday work, such as:
 
-- Drafting emails
+- Drafting emails with memory-aware context
 - Preparing for meetings
 - Summarizing the current state of a project
 - Taking local actions when appropriate
@@ -94,6 +94,6 @@ ensureDefaultConfigs();
 ensureWelcomeFile();
 
 // Initialize version history repo (async, fire-and-forget on startup)
-import('../knowledge/version_history.js').then(m => m.initRepo()).catch(err => {
+import('../memory-graph/version-history.js').then(m => m.initRepo()).catch(err => {
     console.error('[VersionHistory] Failed to init repo:', err);
 });

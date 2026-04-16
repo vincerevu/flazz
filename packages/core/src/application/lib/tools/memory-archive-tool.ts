@@ -10,15 +10,15 @@ export function setMemoryArchiver(archiver: IMemoryArchiver): void {
 export const memoryArchiveTools = {
   memory_archive: {
     description:
-      'Archive memory to knowledge base. Moves entries from hot memory (MEMORY.md or USER.md) ' +
-      'to a permanent knowledge note, then clears the memory section.\n\n' +
+      'Archive memory into the long-lived workspace memory. Moves entries from hot memory ' +
+      '(MEMORY.md or USER.md) to a permanent note under memory/, then clears the memory section.\n\n' +
       'Use this when:\n' +
       '- Memory is getting full and you need to make space\n' +
       '- Information is important but no longer needs to be in hot memory\n' +
-      '- User explicitly asks to save memory to knowledge\n\n' +
-      'The archived content will be added to the specified knowledge file and the memory ' +
-      'section will be cleared. The knowledge graph will be updated automatically.\n\n' +
-      'Target path should be relative to knowledge directory (e.g., "Projects/my-project.md").',
+      '- User explicitly asks to save memory into a durable note\n\n' +
+      'The archived content will be added to the specified memory note and the memory ' +
+      'section will be cleared. The memory index will be updated automatically.\n\n' +
+      'Target path should be relative to the memory directory (e.g., "Projects/my-project.md").',
     inputSchema: z.object({
       section: z
         .enum(['agent', 'user'])
@@ -26,7 +26,7 @@ export const memoryArchiveTools = {
       target_path: z
         .string()
         .describe(
-          'Path to knowledge file (relative to knowledge directory, must end with .md). ' +
+          'Path to memory note (relative to the memory directory, must end with .md). ' +
           'Example: "Projects/my-project.md" or "Topics/learning-notes.md"'
         ),
     }),

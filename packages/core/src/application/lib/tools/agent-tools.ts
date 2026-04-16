@@ -1,7 +1,17 @@
 import { z } from "zod";
-import { resolveSkill, availableSkills } from "../../assistant/skills/index.js";
-import container from "../../../di/container.js";
 import { IAgentsRepo } from "../../../agents/repo.js";
+import { SkillRegistry } from "../../../skills/registry.js";
+
+let skillRegistry: SkillRegistry | null = null;
+let agentsRepo: IAgentsRepo | null = null;
+
+export function setSkillRegistry(registry: SkillRegistry): void {
+    skillRegistry = registry;
+}
+
+export function setAgentsRepo(repo: IAgentsRepo): void {
+    agentsRepo = repo;
+}
 
 export const agentTools = {
     analyzeAgent: {
@@ -10,9 +20,15 @@ export const agentTools = {
             agentName: z.string().describe('Name of the agent file to analyze (with or without .json extension)'),
         }),
         execute: async ({ agentName }: { agentName: string }) => {
-            const repo = container.resolve<IAgentsRepo>('agentsRepo');
+            if (!agentsRepo) {
+                return {
+                    success: false,
+                    message: 'Agents repository is not initialized',
+                };
+            }
+
             try {
-                const agent = await repo.fetch(agentName);
+                const agent = await agentsRepo.fetch(agentName);
 
                 // Extract key information
                 const toolsList = agent.tools ? Object.keys(agent.tools) : [];
@@ -51,19 +67,27 @@ export const agentTools = {
             skillName: z.string().describe("Skill identifier or path (e.g., 'workflow-run-ops' or 'src/application/assistant/skills/workflow-run-ops/skill.ts')"),
         }),
         execute: async ({ skillName }: { skillName: string }) => {
-            const resolved = resolveSkill(skillName);
-
-            if (!resolved) {
+            if (!skillRegistry) {
                 return {
                     success: false,
-                    message: `Skill '${skillName}' not found. Available skills: ${availableSkills.join(", ")}`,
+                    message: "Skill registry is not initialized.",
+                };
+            }
+
+            const resolved = await skillRegistry.get(skillName);
+            if (!resolved) {
+                const availableSkills = await skillRegistry.list();
+                return {
+                    success: false,
+                    message: `Skill '${skillName}' not found. Available skills: ${availableSkills.map((skill) => skill.name).join(", ")}`,
                 };
             }
 
             return {
                 success: true,
-                skillName: resolved.id,
-                path: resolved.catalogPath,
+                skillName: resolved.name,
+                path: resolved.path,
+                source: resolved.source,
                 content: resolved.content,
             };
         },

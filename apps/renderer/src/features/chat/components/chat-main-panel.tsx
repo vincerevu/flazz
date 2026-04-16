@@ -16,7 +16,7 @@ import { ChatMessageAttachments } from '@/components/chat-message-attachments'
 import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
 import { FileCardProvider } from '@/contexts/file-card-context'
 import type { FileMention, PromptInputMessage } from '@/components/ai-elements/prompt-input'
-import { FileCard, WikiLink } from '@/features/knowledge/components/streamdown-components'
+import { FileCard, WikiLink } from '@/features/memory/components/streamdown-components'
 import {
   type ChatTabViewState,
   type ConversationItem,
@@ -49,9 +49,9 @@ interface ChatMainPanelProps {
   isStopping: boolean
   handleStop: () => void
   handlePromptSubmit: (message: PromptInputMessage, mentions?: FileMention[], attachments?: StagedAttachment[]) => void
-  knowledgeFiles: string[]
+  memoryFiles: string[]
   recentWikiFiles: string[]
-  visibleKnowledgeFiles: string[]
+  visibleMemoryFiles: string[]
   presetMessage?: string
   onSelectSuggestion: (value: string) => void
   onPresetMessageConsumed: () => void
@@ -175,9 +175,9 @@ export function ChatMainPanel({
   isStopping,
   handleStop,
   handlePromptSubmit,
-  knowledgeFiles,
+  memoryFiles,
   recentWikiFiles,
-  visibleKnowledgeFiles,
+  visibleMemoryFiles,
   presetMessage,
   onSelectSuggestion,
   onPresetMessageConsumed,
@@ -189,7 +189,7 @@ export function ChatMainPanel({
   navigateToFile,
 }: ChatMainPanelProps) {
   return (
-    <FileCardProvider onOpenKnowledgeFile={(path) => { navigateToFile(path) }}>
+    <FileCardProvider onOpenMemoryFile={(path) => { navigateToFile(path) }}>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="relative min-h-0 flex-1">
           {chatTabs.map((tab) => {
@@ -301,9 +301,9 @@ export function ChatMainPanel({
                   aria-hidden={!isActive}
                 >
                   <ChatInputWithMentions
-                    knowledgeFiles={knowledgeFiles}
+                    memoryFiles={memoryFiles}
                     recentFiles={recentWikiFiles}
-                    visibleFiles={visibleKnowledgeFiles}
+                    visibleFiles={visibleMemoryFiles}
                     onSubmit={handlePromptSubmit}
                     onStop={handleStop}
                     isProcessing={isActive && isProcessing}

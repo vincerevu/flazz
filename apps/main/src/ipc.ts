@@ -20,8 +20,9 @@ import {
   registerAuthHandlers,
   registerIntegrationHandlers,
   registerScheduleHandlers,
-  registerKnowledgeHandlers,
-  registerAppHandlers
+  registerMemoryHandlers,
+  registerAppHandlers,
+  registerSkillsHandlers
 } from './ipc/index.js';
 import { getWindowState } from './ipc/app.js';
 
@@ -100,13 +101,13 @@ const changeQueue = new Set<string>();
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Emit knowledge commit event to all renderer windows
+ * Emit memory commit event to all renderer windows
  */
-function emitKnowledgeCommitEvent(): void {
+function emitMemoryCommitEvent(): void {
   const windows = BrowserWindow.getAllWindows();
   for (const win of windows) {
     if (!win.isDestroyed() && win.webContents) {
-      win.webContents.send('knowledge:didCommit', {});
+      win.webContents.send('memory:didCommit', {});
     }
   }
 }
@@ -289,8 +290,8 @@ function stopServicesWatcher(): void {
  * Add new handlers here as you add channels to IPCChannels
  */
 export function setupIpcHandlers() {
-  // Forward knowledge commit events to renderer for panel refresh
-  versionHistory.onCommit(() => emitKnowledgeCommitEvent());
+  // Forward memory commit events to renderer for panel refresh
+  versionHistory.onCommit(() => emitMemoryCommitEvent());
 
   const handlers: Partial<InvokeHandlers> = {};
 
@@ -303,7 +304,8 @@ export function setupIpcHandlers() {
   registerAuthHandlers(handlers);
   registerIntegrationHandlers(handlers);
   registerScheduleHandlers(handlers);
-  registerKnowledgeHandlers(handlers);
+  registerMemoryHandlers(handlers);
+  registerSkillsHandlers(handlers);
 
   registerIpcHandlers(handlers as InvokeHandlers);
 }

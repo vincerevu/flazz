@@ -6,5 +6,6 @@ export { registerSearchHandlers } from './search.js';
 export { registerAuthHandlers } from './auth.js';
 export { registerIntegrationHandlers } from './integrations.js';
 export { registerScheduleHandlers } from './schedule.js';
-export { registerKnowledgeHandlers } from './knowledge.js';
+export { registerMemoryHandlers } from './memory.js';
 export { registerAppHandlers } from './app.js';
+export { registerSkillsHandlers } from './skills.js';

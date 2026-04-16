@@ -5,8 +5,8 @@ import { workspace } from '@flazz/shared';
 import { z } from 'zod';
 import { RemoveOptions, WriteFileOptions, WriteFileResult } from '@flazz/shared';
 import { WorkDir } from '../config/config.js';
-import { rewriteWikiLinksForRenamedKnowledgeFile } from './wiki-link-rewrite.js';
-import { commitAll } from '../knowledge/version_history.js';
+import { rewriteWikiLinksForRenamedMemoryFile } from './wiki-link-rewrite.js';
+import { commitAll } from '../memory-graph/version-history.js';
 
 // ============================================================================
 // Path Utilities
@@ -48,9 +48,12 @@ export function absToRelPosix(absPath: string): string | null {
   return relPath.split(path.sep).join('/');
 }
 
-function isKnowledgeMarkdownRelPath(relPath: string): boolean {
+function isTrackedMemoryMarkdownRelPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
-  return normalized.startsWith('knowledge/') && normalized.endsWith('.md');
+  return (
+    normalized.startsWith('memory/')
+    && normalized.endsWith('.md')
+  );
 }
 
 function shouldWriteUtf8Bom(relPath: string, encoding: z.infer<typeof workspace.Encoding>): boolean {
@@ -216,15 +219,15 @@ export async function readFile(
   };
 }
 
-// Debounced commit for knowledge file edits
-let knowledgeCommitTimer: ReturnType<typeof setTimeout> | null = null;
+// Debounced commit for long-lived memory note edits
+let memoryCommitTimer: ReturnType<typeof setTimeout> | null = null;
 
-function scheduleKnowledgeCommit(filename: string): void {
-  if (knowledgeCommitTimer) {
-    clearTimeout(knowledgeCommitTimer);
+function scheduleMemoryCommit(filename: string): void {
+  if (memoryCommitTimer) {
+    clearTimeout(memoryCommitTimer);
   }
-  knowledgeCommitTimer = setTimeout(() => {
-    knowledgeCommitTimer = null;
+  memoryCommitTimer = setTimeout(() => {
+    memoryCommitTimer = null;
     commitAll(`Edit ${filename}`, 'You').catch(err => {
       console.error('[VersionHistory] Failed to commit after edit:', err);
     });
@@ -282,7 +285,7 @@ export async function writeFile(
 
   // Schedule a debounced version history commit for memory files
   if (relPath.startsWith('memory/') && relPath.endsWith('.md')) {
-    scheduleKnowledgeCommit(path.basename(relPath));
+      scheduleMemoryCommit(path.basename(relPath));
   }
 
   return {
@@ -338,11 +341,11 @@ export async function rename(
 
   if (
     fromStats.isFile()
-    && isKnowledgeMarkdownRelPath(from)
-    && isKnowledgeMarkdownRelPath(to)
+    && isTrackedMemoryMarkdownRelPath(from)
+    && isTrackedMemoryMarkdownRelPath(to)
   ) {
     try {
-      await rewriteWikiLinksForRenamedKnowledgeFile(WorkDir, from, to);
+      await rewriteWikiLinksForRenamedMemoryFile(WorkDir, from, to);
     } catch (error) {
       console.error('Failed to rewrite wiki backlinks after file rename:', error);
     }

@@ -6,17 +6,17 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-export type ChatKnowledgeView = 'chat' | 'knowledge'
+export type ChatMemoryView = 'chat' | 'memory'
 
-interface ChatKnowledgeMenuProps {
-  activeView: ChatKnowledgeView
-  onViewChange: (view: ChatKnowledgeView) => void
+interface ChatMemoryMenuProps {
+  activeView: ChatMemoryView
+  onViewChange: (view: ChatMemoryView) => void
 }
 
-export function ChatKnowledgeMenu({
+export function ChatMemoryMenu({
   activeView,
   onViewChange,
-}: ChatKnowledgeMenuProps) {
+}: ChatMemoryMenuProps) {
   const menuItems = [
     {
       id: 'chat' as const,
@@ -25,10 +25,10 @@ export function ChatKnowledgeMenu({
       description: 'Chat with AI',
     },
     {
-      id: 'knowledge' as const,
-      label: 'Knowledge',
+      id: 'memory' as const,
+      label: 'Memory',
       icon: BookOpen,
-      description: 'Browse knowledge base',
+      description: 'Browse workspace memory',
     },
   ]
 

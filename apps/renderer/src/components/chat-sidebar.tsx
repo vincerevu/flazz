@@ -91,7 +91,7 @@ interface ChatSidebarProps {
   isStopping?: boolean
   onStop?: () => void
   onSubmit: (message: PromptInputMessage, mentions?: FileMention[], attachments?: StagedAttachment[]) => void
-  knowledgeFiles?: string[]
+  memoryFiles?: string[]
   recentFiles?: string[]
   visibleFiles?: string[]
   runId?: string | null
@@ -106,7 +106,7 @@ interface ChatSidebarProps {
   onAskHumanResponse?: (toolCallId: string, subflow: string[], response: string) => void
   isToolOpenForTab?: (tabId: string, toolId: string) => boolean
   onToolOpenChangeForTab?: (tabId: string, toolId: string, open: boolean) => void
-  onOpenKnowledgeFile?: (path: string) => void
+  onOpenMemoryFile?: (path: string) => void
   onActivate?: () => void
 }
 
@@ -129,7 +129,7 @@ export function ChatSidebar({
   isStopping,
   onStop,
   onSubmit,
-  knowledgeFiles = [],
+  memoryFiles = [],
   recentFiles = [],
   visibleFiles = [],
   runId,
@@ -144,7 +144,7 @@ export function ChatSidebar({
   onAskHumanResponse,
   isToolOpenForTab,
   onToolOpenChangeForTab,
-  onOpenKnowledgeFile,
+  onOpenMemoryFile,
   onActivate,
 }: ChatSidebarProps) {
   const [width, setWidth] = useState(() => getInitialPaneWidth(defaultWidth))
@@ -425,7 +425,7 @@ export function ChatSidebar({
             </div>
           </header>
 
-          <FileCardProvider onOpenKnowledgeFile={onOpenKnowledgeFile ?? (() => {})}>
+          <FileCardProvider onOpenMemoryFile={onOpenMemoryFile ?? (() => {})}>
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="relative min-h-0 flex-1">
                 {chatTabs.map((tab) => {
@@ -523,7 +523,7 @@ export function ChatSidebar({
                         aria-hidden={!isActive}
                       >
                         <ChatInputWithMentions
-                          knowledgeFiles={knowledgeFiles}
+                          memoryFiles={memoryFiles}
                           recentFiles={recentFiles}
                           visibleFiles={visibleFiles}
                           onSubmit={onSubmit}

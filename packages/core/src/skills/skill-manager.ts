@@ -213,6 +213,37 @@ export class SkillManager {
     return await this.repo.get(name);
   }
 
+  async listRevisions(name: string) {
+    if (!this.repo.listRevisions) {
+      return [];
+    }
+    return await this.repo.listRevisions(name);
+  }
+
+  async getRevision(name: string, revisionId: string) {
+    if (!this.repo.getRevision) {
+      return null;
+    }
+    return await this.repo.getRevision(name, revisionId);
+  }
+
+  async rollbackToRevision(name: string, revisionId: string) {
+    const revision = await this.getRevision(name, revisionId);
+    if (!revision) {
+      return { success: false, error: `Revision '${revisionId}' not found.` };
+    }
+
+    try {
+      await this.repo.update(name, revision.nextContent);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
   // Validation helpers
 
   private validateName(name: string): string | null {

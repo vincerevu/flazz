@@ -75,14 +75,14 @@ export function setNoteCreationStrictness(strictness: NoteCreationStrictness): v
 }
 
 /**
- * Check if strictness has been auto-configured based on email analysis.
+ * Check whether note creation strictness has been explicitly configured.
  */
 export function isStrictnessConfigured(): boolean {
     return readConfig().configured;
 }
 
 /**
- * Mark strictness as configured (after auto-analysis).
+ * Mark strictness as configured.
  */
 export function markStrictnessConfigured(): void {
     const config = readConfig();

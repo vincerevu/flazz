@@ -1,7 +1,7 @@
-import { stripKnowledgePrefix, toKnowledgePath, wikiLabel } from '@/lib/wiki-links'
+import { stripMemoryPrefix, toMemoryPath, wikiLabel } from '@/lib/wiki-links'
 
 export const WIKI_LINK_REGEX = /\[\[([^[\]]+)\]\]/g
-export const KNOWLEDGE_PREFIX = 'knowledge/'
+export const MEMORY_PREFIX = 'memory/'
 
 export const isUntitledPlaceholderName = (name: string) =>
   name === 'untitled' || /^untitled-\d+$/.test(name)
@@ -35,11 +35,13 @@ export const getBaseName = (path: string) => {
 export const normalizeRelPathForWiki = (relPath: string) =>
   relPath.replace(/\\/g, '/').replace(/^\/+/, '')
 
-export const stripKnowledgePrefixForWiki = (relPath: string) => {
+export const stripMemoryPrefixForWiki = (relPath: string) => {
   const normalized = normalizeRelPathForWiki(relPath)
-  return normalized.toLowerCase().startsWith(KNOWLEDGE_PREFIX)
-    ? normalized.slice(KNOWLEDGE_PREFIX.length)
-    : normalized
+  const lower = normalized.toLowerCase()
+  if (lower.startsWith(MEMORY_PREFIX)) {
+    return normalized.slice(MEMORY_PREFIX.length)
+  }
+  return normalized
 }
 
 export const stripMarkdownExtensionForWiki = (wikiPath: string) =>
@@ -50,11 +52,12 @@ export const wikiPathCompareKey = (wikiPath: string) =>
 
 export const splitWikiPathPrefix = (rawPath: string) => {
   let normalized = rawPath.trim().replace(/^\/+/, '').replace(/^\.\//, '')
-  const hadKnowledgePrefix = /^knowledge\//i.test(normalized)
-  if (hadKnowledgePrefix) {
-    normalized = normalized.slice(KNOWLEDGE_PREFIX.length)
+  const lower = normalized.toLowerCase()
+  const hadMemoryPrefix = lower.startsWith(MEMORY_PREFIX)
+  if (lower.startsWith(MEMORY_PREFIX)) {
+    normalized = normalized.slice(MEMORY_PREFIX.length)
   }
-  return { pathWithoutPrefix: normalized, hadKnowledgePrefix }
+  return { pathWithoutPrefix: normalized, hadMemoryPrefix }
 }
 
 export const rewriteWikiLinksForRenamedFileInMarkdown = (
@@ -66,11 +69,12 @@ export const rewriteWikiLinksForRenamedFileInMarkdown = (
   const normalizedTo = normalizeRelPathForWiki(toRelPath)
   const lowerFrom = normalizedFrom.toLowerCase()
   const lowerTo = normalizedTo.toLowerCase()
-  if (!lowerFrom.startsWith(KNOWLEDGE_PREFIX) || !lowerFrom.endsWith('.md')) return markdown
-  if (!lowerTo.startsWith(KNOWLEDGE_PREFIX) || !lowerTo.endsWith('.md')) return markdown
+  const fromIsTracked = lowerFrom.startsWith(MEMORY_PREFIX) && lowerFrom.endsWith('.md')
+  const toIsTracked = lowerTo.startsWith(MEMORY_PREFIX) && lowerTo.endsWith('.md')
+  if (!fromIsTracked || !toIsTracked) return markdown
 
-  const fromWikiPath = stripKnowledgePrefixForWiki(normalizedFrom)
-  const toWikiPath = stripKnowledgePrefixForWiki(normalizedTo)
+  const fromWikiPath = stripMemoryPrefixForWiki(normalizedFrom)
+  const toWikiPath = stripMemoryPrefixForWiki(normalizedTo)
   const fromCompareKey = wikiPathCompareKey(fromWikiPath)
   const fromBaseName = stripMarkdownExtensionForWiki(fromWikiPath).split('/').pop()?.toLowerCase() ?? null
   const toWikiPathWithoutExtension = stripMarkdownExtensionForWiki(toWikiPath)
@@ -90,7 +94,7 @@ export const rewriteWikiLinksForRenamedFileInMarkdown = (
     const rawPath = pathPart.trim()
     if (!rawPath) return fullMatch
 
-    const { pathWithoutPrefix, hadKnowledgePrefix } = splitWikiPathPrefix(rawPath)
+    const { pathWithoutPrefix, hadMemoryPrefix } = splitWikiPathPrefix(rawPath)
     if (!pathWithoutPrefix) return fullMatch
 
     const matchesFullPath = wikiPathCompareKey(pathWithoutPrefix) === fromCompareKey
@@ -103,10 +107,10 @@ export const rewriteWikiLinksForRenamedFileInMarkdown = (
     const rewrittenTarget = matchesBareSelfName
       ? (preserveMarkdownExtension ? `${toBaseName}.md` : toBaseName)
       : (preserveMarkdownExtension ? toWikiPath : toWikiPathWithoutExtension)
-    const finalPath = hadKnowledgePrefix ? `${KNOWLEDGE_PREFIX}${rewrittenTarget}` : rewrittenTarget
+    const finalPath = hadMemoryPrefix ? `${MEMORY_PREFIX}${rewrittenTarget}` : rewrittenTarget
 
     return `[[${leadingWhitespace}${finalPath}${trailingWhitespace}${anchorSuffix}${aliasSuffix}]]`
   })
 }
 
-export { stripKnowledgePrefix, toKnowledgePath, wikiLabel }
+export { stripMemoryPrefix, toMemoryPath, wikiLabel }

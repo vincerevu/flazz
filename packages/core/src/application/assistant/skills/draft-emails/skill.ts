@@ -1,26 +1,26 @@
 export const skill = String.raw`
 # Email Draft Skill
 
-You are helping the user draft email responses. Use their calendar and knowledge base for context.
+You are helping the user draft email responses. Use their calendar and workspace memory for context.
 
 ## CRITICAL: Always Look Up Context First
 
-**BEFORE drafting any email, you MUST look up the person/organization in the knowledge base.**
+**BEFORE drafting any email, you MUST look up the person/organization in workspace memory.**
 
-**PATH REQUIREMENT:** Always use \`knowledge/\` as the path (not empty, not root, not \`~/Flazz\`).
+**PATH REQUIREMENT:** Always use \`memory/\` as the path (not empty, not root, not \`~/Flazz\`).
 - **WRONG:** \`path: ""\` or \`path: "."\`
-- **CORRECT:** \`path: "knowledge/"\`
+- **CORRECT:** \`path: "memory/"\`
 
 When the user says "draft an email to Monica" or mentions ANY person, organization, project, or topic:
 
 1. **STOP** - Do not draft anything yet
-2. **SEARCH** - Look them up in the knowledge base (path MUST be \`knowledge/\`):
+2. **SEARCH** - Look them up in workspace memory (path MUST be \`memory/\`):
    \`\`\`
-   workspace-grep({ pattern: "Monica", path: "knowledge/" })
+   workspace-grep({ pattern: "Monica", path: "memory/" })
    \`\`\`
 3. **READ** - Read their note to understand who they are:
    \`\`\`
-   workspace-readFile("knowledge/People/Monica Smith.md")
+   workspace-readFile("memory/People/Monica Smith.md")
    \`\`\`
 4. **UNDERSTAND** - Extract their role, organization, relationship history, past interactions, open items
 5. **THEN DRAFT** - Only now draft the email, using this context
@@ -37,7 +37,7 @@ When the user says "draft an email to Monica" or mentions ANY person, organizati
 
 **Be decisive, not generic:**
 - Once you know the context, draft ONE email - no multiple versions or options
-- Do NOT provide generic templates - every draft should be personalized based on knowledge base context
+- Do NOT provide generic templates - every draft should be personalized based on workspace memory context
 - Infer the right tone, content, and approach from the context you gather
 - Do NOT hedge with "here are a few options" or "you could say X or Y" - either ask for clarification OR make a decision and draft ONE email
 
@@ -72,18 +72,22 @@ Read \`pre-built/email-draft/state.json\` to get:
 - \`drafted\` - List of email IDs already drafted (skip these)
 - \`ignored\` - List of email IDs marked as ignored (skip these)
 
-### Step 2: Scan for New Emails
+### Step 2: Get the Email Content
 
-List emails in \`gmail_sync/\` folder.
+Work from whichever source the task actually gives you:
 
-For each email file:
-1. Extract the email ID from filename (e.g., \`19048cf9c0317981.md\` -> \`19048cf9c0317981\`)
-2. Skip if ID is in \`drafted\` or \`ignored\` lists
-3. Read the email content
+- If the user pasted an email, use that text directly
+- If the user pointed you to a file, read that file
+- If the user wants help with a live inbox, use connected tools or integrations to fetch the relevant message
+
+For each email or thread you process:
+1. Determine a stable identifier if one exists
+2. Skip it if the ID is already in \`drafted\` or \`ignored\`
+3. Read the full message or thread content before drafting
 
 ### Step 3: Parse Email
 
-Each email file contains:
+The source should give you enough detail to extract:
 \`\`\`markdown
 # Subject Line
 
@@ -126,26 +130,26 @@ Determine the email type and action:
 
 ### Step 5: Gather Context
 
-Before drafting, gather relevant context. **Always check the knowledge base first** for any person, organization, project, or topic mentioned in the email.
+Before drafting, gather relevant context. **Always check workspace memory first** for any person, organization, project, or topic mentioned in the email.
 
-**Knowledge Base Context (REQUIRED):**
+**Workspace Memory Context (REQUIRED):**
 
-First, search for the sender and any mentioned entities (path MUST be \`knowledge/\`):
+First, search for the sender and any mentioned entities (path MUST be \`memory/\`):
 \`\`\`
 # Search for the sender by name or email
-workspace-grep({ pattern: "sender_name_or_email", path: "knowledge/" })
+workspace-grep({ pattern: "sender_name_or_email", path: "memory/" })
 
 # List all people to find potential matches
-workspace-readdir("knowledge/People")
+workspace-readdir("memory/People")
 \`\`\`
 
 Then read the relevant notes:
 \`\`\`
 # Read the sender's note
-workspace-readFile("knowledge/People/Sender Name.md")
+workspace-readFile("memory/People/Sender Name.md")
 
 # Read their organization's note
-workspace-readFile("knowledge/Organizations/Company Name.md")
+workspace-readFile("memory/Organizations/Company Name.md")
 \`\`\`
 
 Extract from these notes:
@@ -207,7 +211,7 @@ Subject: Re: {original_subject}
 - Reference any relevant context from memory naturally - show you remember past interactions
 - Match the tone of the incoming email
 - If it's a thread with multiple messages, read the full context
-- Do NOT use generic templates or placeholder language - personalize based on knowledge base
+- Do NOT use generic templates or placeholder language - personalize based on workspace memory
 - If you're unsure about the user's intent, ask a clarifying question first
 
 ### Step 7: Update State
@@ -219,7 +223,7 @@ After processing each email:
 
 ## Output
 
-After processing all new emails, provide a summary:
+After processing the requested emails, provide a summary:
 
 \`\`\`
 ## Processing Summary

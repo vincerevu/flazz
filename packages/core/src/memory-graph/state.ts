@@ -4,11 +4,11 @@ import crypto from 'crypto';
 import { WorkDir } from '../config/config.js';
 
 /**
- * State tracking for knowledge graph processing
+ * State tracking for memory graph processing
  * Uses mtime + hash hybrid approach to detect file changes
  */
 
-const STATE_FILE = path.join(WorkDir, 'knowledge_graph_state.json');
+const STATE_FILE = path.join(WorkDir, 'memory_graph_state.json');
 
 export interface FileState {
     mtime: string; // ISO timestamp of last modification
@@ -29,7 +29,7 @@ export function loadState(): GraphState {
         try {
             return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
         } catch (error) {
-            console.error('Error loading knowledge graph state:', error);
+            console.error('Error loading memory graph state:', error);
         }
     }
 
@@ -46,7 +46,7 @@ export function saveState(state: GraphState): void {
     try {
         fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
     } catch (error) {
-        console.error('Error saving knowledge graph state:', error);
+        console.error('Error saving memory graph state:', error);
         throw error;
     }
 }

@@ -5,7 +5,6 @@ export const ServiceName = z.enum([
   'gmail',
   'calendar',
   'fireflies',
-  'granola',
   'voice_memo',
 ]);
 

@@ -6,7 +6,7 @@ import { getNoteCreationStrictness } from "../config/note_creation_config.js";
 import { Agent, AssistantMessage } from "@flazz/shared";
 import { RunEvent } from "@flazz/shared";
 import { CopilotAgent } from "../application/assistant/agent.js";
-import container, { contextBuilder } from "../di/container.js";
+import container, { contextBuilder, runLearningService } from "../di/container.js";
 import { IModelConfigRepo } from "../models/repo.js";
 import { createProvider } from "../models/models.js";
 import { getModelExecutionPolicy } from "../models/provider-capabilities.js";
@@ -19,9 +19,9 @@ import { IRunsLock } from "../runs/lock.js";
 import { IAbortRegistry } from "../runs/abort-registry.js";
 import { PrefixLogger } from "@flazz/shared";
 import { parse } from "yaml";
-import { raw as noteCreationMediumRaw } from "../knowledge/note_creation_medium.js";
-import { raw as noteCreationLowRaw } from "../knowledge/note_creation_low.js";
-import { raw as noteCreationHighRaw } from "../knowledge/note_creation_high.js";
+import { raw as noteCreationMediumRaw } from "../memory-graph/note-creation-medium.js";
+import { raw as noteCreationLowRaw } from "../memory-graph/note-creation-low.js";
+import { raw as noteCreationHighRaw } from "../memory-graph/note-creation-high.js";
 import { z } from "zod";
 
 import {
@@ -156,6 +156,14 @@ export class AgentRuntime implements IAgentRuntime {
                 await this.bus.publish(stoppedEvent);
             }
         } finally {
+            try {
+                const completedRun = await this.runsRepo.fetch(runId);
+                if (completedRun && !signal.aborted) {
+                    await runLearningService.learnFromRun(completedRun);
+                }
+            } catch (error) {
+                console.error(`[SkillLearning] Failed while finalizing run ${runId}:`, error);
+            }
             this.abortRegistry.cleanup(runId);
             await this.runsLock.release(runId);
             await this.bus.publish({
@@ -331,9 +339,9 @@ export async function* streamAgent({
 
     // set up provider + model
     const provider = createProvider(modelConfig.provider);
-    const knowledgeGraphAgents = ["note_creation", "email-draft", "meeting-prep"];
-    const modelId = (knowledgeGraphAgents.includes(state.agentName!) && modelConfig.knowledgeGraphModel)
-        ? modelConfig.knowledgeGraphModel
+      const memoryGraphAgents = ["note_creation", "email-draft", "meeting-prep"];
+      const modelId = (memoryGraphAgents.includes(state.agentName!) && modelConfig.memoryGraphModel)
+          ? modelConfig.memoryGraphModel
         : modelConfig.model;
     const model = provider.languageModel(modelId);
     logger.log(`using model: ${modelId}`);
@@ -493,7 +501,7 @@ export async function* streamAgent({
         const contextParts = await contextBuilder.buildContext(query, {
             includeMemory: true,
             includeSkills: true,
-            includeKnowledge: false, // Don't auto-include knowledge (too expensive)
+            includeMemorySearch: false, // Don't auto-include memory note search (too expensive)
         });
         
         const contextSection = contextParts.length > 0 ? '\n\n' + contextParts.join('\n\n') : '';

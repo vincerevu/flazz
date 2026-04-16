@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
 
 interface FileCardContextType {
-  onOpenKnowledgeFile: (path: string) => void
+  onOpenMemoryFile: (path: string) => void
 }
 
 const FileCardContext = createContext<FileCardContextType | null>(null)
@@ -13,14 +13,14 @@ export function useFileCard() {
 }
 
 export function FileCardProvider({
-  onOpenKnowledgeFile,
+  onOpenMemoryFile,
   children,
 }: {
-  onOpenKnowledgeFile: (path: string) => void
+  onOpenMemoryFile: (path: string) => void
   children: ReactNode
 }) {
   return (
-    <FileCardContext.Provider value={{ onOpenKnowledgeFile }}>
+    <FileCardContext.Provider value={{ onOpenMemoryFile }}>
       {children}
     </FileCardContext.Provider>
   )

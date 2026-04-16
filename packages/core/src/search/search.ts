@@ -1,11 +1,11 @@
 import { SearchResult } from './provider.js';
-import { KnowledgeSearchProvider } from './knowledge_search.js';
+import { MemorySearchProvider } from './memory_search.js';
 import { RunsSearchProvider } from './runs_search.js';
 
-type SearchType = 'knowledge' | 'chat';
+type SearchType = 'memory' | 'chat';
 
 /**
- * Search across knowledge files and chat history.
+ * Search across memory notes and chat history.
  * @param types - optional filter to search only specific types (default: both)
  */
 export async function search(query: string, limit = 20, types?: SearchType[]): Promise<{ results: SearchResult[] }> {
@@ -16,18 +16,18 @@ export async function search(query: string, limit = 20, types?: SearchType[]): P
     return { results: [] };
   }
 
-  const searchKnowledgeEnabled = !types || types.includes('knowledge');
+  const searchMemoryEnabled = !types || types.includes('memory');
   const searchChatsEnabled = !types || types.includes('chat');
 
-  const knowledgeProvider = new KnowledgeSearchProvider();
+  const memoryProvider = new MemorySearchProvider();
   const runsProvider = new RunsSearchProvider();
 
-  const [knowledgeResults, chatResults] = await Promise.all([
-    searchKnowledgeEnabled ? knowledgeProvider.search(trimmed, limit) : Promise.resolve([]),
+  const [memoryResults, chatResults] = await Promise.all([
+    searchMemoryEnabled ? memoryProvider.search(trimmed, limit) : Promise.resolve([]),
     searchChatsEnabled ? runsProvider.search(trimmed, limit) : Promise.resolve([]),
   ]);
 
-  const results = [...knowledgeResults, ...chatResults].slice(0, limit);
+  const results = [...memoryResults, ...chatResults].slice(0, limit);
   console.timeEnd('search-query');
   return { results };
 }

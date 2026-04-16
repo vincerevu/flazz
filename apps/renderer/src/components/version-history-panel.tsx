@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { X, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { knowledgeIpc } from '@/services/knowledge-ipc'
+import { memoryIpc } from '@/services/memory-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
 interface CommitInfo {
@@ -13,7 +13,7 @@ interface CommitInfo {
 }
 
 interface VersionHistoryPanelProps {
-  path: string // knowledge-relative file path (e.g. "knowledge/People/John.md")
+  path: string // memory-relative file path (e.g. "memory/People/John.md")
   onClose: () => void
   onSelectVersion: (oid: string | null, content: string) => void // null = current
   onRestore: (oid: string) => void
@@ -37,18 +37,16 @@ export function VersionHistoryPanel({
   const [selectedOid, setSelectedOid] = useState<string | null>(null) // null = current/latest
   const [error, setError] = useState<string | null>(null)
 
-  // Strip "memory/" or "knowledge/" prefix for IPC calls (backward compat)
-  const relPath = path.startsWith('memory/') 
-    ? path.slice('memory/'.length) 
-    : path.startsWith('knowledge/') 
-    ? path.slice('knowledge/'.length) 
+  // Strip "memory/" prefix for IPC calls
+  const relPath = path.startsWith('memory/')
+    ? path.slice('memory/'.length)
     : path
 
   const loadHistory = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const result = await knowledgeIpc.history(relPath)
+      const result = await memoryIpc.history(relPath)
       setCommits(result.commits)
     } catch (err) {
       console.error('Failed to load version history:', err)
@@ -64,7 +62,7 @@ export function VersionHistoryPanel({
 
   // Refresh when new commits land
   useEffect(() => {
-    return knowledgeIpc.onDidCommit(() => {
+    return memoryIpc.onDidCommit(() => {
       loadHistory()
     })
   }, [loadHistory])
@@ -84,7 +82,7 @@ export function VersionHistoryPanel({
 
     setSelectedOid(oid)
     try {
-      const result = await knowledgeIpc.fileAtCommit(relPath, oid)
+      const result = await memoryIpc.fileAtCommit(relPath, oid)
       onSelectVersion(oid, result.content)
     } catch (err) {
       console.error('Failed to load file at commit:', err)

@@ -34,7 +34,7 @@ export type ModelConfig = {
     headers?: Record<string, string>
   }
   model: string
-  knowledgeGraphModel?: string
+  memoryGraphModel?: string
 }
 
 export type ProviderConnection = {
@@ -43,7 +43,7 @@ export type ProviderConnection = {
   provider: ModelConfig["provider"]
   models: string[]
   defaultModel: string
-  knowledgeGraphModel?: string
+  memoryGraphModel?: string
 }
 
 export type LegacySavedProviderConnections = {
@@ -101,7 +101,7 @@ export function providerConnectionId(flavor: RuntimeProviderFlavor, name: string
   return `${flavor}:${slug || "provider"}`
 }
 
-export function normalizeModelNames(models: Iterable<string>, fallback?: string, knowledgeGraphModel?: string) {
+export function normalizeModelNames(models: Iterable<string>, fallback?: string, memoryGraphModel?: string) {
   const seen = new Set<string>()
   const next: string[] = []
 
@@ -114,7 +114,7 @@ export function normalizeModelNames(models: Iterable<string>, fallback?: string,
 
   for (const model of models) push(model)
   push(fallback)
-  push(knowledgeGraphModel)
+  push(memoryGraphModel)
 
   return next
 }
@@ -123,7 +123,7 @@ export function connectionToRuntimeConfig(connection: ProviderConnection, select
   return {
     provider: connection.provider,
     model: selectedModel ?? connection.defaultModel,
-    knowledgeGraphModel: connection.knowledgeGraphModel,
+    memoryGraphModel: connection.memoryGraphModel,
   }
 }
 
@@ -140,7 +140,7 @@ export function parseProviderConnections(
         const models = normalizeModelNames(
           Array.isArray(connection.models) ? connection.models : [],
           connection.defaultModel,
-          connection.knowledgeGraphModel,
+          connection.memoryGraphModel,
         )
         return {
           id: typeof connection.id === "string"
@@ -153,7 +153,7 @@ export function parseProviderConnections(
           provider: connection.provider,
           models,
           defaultModel: connection.defaultModel?.trim() || models[0] || "",
-          knowledgeGraphModel: connection.knowledgeGraphModel?.trim() || undefined,
+          memoryGraphModel: connection.memoryGraphModel?.trim() || undefined,
         } satisfies ProviderConnection
       })
       .filter((connection) => connection.defaultModel)
@@ -177,9 +177,9 @@ export function parseProviderConnections(
         id: providerConnectionId(flavor, getDefaultName(flavor)),
         name: getDefaultName(flavor),
         provider: config.provider,
-        models: normalizeModelNames([config.model], config.model, config.knowledgeGraphModel),
+        models: normalizeModelNames([config.model], config.model, config.memoryGraphModel),
         defaultModel: config.model,
-        knowledgeGraphModel: config.knowledgeGraphModel,
+        memoryGraphModel: config.memoryGraphModel,
       })
     }
   }
@@ -191,9 +191,9 @@ export function parseProviderConnections(
         id: fallbackId,
         name: getDefaultName(runtimeConfig.provider.flavor),
         provider: runtimeConfig.provider,
-        models: normalizeModelNames([runtimeConfig.model], runtimeConfig.model, runtimeConfig.knowledgeGraphModel),
+        models: normalizeModelNames([runtimeConfig.model], runtimeConfig.model, runtimeConfig.memoryGraphModel),
         defaultModel: runtimeConfig.model,
-        knowledgeGraphModel: runtimeConfig.knowledgeGraphModel,
+        memoryGraphModel: runtimeConfig.memoryGraphModel,
       })
     }
   }

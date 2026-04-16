@@ -3,11 +3,13 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { type Skill, type SkillFrontmatter, type ISkillRepo } from './types.js';
 import { fuzzyFindAndReplace } from './fuzzy-match.js';
+import { SkillRevisionRepo } from './skill-revision-repo.js';
 
 export class SkillRepo implements ISkillRepo {
   private skillsDir: string;
   private readonly VALID_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
   private readonly ALLOWED_SUBDIRS = ['references', 'templates', 'scripts', 'assets'];
+  private readonly revisionRepo = new SkillRevisionRepo();
 
   constructor(workspacePath: string) {
     this.skillsDir = path.join(workspacePath, 'memory', 'Skills');
@@ -87,6 +89,12 @@ export class SkillRepo implements ISkillRepo {
 
     // Write SKILL.md atomically
     await this.atomicWrite(path.join(skillPath, 'SKILL.md'), content);
+    await this.revisionRepo.appendRevision(skillPath, {
+      reason: 'create',
+      actor: 'agent',
+      nextContent: content,
+      summary: 'Initial skill creation',
+    });
   }
 
   async update(name: string, content: string): Promise<void> {
@@ -96,7 +104,15 @@ export class SkillRepo implements ISkillRepo {
     }
 
     const skillMdPath = path.join(skill.path, 'SKILL.md');
+    const previousContent = await fs.readFile(skillMdPath, 'utf-8');
     await this.atomicWrite(skillMdPath, content);
+    await this.revisionRepo.appendRevision(skill.path, {
+      reason: 'update',
+      actor: 'agent',
+      previousContent,
+      nextContent: content,
+      summary: 'Updated SKILL.md',
+    });
   }
 
   async patch(
@@ -130,6 +146,16 @@ export class SkillRepo implements ISkillRepo {
     }
 
     await this.atomicWrite(targetPath, result.newContent);
+
+    if (!filePath) {
+      await this.revisionRepo.appendRevision(skill.path, {
+        reason: 'patch',
+        actor: 'agent',
+        previousContent: content,
+        nextContent: result.newContent,
+        summary: `Patched SKILL.md (${result.matchCount} replacement${result.matchCount > 1 ? 's' : ''})`,
+      });
+    }
 
     return { matchCount: result.matchCount };
   }
@@ -168,6 +194,14 @@ export class SkillRepo implements ISkillRepo {
     const targetPath = path.join(skill.path, filePath);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await this.atomicWrite(targetPath, content);
+
+    const currentSkillMd = await fs.readFile(path.join(skill.path, 'SKILL.md'), 'utf-8');
+    await this.revisionRepo.appendRevision(skill.path, {
+      reason: 'write_file',
+      actor: 'agent',
+      nextContent: currentSkillMd,
+      summary: `Wrote supporting file '${filePath}'`,
+    });
   }
 
   async removeFile(name: string, filePath: string): Promise<void> {
@@ -181,6 +215,14 @@ export class SkillRepo implements ISkillRepo {
     const targetPath = path.join(skill.path, filePath);
     await fs.unlink(targetPath);
 
+    const currentSkillMd = await fs.readFile(path.join(skill.path, 'SKILL.md'), 'utf-8');
+    await this.revisionRepo.appendRevision(skill.path, {
+      reason: 'remove_file',
+      actor: 'agent',
+      nextContent: currentSkillMd,
+      summary: `Removed supporting file '${filePath}'`,
+    });
+
     // Clean up empty subdirectories
     const parent = path.dirname(targetPath);
     if (parent !== skill.path) {
@@ -193,6 +235,24 @@ export class SkillRepo implements ISkillRepo {
         // Ignore cleanup errors
       }
     }
+  }
+
+  async listRevisions(name: string) {
+    const skill = await this.get(name);
+    if (!skill) {
+      throw new Error(`Skill '${name}' not found`);
+    }
+
+    return this.revisionRepo.listRevisions(skill.path);
+  }
+
+  async getRevision(name: string, revisionId: string) {
+    const skill = await this.get(name);
+    if (!skill) {
+      throw new Error(`Skill '${name}' not found`);
+    }
+
+    return this.revisionRepo.getRevision(skill.path, revisionId);
   }
 
   // Private helpers

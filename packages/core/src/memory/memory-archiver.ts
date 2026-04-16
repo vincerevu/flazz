@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { WorkDir } from '../config/config.js';
 import { type IMemoryRepo } from './types.js';
-import { buildKnowledgeIndex } from '../knowledge/knowledge_index.js';
+import { buildMemoryIndex } from '../memory-graph/memory-index.js';
 
 export interface IMemoryArchiver {
   archive(section: 'agent' | 'user', targetPath: string): Promise<void>;
@@ -14,11 +14,11 @@ export class MemoryArchiver implements IMemoryArchiver {
   constructor(private memoryRepo: IMemoryRepo) {}
 
   /**
-   * Archive memory section to knowledge base
+   * Archive a hot-memory section into the long-lived memory notes.
    * 1. Read memory section
-   * 2. Create/append to knowledge file
+   * 2. Create/append to a note in memory/
    * 3. Clear memory section
-   * 4. Rebuild knowledge index (graph update happens via build_graph.ts)
+   * 4. Rebuild the memory index
    */
   async archive(section: 'agent' | 'user', targetPath: string): Promise<void> {
     // Read memory
@@ -49,7 +49,7 @@ export class MemoryArchiver implements IMemoryArchiver {
     const content = entries.map((e) => e.content).join('\n\n');
     const archiveContent = `\n\n## Archived from ${section} memory (${timestamp})\n\n${content}\n`;
 
-    // Append to knowledge file (or create if doesn't exist)
+    // Append to the destination note (or create it if it doesn't exist)
     try {
       await fs.access(fullPath);
       // File exists - append
@@ -65,6 +65,6 @@ export class MemoryArchiver implements IMemoryArchiver {
     await this.memoryRepo.atomicWrite(section, []);
 
     // Rebuild memory index (this updates the graph)
-    await buildKnowledgeIndex();
+    await buildMemoryIndex();
   }
 }

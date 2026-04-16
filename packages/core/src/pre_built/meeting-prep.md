@@ -95,8 +95,8 @@ For each attendee, search the notes for relevant information:
 
 **Search People notes:**
 ```bash
-grep -r -l -i "attendee_name" knowledge/People/
-grep -r -l -i "attendee_email" knowledge/People/
+grep -r -l -i "attendee_name" memory/People/
+grep -r -l -i "attendee_email" memory/People/
 ```
 
 If a person file exists, read it to extract:
@@ -107,12 +107,12 @@ If a person file exists, read it to extract:
 
 **Search Organization notes:**
 ```bash
-grep -r -l -i "company_name" knowledge/Organizations/
+grep -r -l -i "company_name" memory/Organizations/
 ```
 
 **Search Meeting history:**
 ```bash
-grep -r -l -i "attendee_name" knowledge/meetings/
+grep -r -l -i "attendee_name" memory/meetings/
 ```
 
 Read recent meeting notes involving this person to build:
@@ -122,8 +122,8 @@ Read recent meeting notes involving this person to build:
 
 **Search Projects:**
 ```bash
-grep -r -l -i "attendee_name" knowledge/Projects/
-grep -r -l -i "company_name" knowledge/Projects/
+grep -r -l -i "attendee_name" memory/Projects/
+grep -r -l -i "company_name" memory/Projects/
 ```
 
 ### Step 5: Create Meeting Brief

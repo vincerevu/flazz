@@ -169,14 +169,14 @@ const defaultBaseURLs: Partial<Record<LlmProviderFlavor, string>> = {
 
 function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
   const [provider, setProvider] = useState<LlmProviderFlavor>("openai")
-  const [providerConfigs, setProviderConfigs] = useState<Record<LlmProviderFlavor, { apiKey: string; baseURL: string; model: string; knowledgeGraphModel: string }>>({
-    openai: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    anthropic: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    google: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    openrouter: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    aigateway: { apiKey: "", baseURL: "", model: "", knowledgeGraphModel: "" },
-    ollama: { apiKey: "", baseURL: "http://localhost:11434", model: "", knowledgeGraphModel: "" },
-    "openai-compatible": { apiKey: "", baseURL: "http://localhost:1234/v1", model: "", knowledgeGraphModel: "" },
+  const [providerConfigs, setProviderConfigs] = useState<Record<LlmProviderFlavor, { apiKey: string; baseURL: string; model: string; memoryGraphModel: string }>>({
+    openai: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    anthropic: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    google: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    openrouter: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    aigateway: { apiKey: "", baseURL: "", model: "", memoryGraphModel: "" },
+    ollama: { apiKey: "", baseURL: "http://localhost:11434", model: "", memoryGraphModel: "" },
+    "openai-compatible": { apiKey: "", baseURL: "http://localhost:1234/v1", model: "", memoryGraphModel: "" },
   })
   const [modelsCatalog, setModelsCatalog] = useState<Record<string, LlmModelOption[]>>({})
   const [modelsLoading, setModelsLoading] = useState(false)
@@ -201,7 +201,7 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
     (!requiresBaseURL || activeConfig.baseURL.trim().length > 0)
 
   const updateConfig = useCallback(
-    (prov: LlmProviderFlavor, updates: Partial<{ apiKey: string; baseURL: string; model: string; knowledgeGraphModel: string }>) => {
+    (prov: LlmProviderFlavor, updates: Partial<{ apiKey: string; baseURL: string; model: string; memoryGraphModel: string }>) => {
       setProviderConfigs(prev => ({
         ...prev,
         [prov]: { ...prev[prov], ...updates },
@@ -229,7 +229,7 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
               apiKey: parsed.provider.apiKey || "",
               baseURL: parsed.provider.baseURL || (defaultBaseURLs[flavor] || ""),
               model: parsed.model,
-              knowledgeGraphModel: parsed.knowledgeGraphModel || "",
+              memoryGraphModel: parsed.memoryGraphModel || "",
             },
           }))
         }
@@ -297,7 +297,7 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
           baseURL: activeConfig.baseURL.trim() || undefined,
         },
         model: activeConfig.model.trim(),
-        knowledgeGraphModel: activeConfig.knowledgeGraphModel.trim() || undefined,
+        memoryGraphModel: activeConfig.memoryGraphModel.trim() || undefined,
       }
       const result = await modelsActionsIpc.test(providerConfig)
       if (result.success) {
@@ -402,7 +402,7 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
         </div>
 
         <div className="space-y-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Knowledge graph model</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Memory extraction model</span>
           {modelsLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -410,14 +410,14 @@ function ModelSettings({ dialogOpen }: { dialogOpen: boolean }) {
             </div>
           ) : showModelInput ? (
             <Input
-              value={activeConfig.knowledgeGraphModel}
-              onChange={(e) => updateConfig(provider, { knowledgeGraphModel: e.target.value })}
+              value={activeConfig.memoryGraphModel}
+              onChange={(e) => updateConfig(provider, { memoryGraphModel: e.target.value })}
               placeholder={activeConfig.model || "Enter model"}
             />
           ) : (
             <Select
-              value={activeConfig.knowledgeGraphModel || "__same__"}
-              onValueChange={(value) => updateConfig(provider, { knowledgeGraphModel: value === "__same__" ? "" : value })}
+              value={activeConfig.memoryGraphModel || "__same__"}
+              onValueChange={(value) => updateConfig(provider, { memoryGraphModel: value === "__same__" ? "" : value })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a model" />

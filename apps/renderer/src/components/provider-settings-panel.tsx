@@ -124,7 +124,7 @@ function buildDetailForm(
   connection?: SavedProviderConnections["connections"][number],
 ): DetailFormState {
   const discovered = (modelsCatalog[provider.runtimeFlavor] || []).map((model) => model.id)
-  const models = normalizeModelNames(connection?.models || discovered, connection?.defaultModel, connection?.knowledgeGraphModel)
+  const models = normalizeModelNames(connection?.models || discovered, connection?.defaultModel, connection?.memoryGraphModel)
   return {
     connectionId: connection?.id,
     name: connection?.name || (provider.runtimeFlavor === "openai-compatible" ? "Custom Provider" : provider.name),

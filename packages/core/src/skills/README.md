@@ -13,6 +13,8 @@ pitfalls, and verification procedures.
 
 ✅ **Autonomous Creation** - Agent creates skills from successful complex tasks
 ✅ **Self-Improvement** - Agent patches skills when encountering issues
+✅ **Candidate Promotion** - Repeated successful patterns are tracked before promotion
+✅ **Learning State** - Skill usage and candidate history persist across runs
 ✅ **SKILL.md Format** - YAML frontmatter + markdown body
 ✅ **Supporting Files** - references/, templates/, scripts/, assets/
 ✅ **Atomic Operations** - Temp file + rename for concurrent-safe writes
@@ -25,13 +27,21 @@ pitfalls, and verification procedures.
 │  Skill Tools    │  ← Agent interacts via tools
 └────────┬────────┘
          │
-┌────────▼────────┐
-│ SkillManager    │  ← Validation + management logic
-└────────┬────────┘
+┌────────▼──────────────┐
+│ SkillManager          │  ← Validation + management logic
+└────────┬──────────────┘
          │
-┌────────▼────────┐
-│   SkillRepo     │  ← File I/O (SKILL.md + supporting files)
-└─────────────────┘
+┌────────▼──────────────┐
+│ RunLearningService    │  ← Post-run learning, update/create decisions
+└────────┬──────────────┘
+         │
+┌────────▼──────────────┐
+│ LearningStateRepo     │  ← Candidate + usage history across runs
+└────────┬──────────────┘
+         │
+┌────────▼──────────────┐
+│ SkillRepo             │  ← File I/O (SKILL.md + supporting files)
+└───────────────────────┘
 ```
 
 ## Components
@@ -40,7 +50,7 @@ pitfalls, and verification procedures.
 
 File-based storage for skills.
 
-**Location**: `~/Flazz/skills/`
+**Location**: `~/Flazz/memory/Skills/`
 - `skill-name/SKILL.md` - Main skill file
 - `skill-name/references/` - Reference docs
 - `skill-name/templates/` - Code templates
@@ -49,7 +59,7 @@ File-based storage for skills.
 
 **Optional Categories**:
 ```
-~/Flazz/skills/
+~/Flazz/memory/Skills/
 ├── devops/
 │   └── aws-deployment/
 │       └── SKILL.md
@@ -226,6 +236,22 @@ skill_view({ name: 'aws-deployment' })
 // Returns: { success: true, skill: { name, path, frontmatter, content, supportingFiles } }
 ```
 
+### skill_learning_review
+
+```typescript
+// Review pending autonomous candidates
+skill_learning_review({ action: 'list_candidates' })
+
+// Promote a candidate immediately
+skill_learning_review({ action: 'promote_candidate', signature: 'abc123...' })
+
+// Reject a weak candidate
+skill_learning_review({ action: 'reject_candidate', signature: 'abc123...' })
+
+// Inspect learning stats
+skill_learning_review({ action: 'stats' })
+```
+
 ## When Agent Creates Skills
 
 Agent automatically creates skills when:
@@ -235,6 +261,8 @@ Agent automatically creates skills when:
 - Non-trivial workflow discovered
 - User explicitly asks to remember a procedure
 
+By default, Flazz now stores a repeated workflow as a **candidate** first and only promotes it into a real skill after the pattern recurs, unless the user explicitly asked to remember it.
+
 ## When Agent Updates Skills
 
 Agent automatically patches skills when:
@@ -242,6 +270,8 @@ Agent automatically patches skills when:
 - OS-specific failures encountered
 - Missing steps or pitfalls found during use
 - **"If you used a skill and hit issues not covered by it, patch it immediately."**
+
+When a run used an existing workspace skill and the final successful workflow materially improves that procedure, the learning loop can now rewrite that skill directly.
 
 ## Integration
 
@@ -256,6 +286,12 @@ setSkillManager(skillManager);
 Skill tools are registered in `packages/core/src/application/lib/builtin-tools.ts`.
 
 ## Hermes AI Compatibility
+
+This implementation now has the core Hermes-style loop in place:
+
+- agent can create/edit/view skills directly
+- runtime can load both built-in and workspace skills
+- after a successful complex run, Flazz evaluates whether the run should become a reusable skill
 
 This implementation matches Hermes AI patterns:
 
