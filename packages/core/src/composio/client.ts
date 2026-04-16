@@ -15,6 +15,7 @@ import {
     ZExecuteActionResponse,
     ZListResponse,
     ZToolkit,
+    ZTool,
 } from "./types.js";
 
 const BASE_URL = 'https://backend.composio.dev/api/v3';
@@ -296,7 +297,7 @@ export async function deleteConnectedAccount(connectedAccountId: string): Promis
 export async function listToolkitTools(
     toolkitSlug: string,
     searchQuery: string | null = null,
-): Promise<{ items: Array<{ slug: string; name: string; description: string }> }> {
+): Promise<{ items: Array<{ slug: string; name: string; description: string; inputParameters: { type: 'object'; properties: Record<string, unknown>; required?: string[]; additionalProperties?: boolean } }> }> {
     const apiKey = getApiKey();
     if (!apiKey) {
         throw new Error('Composio API key not configured');
@@ -311,21 +312,14 @@ export async function listToolkitTools(
 
     console.log(`[Composio] Listing tools for toolkit: ${toolkitSlug}`);
 
-    const response = await fetch(url.toString(), {
-        headers: { "x-api-key": apiKey },
-    });
-
-    if (!response.ok) {
-        throw new Error(`Failed to list tools: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json() as { items?: Array<Record<string, unknown>> };
+    const data = await composioApiCall(ZListResponse(ZTool), url.toString());
 
     return {
         items: (data.items || []).map((item) => ({
-            slug: String(item.slug ?? ''),
-            name: String(item.name ?? ''),
-            description: String(item.description ?? ''),
+            slug: item.slug,
+            name: item.name,
+            description: item.description,
+            inputParameters: item.input_parameters,
         })),
     };
 }

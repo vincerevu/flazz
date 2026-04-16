@@ -10,7 +10,7 @@ import { UserMessageContent } from './message.js';
 import { ZListToolkitsResponse } from './composio.js';
 import { ListSkillsResponse, ListSkillCandidatesResponse, ListSkillRepairCandidatesResponse, ListSkillRevisionsResponse, Skill, SkillLearningStats, SkillRevision } from './skills.js';
 import { ListRunMemoryResponse } from './run-memory.js';
-import { ProviderResourceDescriptor } from './integration-resources.js';
+  import { IntegrationProviderStatus, ProviderResourceDescriptor } from './integration-resources.js';
 
 // ============================================================================
 // Runtime Validation Schemas (Single Source of Truth)
@@ -464,8 +464,11 @@ const ipcSchemas = {
   'integrations:listResourceCatalog': {
     req: z.null(),
     res: z.object({
-      providers: z.array(ProviderResourceDescriptor),
+      providers: z.array(IntegrationProviderStatus),
       count: z.number(),
+      normalizedSupportedCount: z.number(),
+      fullSupportCount: z.number(),
+      readOnlySupportCount: z.number(),
     }),
   },
   'composio:execute-action': {

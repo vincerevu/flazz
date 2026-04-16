@@ -3,7 +3,7 @@ import { slackToolCatalogMarkdown } from "./tool-catalog.js";
 const skill = String.raw`
 # Slack Integration Skill
 
-You can interact with Slack to help users communicate with their team. This includes sending messages, viewing channel history, finding users, and searching conversations.
+You can interact with Slack to help users communicate with their team. Prefer normalized integration tools for reading/searching Slack data, and use raw Composio actions only as a last resort for send/write flows.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ If not connected, inform the user they need to connect Slack from the settings/o
 
 ## Available Tools
 
-Flazz uses generic Composio tools that work with any app (slack, gmail, github, etc.). For Slack operations:
+Flazz exposes normalized integration tools for the common Slack read path:
 
 ### Check Connection
 \`\`\`
@@ -24,24 +24,31 @@ composio-checkConnection({ app: "slack" })
 \`\`\`
 Returns whether Slack is connected and ready to use.
 
-### Discover Available Tools
+### Search Slack Messages
 \`\`\`
-composio-listTools({ app: "slack", search: "message" })
+integration-searchItemsCompact({ app: "slack", query: "deployment incident", limit: 10 })
 \`\`\`
-Lists available Slack tools from Composio. ALWAYS call this first to discover tool slugs and their required parameters.
+Returns compact normalized Slack message items.
 
-### Execute Any Slack Action
+### Read One Slack Item
 \`\`\`
-composio-executeAction({
+integration-getItemFull({
   app: "slack",
-  toolSlug: "SLACK_SEND_MESSAGE",
-  input: { channel: "C01234567", text: "Hello!" }
+  itemId: "message-id-from-search"
 })
 \`\`\`
-Executes any Slack action using its exact slug from composio-listTools.
+Fetches one full Slack item after search/list selection.
 
-## Composio Slack Tool Catalog (Pinned)
-Use the exact tool slugs below with \`composio-executeAction\` when needed. Prefer these over \`composio-listTools\` to avoid redundant discovery.
+### Prefer Lightweight Reads First
+\`\`\`
+integration-getItemSummary({ app: "slack", itemId: "message-id-from-search" })
+integration-getItemDetailed({ app: "slack", itemId: "message-id-from-search" })
+integration-getItemSlices({ app: "slack", itemId: "message-id-from-search" })
+\`\`\`
+Use summary or detailed structured reads before full raw content when they are sufficient.
+
+## Raw Slack Fallback Catalog
+If you need to send a message or the normalized read path cannot satisfy the task, use the pinned raw Composio Slack catalog below as a last resort.
 
 ${slackToolCatalogMarkdown}
 
@@ -52,12 +59,20 @@ ${slackToolCatalogMarkdown}
 composio-checkConnection({ app: "slack" })
 \`\`\`
 
-### Step 2: Discover Tools (if needed)
+### Step 2: Use normalized tools first
 \`\`\`
-composio-listTools({ app: "slack", search: "send message" })
+integration-searchItemsCompact({ app: "slack", query: "error budget", limit: 10 })
 \`\`\`
 
-### Step 3: Execute Action
+### Step 3: Read full context if needed
+\`\`\`
+integration-getItemFull({
+  app: "slack",
+  itemId: "message-id-from-search"
+})
+\`\`\`
+
+### Step 4: Use raw fallback only for send/write flows
 \`\`\`
 composio-executeAction({
   app: "slack",
@@ -88,30 +103,12 @@ composio-executeAction({
 })
 \`\`\`
 
-### Get Channel History
-\`\`\`
-composio-executeAction({
-  app: "slack",
-  toolSlug: "SLACK_FETCH_CONVERSATION_HISTORY",
-  input: { channel: "C01234567", limit: 20 }
-})
-\`\`\`
-
 ### Search Messages
 \`\`\`
-composio-executeAction({
+integration-searchItemsCompact({
   app: "slack",
-  toolSlug: "SLACK_SEARCH_MESSAGES",
-  input: { query: "in:@username", count: 20 }
-})
-\`\`\`
-
-### List Users
-\`\`\`
-composio-executeAction({
-  app: "slack",
-  toolSlug: "SLACK_LIST_ALL_USERS",
-  input: { limit: 100 }
+  query: "in:@username",
+  limit: 20
 })
 \`\`\`
 
@@ -120,12 +117,12 @@ composio-executeAction({
 - **Always show drafts before sending** - Never send Slack messages without user confirmation
 - **Summarize, don't dump** - When showing channel history, summarize the key points
 - **Cross-reference with workspace memory** - Check if mentioned people have notes in workspace memory
-- **Use the tool catalog** - Prefer using known tool slugs from the catalog over calling composio-listTools
+- **Use normalized tools first** - Search and read Slack via normalized integration tools before touching raw Composio actions
 
 ## Error Handling
 
 If a Slack operation fails:
-1. Try \`composio-listTools\` to verify the tool slug is correct and check required parameters
+1. Retry with \`integration-searchItemsCompact\` or \`integration-getItemFull\` first
 2. Check if Slack is still connected with \`composio-checkConnection\`
 3. Inform the user of the specific error
 `;

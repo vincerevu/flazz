@@ -37,6 +37,7 @@ import { ProviderMapper } from "../integrations/provider-mapper.js";
 import { CapabilityRegistry } from "../integrations/capability-registry.js";
 import { IntegrationNormalizer } from "../integrations/normalizer.js";
 import { IntegrationRetrievalController } from "../integrations/retrieval-controller.js";
+import { IntegrationIdempotencyRepo } from "../integrations/idempotency-repo.js";
 
 const container = createContainer({
     injectionMode: InjectionMode.PROXY,
@@ -104,6 +105,7 @@ const providerMapper = new ProviderMapper();
 const capabilityRegistry = new CapabilityRegistry(providerMapper);
 const integrationNormalizer = new IntegrationNormalizer();
 const integrationRetrievalController = new IntegrationRetrievalController();
+const integrationIdempotencyRepo = new IntegrationIdempotencyRepo(WorkDir);
 
 // Initialize retrieval + context systems
 const memorySearch = new MemorySearchProvider();
@@ -128,6 +130,7 @@ export {
     capabilityRegistry,
     integrationNormalizer,
     integrationRetrievalController,
+    integrationIdempotencyRepo,
     contextBuilder,
 };
 
