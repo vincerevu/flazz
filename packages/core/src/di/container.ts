@@ -30,6 +30,13 @@ import { SkillRegistry } from "../skills/registry.js";
 import { SourceSkillSource } from "../application/assistant/skills/source-skill-source.js";
 import { RunLearningService } from "../skills/run-learning-service.js";
 import { LearningStateRepo } from "../skills/learning-state-repo.js";
+import { RunMemoryRepo } from "../run-memory/run-memory-repo.js";
+import { RunMemoryService } from "../run-memory/run-memory-service.js";
+import { RetrievalController } from "../retrieval/retrieval-controller.js";
+import { ProviderMapper } from "../integrations/provider-mapper.js";
+import { CapabilityRegistry } from "../integrations/capability-registry.js";
+import { IntegrationNormalizer } from "../integrations/normalizer.js";
+import { IntegrationRetrievalController } from "../integrations/retrieval-controller.js";
 
 const container = createContainer({
     injectionMode: InjectionMode.PROXY,
@@ -82,6 +89,8 @@ const sourceSkillSource = new SourceSkillSource();
 const skillRegistry = new SkillRegistry([workspaceSkillSource, sourceSkillSource]);
 setSkillRegistry(skillRegistry);
 const learningStateRepo = new LearningStateRepo(WorkDir);
+const runMemoryRepo = new RunMemoryRepo(WorkDir);
+const runMemoryService = new RunMemoryService(runMemoryRepo);
 const runLearningService = new RunLearningService(
     skillManager,
     skillRegistry,
@@ -90,11 +99,36 @@ const runLearningService = new RunLearningService(
 );
 setRunLearningService(runLearningService);
 
-// Initialize Context Builder
+// Initialize normalized integration foundation
+const providerMapper = new ProviderMapper();
+const capabilityRegistry = new CapabilityRegistry(providerMapper);
+const integrationNormalizer = new IntegrationNormalizer();
+const integrationRetrievalController = new IntegrationRetrievalController();
+
+// Initialize retrieval + context systems
 const memorySearch = new MemorySearchProvider();
-const contextBuilder = new ContextBuilder(memoryManager, skillRegistry, memorySearch);
+const retrievalController = new RetrievalController(
+    memoryManager,
+    skillRegistry,
+    memorySearch,
+    runMemoryService,
+);
+const contextBuilder = new ContextBuilder(retrievalController);
 
 // Export for use in agent runtime
-export { memoryManager, memoryArchiver, skillManager, skillRegistry, runLearningService, contextBuilder };
+export {
+    memoryManager,
+    memoryArchiver,
+    skillManager,
+    skillRegistry,
+    runLearningService,
+    runMemoryService,
+    retrievalController,
+    providerMapper,
+    capabilityRegistry,
+    integrationNormalizer,
+    integrationRetrievalController,
+    contextBuilder,
+};
 
 export default container;

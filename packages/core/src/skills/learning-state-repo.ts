@@ -29,9 +29,22 @@ const LearnedSkillStats = z.object({
   source: z.enum(["workspace", "builtin", "unknown"]).default("unknown"),
 });
 
+const SkillRepairCandidate = z.object({
+  id: z.string(),
+  skillName: z.string(),
+  runId: z.string(),
+  status: z.enum(["pending", "applied", "rejected"]).default("pending"),
+  failureCategory: z.string(),
+  evidenceSummary: z.string(),
+  proposedPatch: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 const LearningState = z.object({
   candidates: z.record(z.string(), LearningCandidate),
   skills: z.record(z.string(), LearnedSkillStats),
+  repairs: z.record(z.string(), SkillRepairCandidate).default({}),
 });
 
 type LearningState = z.infer<typeof LearningState>;
@@ -58,6 +71,7 @@ function computeCandidateConfidence(candidate: {
 const DEFAULT_STATE: LearningState = {
   candidates: {},
   skills: {},
+  repairs: {},
 };
 
 export class LearningStateRepo {
@@ -187,6 +201,34 @@ export class LearningStateRepo {
 
   getState(): LearningState {
     return this.load();
+  }
+
+  recordRepairCandidate(input: {
+    skillName: string;
+    runId: string;
+    failureCategory: string;
+    evidenceSummary: string;
+    proposedPatch?: string;
+  }): void {
+    const state = this.load();
+    const id = `${input.skillName}:${input.runId}`;
+    const now = new Date().toISOString();
+    state.repairs[id] = {
+      id,
+      skillName: input.skillName,
+      runId: input.runId,
+      status: "pending",
+      failureCategory: input.failureCategory,
+      evidenceSummary: input.evidenceSummary,
+      proposedPatch: input.proposedPatch,
+      createdAt: state.repairs[id]?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.save(state);
+  }
+
+  listRepairCandidates(): Array<z.infer<typeof SkillRepairCandidate>> {
+    return Object.values(this.load().repairs).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   recordSkillUsage(name: string, source: "workspace" | "builtin" | "unknown"): void {

@@ -19,10 +19,12 @@ import {
   registerSearchHandlers,
   registerAuthHandlers,
   registerIntegrationHandlers,
+  registerIntegrationResourceHandlers,
   registerScheduleHandlers,
   registerMemoryHandlers,
   registerAppHandlers,
-  registerSkillsHandlers
+  registerSkillsHandlers,
+  registerRunMemoryHandlers,
 } from './ipc/index.js';
 import { getWindowState } from './ipc/app.js';
 
@@ -303,9 +305,11 @@ export function setupIpcHandlers() {
   registerSearchHandlers(handlers);
   registerAuthHandlers(handlers);
   registerIntegrationHandlers(handlers);
+  registerIntegrationResourceHandlers(handlers);
   registerScheduleHandlers(handlers);
   registerMemoryHandlers(handlers);
   registerSkillsHandlers(handlers);
+  registerRunMemoryHandlers(handlers);
 
   registerIpcHandlers(handlers as InvokeHandlers);
 }

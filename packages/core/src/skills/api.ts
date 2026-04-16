@@ -70,6 +70,14 @@ export async function getSkillLearningStats() {
   return runLearningService.getLearningStats();
 }
 
+export async function listSkillRepairCandidates() {
+  const repairs = runLearningService.listRepairCandidates();
+  return {
+    repairs,
+    count: repairs.length,
+  };
+}
+
 export async function listSkillRevisions(name: string) {
   const revisions = await skillManager.listRevisions(name);
   return {

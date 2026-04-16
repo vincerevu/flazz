@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { IPCChannels } from '@flazz/shared/src/ipc.js'
 import { skillsIpc } from '@/services/skills-ipc'
-import type { SkillPanelItem, SkillRevisionItem } from './types'
+import { runMemoryIpc } from '@/services/run-memory-ipc'
+import type { SkillPanelItem, SkillRepairItem, SkillRevisionItem } from './types'
 
 type SkillListItem = IPCChannels['skills:list']['res']['skills'][number]
 type SkillCandidate = IPCChannels['skills:listCandidates']['res']['candidates'][number]
 type SkillDetail = NonNullable<IPCChannels['skills:view']['res']['skill']>
 type SkillLearningStats = IPCChannels['skills:getLearningStats']['res']
+type RunMemoryItem = IPCChannels['run-memory:search']['res']['records'][number]
 
 function relativeTimeLabel(value?: string): string {
   if (!value) return 'recently'
@@ -100,6 +102,8 @@ export function useSkillsData() {
   const [skills, setSkills] = useState<SkillPanelItem[]>([])
   const [selectedSkillId, setSelectedSkillId] = useState<string>('')
   const [learningStats, setLearningStats] = useState<SkillLearningStats | null>(null)
+  const [repairCandidates, setRepairCandidates] = useState<SkillRepairItem[]>([])
+  const [relatedRunMemories, setRelatedRunMemories] = useState<RunMemoryItem[]>([])
   const [revisionsBySkillId, setRevisionsBySkillId] = useState<Record<string, SkillRevisionItem[]>>({})
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -109,10 +113,11 @@ export function useSkillsData() {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const [skillList, candidateList, stats] = await Promise.all([
+      const [skillList, candidateList, stats, repairs] = await Promise.all([
         skillsIpc.list(),
         skillsIpc.listCandidates(),
         skillsIpc.getLearningStats(),
+        skillsIpc.listRepairCandidates(),
       ])
 
       const detailResults = await Promise.all(
@@ -129,6 +134,7 @@ export function useSkillsData() {
 
       setSkills(nextSkills)
       setLearningStats(stats)
+      setRepairCandidates(repairs.repairs.map((repair): SkillRepairItem => ({ ...repair })))
       setSelectedSkillId((current) => (
         nextSkills.some((skill) => skill.id === current) ? current : (nextSkills[0]?.id ?? '')
       ))
@@ -147,21 +153,26 @@ export function useSkillsData() {
   )
 
   useEffect(() => {
-    async function loadRevisions() {
+    async function loadSupportingData() {
       if (!selectedSkill || selectedSkill.status !== 'active' || selectedSkill.source !== 'workspace') {
         setSelectedRevisionId(null)
+        setRelatedRunMemories([])
         return
       }
 
-      const result = await skillsIpc.listRevisions(selectedSkill.name)
+      const [result, runMemory] = await Promise.all([
+        skillsIpc.listRevisions(selectedSkill.name),
+        runMemoryIpc.search(selectedSkill.name, 3),
+      ])
       setRevisionsBySkillId((prev) => ({
         ...prev,
         [selectedSkill.id]: result.revisions,
       }))
       setSelectedRevisionId((current) => current ?? result.revisions[0]?.id ?? null)
+      setRelatedRunMemories(runMemory.records)
     }
 
-    void loadRevisions()
+    void loadSupportingData()
   }, [selectedSkill])
 
   const selectedRevisions = useMemo(
@@ -172,6 +183,13 @@ export function useSkillsData() {
   const selectedRevision = useMemo(
     () => selectedRevisions.find((revision) => revision.id === selectedRevisionId) ?? selectedRevisions[0] ?? null,
     [selectedRevisionId, selectedRevisions],
+  )
+
+  const relatedRepairs = useMemo(
+    () => (selectedSkill && selectedSkill.status === 'active'
+      ? repairCandidates.filter((repair) => repair.skillName === selectedSkill.name)
+      : []),
+    [repairCandidates, selectedSkill],
   )
 
   const promoteCandidate = useCallback(async (signature: string) => {
@@ -220,6 +238,8 @@ export function useSkillsData() {
     selectedRevision,
     selectedRevisionId,
     setSelectedRevisionId,
+    relatedRepairs,
+    relatedRunMemories,
     loading,
     mutatingCandidateId,
     rollingBackRevisionId,

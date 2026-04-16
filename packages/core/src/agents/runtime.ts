@@ -6,7 +6,7 @@ import { getNoteCreationStrictness } from "../config/note_creation_config.js";
 import { Agent, AssistantMessage } from "@flazz/shared";
 import { RunEvent } from "@flazz/shared";
 import { CopilotAgent } from "../application/assistant/agent.js";
-import container, { contextBuilder, runLearningService } from "../di/container.js";
+import container, { contextBuilder, runLearningService, runMemoryService } from "../di/container.js";
 import { IModelConfigRepo } from "../models/repo.js";
 import { createProvider } from "../models/models.js";
 import { getModelExecutionPolicy } from "../models/provider-capabilities.js";
@@ -158,11 +158,14 @@ export class AgentRuntime implements IAgentRuntime {
         } finally {
             try {
                 const completedRun = await this.runsRepo.fetch(runId);
-                if (completedRun && !signal.aborted) {
-                    await runLearningService.learnFromRun(completedRun);
+                if (completedRun) {
+                    runMemoryService.recordRun(completedRun);
+                    if (!signal.aborted) {
+                        await runLearningService.learnFromRun(completedRun);
+                    }
                 }
             } catch (error) {
-                console.error(`[SkillLearning] Failed while finalizing run ${runId}:`, error);
+                console.error(`[RunFinalization] Failed while finalizing run ${runId}:`, error);
             }
             this.abortRegistry.cleanup(runId);
             await this.runsLock.release(runId);

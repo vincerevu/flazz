@@ -1,12 +1,13 @@
-import { Activity, Clock3, History, ListChecks, Sparkles, Wand2 } from "lucide-react"
+import { Activity, AlertTriangle, Clock3, GitBranch, History, ListChecks, Sparkles, Wand2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { IPCChannels } from "@flazz/shared/src/ipc.js"
-import type { SkillPanelItem, SkillRevisionItem } from "@/features/skills/types"
+import type { SkillPanelItem, SkillRepairItem, SkillRevisionItem } from "@/features/skills/types"
 
 type SkillLearningStats = IPCChannels['skills:getLearningStats']['res']
+type RunMemoryItem = IPCChannels['run-memory:search']['res']['records'][number]
 
 export function SkillsMainPanel({
   skills,
@@ -16,6 +17,8 @@ export function SkillsMainPanel({
   selectedRevision,
   selectedRevisionId,
   setSelectedRevisionId,
+  relatedRepairs,
+  relatedRunMemories,
   mutatingCandidateId,
   rollingBackRevisionId,
   onPromoteCandidate,
@@ -29,6 +32,8 @@ export function SkillsMainPanel({
   selectedRevision: SkillRevisionItem | null
   selectedRevisionId: string | null
   setSelectedRevisionId?: (revisionId: string | null) => void
+  relatedRepairs: SkillRepairItem[]
+  relatedRunMemories: RunMemoryItem[]
   mutatingCandidateId?: string | null
   rollingBackRevisionId?: string | null
   onPromoteCandidate?: (signature: string) => void
@@ -78,6 +83,7 @@ export function SkillsMainPanel({
                   <StatCard label="Promoted" value={String(learningStats.promotedCandidateCount)} />
                   <StatCard label="Rejected" value={String(learningStats.rejectedCandidateCount)} />
                   <StatCard label="Tracked skills" value={String(learningStats.trackedSkillCount)} />
+                  <StatCard label="Repair signals" value={String(learningStats.repairCandidateCount)} />
                 </div>
               </div>
             )}
@@ -137,6 +143,41 @@ export function SkillsMainPanel({
                 ))}
               </div>
             </div>
+
+            {selectedSkill.status === 'active' && selectedSkill.source === 'workspace' && (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                  <AlertTriangle className="size-4 text-primary" />
+                  Repair signals
+                </div>
+                {relatedRepairs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No repair candidates have been recorded for this skill yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {relatedRepairs.slice(0, 3).map((repair) => (
+                      <div key={repair.id} className="rounded-lg border border-border bg-muted/30 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="rounded-full px-2 text-[11px] font-normal capitalize">
+                            {repair.failureCategory}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(repair.updatedAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{repair.evidenceSummary}</p>
+                        {repair.proposedPatch ? (
+                          <div className="mt-3 rounded-md bg-muted/50 p-3 font-mono text-xs leading-5 text-foreground/90 whitespace-pre-wrap">
+                            {repair.proposedPatch}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {selectedSkill.status === 'active' && selectedSkill.source === 'workspace' && (
               <div className="rounded-xl border border-border bg-card p-5">
@@ -208,6 +249,36 @@ export function SkillsMainPanel({
                 <StatCard label="Usage" value={selectedSkill.usageCountLabel} />
                 <StatCard label="Last updated" value={selectedSkill.lastUpdatedLabel} />
               </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                <GitBranch className="size-4 text-primary" />
+                Recent precedent runs
+              </div>
+              {relatedRunMemories.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No matching run memory yet for this skill.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {relatedRunMemories.map((record) => (
+                    <div key={record.runId} className="rounded-lg border border-border bg-muted/30 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <Badge variant="outline" className="rounded-full px-2 text-[11px] font-normal capitalize">
+                          {record.outcome}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(record.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {record.preview}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-border bg-card p-5">

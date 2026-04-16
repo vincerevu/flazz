@@ -8,7 +8,9 @@ import { AgentScheduleState } from './agent-schedule-state.js';
 import { ServiceEvent } from './service-events.js';
 import { UserMessageContent } from './message.js';
 import { ZListToolkitsResponse } from './composio.js';
-import { ListSkillsResponse, ListSkillCandidatesResponse, ListSkillRevisionsResponse, Skill, SkillLearningStats, SkillRevision } from './skills.js';
+import { ListSkillsResponse, ListSkillCandidatesResponse, ListSkillRepairCandidatesResponse, ListSkillRevisionsResponse, Skill, SkillLearningStats, SkillRevision } from './skills.js';
+import { ListRunMemoryResponse } from './run-memory.js';
+import { ProviderResourceDescriptor } from './integration-resources.js';
 
 // ============================================================================
 // Runtime Validation Schemas (Single Source of Truth)
@@ -262,6 +264,10 @@ const ipcSchemas = {
     req: z.null(),
     res: SkillLearningStats,
   },
+  'skills:listRepairCandidates': {
+    req: z.null(),
+    res: ListSkillRepairCandidatesResponse,
+  },
   'skills:listRevisions': {
     req: z.object({
       name: z.string(),
@@ -292,6 +298,19 @@ const ipcSchemas = {
   'runs:events': {
     req: z.null(),
     res: z.null(),
+  },
+  'run-memory:list': {
+    req: z.object({
+      limit: z.number().int().positive().max(100).optional(),
+    }).optional().default({}),
+    res: ListRunMemoryResponse,
+  },
+  'run-memory:search': {
+    req: z.object({
+      query: z.string(),
+      limit: z.number().int().positive().max(50).optional(),
+    }),
+    res: ListRunMemoryResponse,
   },
   'services:events': {
     req: ServiceEvent,
@@ -441,6 +460,13 @@ const ipcSchemas = {
   'composio:list-toolkits': {
     req: z.null(),
     res: ZListToolkitsResponse,
+  },
+  'integrations:listResourceCatalog': {
+    req: z.null(),
+    res: z.object({
+      providers: z.array(ProviderResourceDescriptor),
+      count: z.number(),
+    }),
   },
   'composio:execute-action': {
     req: z.object({

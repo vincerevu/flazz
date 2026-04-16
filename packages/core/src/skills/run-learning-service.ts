@@ -7,6 +7,8 @@ import { createProvider } from "../models/models.js";
 import { SkillRegistry } from "./registry.js";
 import { SkillManager } from "./skill-manager.js";
 import { LearningStateRepo } from "./learning-state-repo.js";
+import { classifyRunFailure } from "./failure-classifier.js";
+import { buildRepairEvidence } from "./repair-evidence.js";
 
 const PROMOTION_THRESHOLD = 2;
 
@@ -279,6 +281,15 @@ export class RunLearningService {
       for (const skill of loadedSkills) {
         if (skill.source === "workspace") {
           this.stateRepo.recordSkillFailure(skill.name);
+          const failure = classifyRunFailure(run);
+          const evidence = buildRepairEvidence(run, skill.name, failure);
+          this.stateRepo.recordRepairCandidate({
+            skillName: skill.name,
+            runId: run.id,
+            failureCategory: failure.category,
+            evidenceSummary: evidence.evidenceSummary,
+            proposedPatch: evidence.proposedPatch,
+          });
         }
       }
       console.log(`[SkillLearning] Recorded failure signals for run ${run.id}.`);
@@ -386,12 +397,17 @@ export class RunLearningService {
     return { success: true };
   }
 
+  listRepairCandidates() {
+    return this.stateRepo.listRepairCandidates();
+  }
+
   getLearningStats(): {
     candidateCount: number;
     pendingCandidateCount: number;
     promotedCandidateCount: number;
     rejectedCandidateCount: number;
     trackedSkillCount: number;
+    repairCandidateCount: number;
   } {
     const state = this.stateRepo.getState();
     const candidates = Object.values(state.candidates);
@@ -401,6 +417,7 @@ export class RunLearningService {
       promotedCandidateCount: candidates.filter((candidate) => candidate.status === "promoted").length,
       rejectedCandidateCount: candidates.filter((candidate) => candidate.status === "rejected").length,
       trackedSkillCount: Object.keys(state.skills).length,
+      repairCandidateCount: Object.keys(state.repairs).length,
     };
   }
 

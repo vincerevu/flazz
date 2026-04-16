@@ -44,3 +44,15 @@ export type SkillRevisionItem = {
   previousContent?: string
   nextContent: string
 }
+
+export type SkillRepairItem = {
+  id: string
+  skillName: string
+  runId: string
+  status: 'pending' | 'applied' | 'rejected'
+  failureCategory: string
+  evidenceSummary: string
+  proposedPatch?: string
+  createdAt: string
+  updatedAt: string
+}
