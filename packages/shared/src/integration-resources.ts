@@ -29,6 +29,18 @@ export const IntegrationRetrievalMode = z.enum([
   "full",
 ]);
 
+export const NormalizedSupportLevel = z.enum([
+  "none",
+  "read_only",
+  "full",
+]);
+
+export const IntegrationProviderWave = z.enum([
+  "p0",
+  "p1",
+  "p2",
+]);
+
 const SizeMetadata = z.object({
   estimatedChars: z.number().optional(),
   estimatedTokens: z.number().optional(),
@@ -86,9 +98,48 @@ export const FileItem = z.object({
   source: z.string(),
 }).merge(SizeMetadata);
 
+export const RecordItem = z.object({
+  id: z.string(),
+  title: z.string(),
+  recordType: z.string().optional(),
+  owner: z.string().optional(),
+  updatedAt: z.string().optional(),
+  preview: z.string().optional(),
+  source: z.string(),
+}).merge(SizeMetadata);
+
+export const CodeItem = z.object({
+  id: z.string(),
+  title: z.string(),
+  path: z.string().optional(),
+  repository: z.string().optional(),
+  preview: z.string().optional(),
+  source: z.string(),
+}).merge(SizeMetadata);
+
+export const SpreadsheetItem = z.object({
+  id: z.string(),
+  title: z.string(),
+  sheetName: z.string().optional(),
+  rowLabel: z.string().optional(),
+  preview: z.string().optional(),
+  source: z.string(),
+}).merge(SizeMetadata);
+
 export const ProviderResourceDescriptor = z.object({
   app: z.string(),
   resourceType: IntegrationResourceType,
   capabilities: z.array(IntegrationCapability),
+});
+
+export const IntegrationProviderStatus = z.object({
+  app: z.string(),
+  connected: z.boolean(),
+  normalizedSupported: z.boolean(),
+  normalizedSupport: NormalizedSupportLevel,
+  wave: IntegrationProviderWave.optional(),
+  resourceType: IntegrationResourceType.optional(),
+  capabilities: z.array(IntegrationCapability),
+  note: z.string().optional(),
 });
 

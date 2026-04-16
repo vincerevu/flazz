@@ -1,10 +1,13 @@
 import {
+  CodeItem,
   DocumentItem,
   EventItem,
   FileItem,
   MessageItem,
+  RecordItem,
+  SpreadsheetItem,
   TicketItem,
-} from "@flazz/shared";
+} from "@flazz/shared/dist/integration-resources.js";
 
 export class IntegrationNormalizer {
   normalizeMessage(input: unknown) {
@@ -25,6 +28,18 @@ export class IntegrationNormalizer {
 
   normalizeFile(input: unknown) {
     return FileItem.parse(input);
+  }
+
+  normalizeRecord(input: unknown) {
+    return RecordItem.parse(input);
+  }
+
+  normalizeCode(input: unknown) {
+    return CodeItem.parse(input);
+  }
+
+  normalizeSpreadsheet(input: unknown) {
+    return SpreadsheetItem.parse(input);
   }
 }
 
