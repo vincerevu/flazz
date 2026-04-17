@@ -3,9 +3,29 @@ import { composioAccountsRepo } from "../../../composio/repo.js";
 import { executeAction as executeComposioAction, isConfigured as isComposioConfigured } from "../../../composio/client.js";
 import { integrationService } from "../../../integrations/service.js";
 
+type ProviderStatusRecord = ReturnType<typeof integrationService.listProviders>[number];
+
+function buildGenericRequestGuidance(status: ProviderStatusRecord | null | undefined) {
+  if (!status?.genericRequestPolicy) {
+    return undefined;
+  }
+
+  const target = status.genericRequestTarget ?? "recent items";
+  switch (status.genericRequestPolicy) {
+    case "list_recent_first":
+      return `For generic personal requests, do not ask for extra scope first. Start by listing the user's ${target}.`;
+    case "search_first":
+      return `For generic lookup requests, search ${target} before asking for more specifics unless the request is still ambiguous after one search.`;
+    case "needs_explicit_scope":
+      return `This provider usually needs explicit scope. Ask one concise question to identify the ${target} before listing or searching.`;
+    default:
+      return undefined;
+  }
+}
+
 export const integrationTools = {
   "composio-checkConnection": {
-    description: "Check whether a connected app is available for normalized integration operations.",
+    description: "Check whether a connected app is available for normalized integration operations. Use the returned genericRequestPolicy and genericRequestGuidance to decide whether to list recent items immediately, search first, or ask one scope question.",
     inputSchema: z.object({
       app: z.string().describe('App name to check (for example "slack", "gmail", "jira")'),
     }),
@@ -34,6 +54,9 @@ export const integrationTools = {
         app,
         accountId: account.id,
         resourceType: status?.resourceType,
+        genericRequestPolicy: status?.genericRequestPolicy,
+        genericRequestTarget: status?.genericRequestTarget,
+        genericRequestGuidance: buildGenericRequestGuidance(status),
         capabilities: status?.capabilities ?? [],
         note: status?.note,
       };
@@ -41,13 +64,16 @@ export const integrationTools = {
   },
 
   "integration-listProviders": {
-    description: "List connected integrations with their normalized support level, resource type, and supported capabilities. Some connected apps may be available in Composio but not yet supported by normalized tools.",
+    description: "List connected integrations with their normalized support level, resource type, supported capabilities, and generic request handling hints. Follow each provider's genericRequestPolicy before asking clarifying questions for ambiguous personal requests.",
     inputSchema: z.object({}).optional(),
     execute: async () => {
       const providers = integrationService.listProviders();
       return {
         success: true,
-        providers,
+        providers: providers.map((provider) => ({
+          ...provider,
+          genericRequestGuidance: buildGenericRequestGuidance(provider),
+        })),
         count: providers.length,
         normalizedSupportedCount: providers.filter((provider) => provider.normalizedSupported).length,
         fullSupportCount: providers.filter((provider) => provider.normalizedSupport === "full").length,
@@ -57,7 +83,7 @@ export const integrationTools = {
   },
 
   "integration-listItemsCompact": {
-    description: "List recent items from a connected integration using normalized schemas. Returns compact items only, never raw full payloads.",
+    description: "List recent items from a connected integration using normalized schemas. Returns compact items only, never raw full payloads. For GitHub, use this first to check the user's assigned issues and pull requests unless they explicitly ask for a specific repository.",
     inputSchema: z.object({
       app: z.string().describe('Connected app name such as "gmail", "slack", "notion", or "jira"'),
       limit: z.number().int().positive().max(20).optional(),
@@ -67,7 +93,7 @@ export const integrationTools = {
   },
 
   "integration-searchItemsCompact": {
-    description: "Search connected integrations using normalized schemas. Use this for messages, documents, tickets, events, or files without exposing raw Composio tool slugs.",
+    description: "Search connected integrations using normalized schemas. Use this for messages, documents, tickets, events, or files without exposing raw Composio tool slugs. For GitHub, use search when the user mentions a specific repo, issue, PR, or keyword; otherwise prefer integration-listItemsCompact for general assigned-work updates.",
     inputSchema: z.object({
       app: z.string().describe('Connected app name such as "gmail", "slack", "notion", or "jira"'),
       query: z.string().describe("Search query"),
@@ -88,7 +114,7 @@ export const integrationTools = {
   },
 
   "integration-getItemSummary": {
-    description: "Fetch a concise summary of one integration item by ID. Use this before full reads when you need a lightweight overview.",
+    description: "Fetch a concise summary of one integration item by ID. Use this before full reads when you need a lightweight overview. For GitHub issues and pull requests, prefer this after integration-listItemsCompact.",
     inputSchema: z.object({
       app: z.string().describe('Connected app name such as "gmail", "slack", "notion", or "jira"'),
       itemId: z.string().describe("Item ID returned by integration-listItemsCompact or integration-searchItemsCompact"),
@@ -98,7 +124,7 @@ export const integrationTools = {
   },
 
   "integration-getItemDetailed": {
-    description: "Fetch one item as a detailed structured payload. Prefer this over full raw reads whenever possible.",
+    description: "Fetch one item as a detailed structured payload. Prefer this over full raw reads whenever possible. For GitHub issues and pull requests, use this to inspect the most relevant items after a compact list.",
     inputSchema: z.object({
       app: z.string().describe('Connected app name such as "gmail", "slack", "notion", or "jira"'),
       itemId: z.string().describe("Item ID returned by integration-listItemsCompact or integration-searchItemsCompact"),

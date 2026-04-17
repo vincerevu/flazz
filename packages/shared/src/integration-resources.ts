@@ -41,6 +41,12 @@ export const IntegrationProviderWave = z.enum([
   "p2",
 ]);
 
+export const GenericRequestPolicy = z.enum([
+  "list_recent_first",
+  "search_first",
+  "needs_explicit_scope",
+]);
+
 const SizeMetadata = z.object({
   estimatedChars: z.number().optional(),
   estimatedTokens: z.number().optional(),
@@ -138,8 +144,13 @@ export const IntegrationProviderStatus = z.object({
   normalizedSupported: z.boolean(),
   normalizedSupport: NormalizedSupportLevel,
   wave: IntegrationProviderWave.optional(),
+  genericRequestPolicy: GenericRequestPolicy.optional(),
+  genericRequestTarget: z.string().optional(),
   resourceType: IntegrationResourceType.optional(),
   capabilities: z.array(IntegrationCapability),
   note: z.string().optional(),
 });
+
+export type ProviderResourceDescriptorRecord = z.infer<typeof ProviderResourceDescriptor>;
+export type IntegrationProviderStatusRecord = z.infer<typeof IntegrationProviderStatus>;
 

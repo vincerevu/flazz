@@ -49,20 +49,22 @@ test("buildStructuredView preserves provider specific details", () => {
   assert.deepEqual(result.labels, ["bug", "sync"]);
 });
 
-test("normalizeResource maps github notification-like fields into ticket shape", () => {
+test("normalizeResource maps github issue fields into ticket shape", () => {
   const result = normalizeResource("github", "ticket", {
-    id: "notif-1",
-    subject: "Review requested",
-    repository: "flazzlabs/flazz",
-    reason: "review_requested",
+    id: "issue-1",
+    title: "Fix notification routing",
+    repository: { full_name: "flazzlabs/flazz" },
+    number: "42",
     state: "open",
+    user: { login: "octocat" },
   }) as { id: string; title: string; status?: string; preview?: string } | null;
 
   assert.ok(result);
-  assert.equal(result?.id, "notif-1");
-  assert.equal(result?.title, "Review requested");
+  assert.equal(result?.id, "issue-1");
+  assert.equal(result?.title, "Fix notification routing");
   assert.equal(result?.status, "open");
   assert.match(result?.preview ?? "", /flazzlabs\/flazz/i);
+  assert.match(result?.preview ?? "", /#42/i);
 });
 
 test("normalizeResource maps CRM-style records into record shape", () => {
@@ -79,6 +81,23 @@ test("normalizeResource maps CRM-style records into record shape", () => {
   assert.equal(result?.title, "Acme Corp");
   assert.equal(result?.recordType, "company");
   assert.equal(result?.owner, "Jane");
+});
+
+test("normalizeResource maps linkedin profile fields into record shape", () => {
+  const result = normalizeResource("linkedin", "record", {
+    author_id: "urn:li:person:123",
+    localizedFirstName: "Ada",
+    localizedLastName: "Lovelace",
+    headline: "Staff Software Engineer",
+    vanityName: "ada-lovelace",
+  }) as { id: string; title: string; recordType?: string; owner?: string; preview?: string } | null;
+
+  assert.ok(result);
+  assert.equal(result?.id, "urn:li:person:123");
+  assert.equal(result?.title, "Ada Lovelace");
+  assert.equal(result?.recordType, "linkedin_profile");
+  assert.equal(result?.owner, "Ada Lovelace");
+  assert.match(result?.preview ?? "", /Staff Software Engineer/i);
 });
 
 test("normalizeResource maps repository file data into code shape", () => {

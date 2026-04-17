@@ -3,13 +3,16 @@ import assert from "node:assert/strict";
 import { getProviderStatus, listSupportedProviderDescriptors } from "../provider-registry.js";
 import { PROVIDER_CATALOG } from "../provider-catalog.js";
 
-test("provider catalog declares at least 50 common providers", () => {
-  assert.ok(PROVIDER_CATALOG.length >= 50, `expected at least 50 providers, got ${PROVIDER_CATALOG.length}`);
+test("provider catalog keeps a curated production-grade provider set", () => {
+  assert.ok(PROVIDER_CATALOG.length >= 30, `expected at least 30 providers, got ${PROVIDER_CATALOG.length}`);
+  assert.ok(PROVIDER_CATALOG.length <= 35, `expected a curated provider set, got ${PROVIDER_CATALOG.length}`);
 });
 
 test("supported descriptors cover normalized providers only", () => {
   const supported = listSupportedProviderDescriptors();
-  assert.ok(supported.length >= 50 - 5);
+  const normalizedProviders = PROVIDER_CATALOG.filter((entry) => entry.normalizedSupport !== "none");
+  assert.equal(supported.length, normalizedProviders.length);
+  assert.ok(supported.length >= 30, `expected at least 30 normalized providers, got ${supported.length}`);
   assert.ok(supported.every((entry) => entry.capabilities.length > 0));
 });
 
@@ -24,6 +27,59 @@ test("known provider status reports read-only support when configured that way",
   const status = getProviderStatus("github", true);
   assert.equal(status.connected, true);
   assert.equal(status.normalizedSupported, true);
-  assert.equal(status.normalizedSupport, "read_only");
+  assert.equal(status.normalizedSupport, "full");
   assert.equal(status.resourceType, "ticket");
+  assert.equal(status.genericRequestPolicy, "list_recent_first");
+  assert.equal(status.genericRequestTarget, "assigned issues and pull requests");
+});
+
+test("generic request policies are exposed for providers with strong defaults", () => {
+  const gmail = getProviderStatus("gmail", true);
+  const slack = getProviderStatus("slack", true);
+  const linkedin = getProviderStatus("linkedin", true);
+
+  assert.equal(gmail.genericRequestPolicy, "list_recent_first");
+  assert.equal(gmail.genericRequestTarget, "recent email inbox");
+  assert.equal(slack.genericRequestPolicy, "needs_explicit_scope");
+  assert.equal(slack.genericRequestTarget, "specific channel or thread");
+  assert.equal(linkedin.normalizedSupport, "full");
+  assert.equal(linkedin.resourceType, "record");
+  assert.equal(linkedin.genericRequestTarget, "your profile, managed company pages, or a post draft");
+});
+
+test("providers without live toolkit coverage are exposed as unsupported instead of stale normalized support", () => {
+  const teams = getProviderStatus("teams", true);
+  const discord = getProviderStatus("discord", true);
+  const front = getProviderStatus("front", true);
+  const snowflake = getProviderStatus("snowflake", true);
+  const pagerDuty = getProviderStatus("pagerduty", true);
+
+  assert.equal(teams.normalizedSupported, false);
+  assert.equal(teams.normalizedSupport, "none");
+  assert.equal(discord.normalizedSupport, "none");
+  assert.equal(front.normalizedSupport, "none");
+  assert.equal(snowflake.normalizedSupport, "none");
+  assert.equal(pagerDuty.normalizedSupport, "none");
+});
+
+test("p2 providers expose only live-verified support levels", () => {
+  const shortcut = getProviderStatus("shortcut", true);
+  const wrike = getProviderStatus("wrike", true);
+  const miro = getProviderStatus("miro", true);
+  const zoom = getProviderStatus("zoom", true);
+  const box = getProviderStatus("box", true);
+  const sentry = getProviderStatus("sentry", true);
+
+  assert.equal(shortcut.normalizedSupport, "full");
+  assert.deepEqual(shortcut.capabilities, ["list", "search", "read", "create", "update", "comment"]);
+  assert.equal(wrike.normalizedSupport, "full");
+  assert.deepEqual(wrike.capabilities, ["list", "read", "create", "update"]);
+  assert.equal(miro.normalizedSupport, "read_only");
+  assert.deepEqual(miro.capabilities, ["list", "search", "read"]);
+  assert.equal(zoom.normalizedSupport, "full");
+  assert.deepEqual(zoom.capabilities, ["list", "read", "create", "update"]);
+  assert.equal(box.normalizedSupport, "read_only");
+  assert.deepEqual(box.capabilities, ["list", "search", "read"]);
+  assert.equal(sentry.normalizedSupport, "read_only");
+  assert.deepEqual(sentry.capabilities, ["list", "search", "read"]);
 });

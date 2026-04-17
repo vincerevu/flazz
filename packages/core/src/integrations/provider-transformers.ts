@@ -110,16 +110,27 @@ function normalizeTicket(app: string, item: unknown) {
   const record = asRecord(item);
 
   if (app === "github") {
-    const repository = pickFirst(record, ["repository", "repositoryName", "repo", "full_name"]);
-    const reason = pickFirst(record, ["reason", "notificationReason"]);
-    const title = pickFirst(record, ["subject", "title", "summary"]) ?? "Untitled GitHub item";
-    const prefix = [repository, reason].filter(Boolean).join(" • ");
+    const repositoryRecord = asRecord(record.repository);
+    const repoRecord = asRecord(record.repo);
+    const assigneeRecord = asRecord(record.assignee);
+    const authorRecord = asRecord(record.user);
+    const repository =
+      pickFirst(repositoryRecord, ["full_name", "name"]) ??
+      pickFirst(repoRecord, ["full_name", "name"]) ??
+      pickFirst(record, ["repositoryName", "repo", "full_name"]);
+    const issueOrPullNumber = pickFirst(record, ["number", "issue_number", "pull_number"]);
+    const state = pickFirst(record, ["state", "status"]);
+    const title = pickFirst(record, ["title", "subject", "summary"]) ?? "Untitled GitHub item";
+    const prefix = [repository, issueOrPullNumber ? `#${issueOrPullNumber}` : undefined, state].filter(Boolean).join(" • ");
     return integrationNormalizer.normalizeTicket({
-      id: pickFirst(record, ["id", "threadId", "notificationId", "identifier", "number"]) ?? crypto.randomUUID(),
+      id: pickFirst(record, ["id", "node_id", "identifier", "number", "issue_number", "pull_number"]) ?? crypto.randomUUID(),
       title,
-      status: pickFirst(record, ["state", "status"]),
-      assignee: pickFirst(record, ["assignee", "assigneeName", "actor", "author"]),
-      updatedAt: pickFirst(record, ["updatedAt", "updated_at", "last_read_at"]),
+      status: state,
+      assignee:
+        pickFirst(assigneeRecord, ["login", "name"]) ??
+        pickFirst(authorRecord, ["login", "name"]) ??
+        pickFirst(record, ["assignee", "assigneeName", "actor", "author"]),
+      updatedAt: pickFirst(record, ["updatedAt", "updated_at", "last_read_at", "created_at"]),
       preview: summarizeText(
         [prefix, pickFirst(record, ["description", "preview", "body", "url", "html_url"])]
           .filter(Boolean)
@@ -168,6 +179,27 @@ function normalizeFile(app: string, item: unknown) {
 
 function normalizeRecord(app: string, item: unknown) {
   const record = asRecord(item);
+  if (app === "linkedin") {
+    const localizedName = [
+      pickFirst(record, ["localizedFirstName", "firstName", "given_name"]),
+      pickFirst(record, ["localizedLastName", "lastName", "family_name"]),
+    ].filter(Boolean).join(" ").trim();
+    const headline = pickFirst(record, ["headline", "localizedHeadline", "commentary", "description"]);
+    const handle = pickFirst(record, ["vanityName", "username"]);
+    const companyName = pickFirst(record, ["organizationName", "localizedName", "name"]);
+    const title = companyName || localizedName || pickFirst(record, ["title", "displayName", "subject"]) || "LinkedIn record";
+    const previewParts = [headline, handle ? `@${handle}` : undefined].filter(Boolean);
+    return integrationNormalizer.normalizeRecord({
+      id: pickFirst(record, ["id", "author_id", "organization", "urn"]) ?? crypto.randomUUID(),
+      title,
+      recordType: companyName ? "linkedin_company" : "linkedin_profile",
+      owner: localizedName || undefined,
+      updatedAt: pickFirst(record, ["lastModifiedAt", "updatedAt"]),
+      preview: summarizeText(previewParts.join(" • ")),
+      source: app,
+      estimatedChars: headline?.length,
+    });
+  }
   return integrationNormalizer.normalizeRecord({
     id: pickFirst(record, ["id", "recordId", "objectId", "dealId", "contactId", "companyId"]) ?? crypto.randomUUID(),
     title: pickFirst(record, ["title", "name", "displayName", "subject"]) ?? "Untitled record",
@@ -279,6 +311,8 @@ export function buildStructuredView(app: string, resourceType: IntegrationResour
         normalized,
         owner: pickFirst(record, ["owner", "ownerName", "assignee"]),
         recordType: pickFirst(record, ["recordType", "type", "objectType"]),
+        authorId: pickFirst(record, ["author_id"]),
+        companyUrn: pickFirst(record, ["organization", "urn"]),
         bodyPreview: summarizeText(body || pickFirst(record, ["summary", "notes"]), 800),
       };
     case "code":

@@ -281,10 +281,13 @@ export function hasVisibleAssistantOutput(message: z.infer<typeof AssistantMessa
     }
 
     return message.content.some((part) => {
-        if (part.type === "text" || part.type === "reasoning") {
+        if (part.type === "text") {
             return part.text.trim().length > 0;
         }
-        return true;
+        if (part.type === "tool-call") {
+            return true;
+        }
+        return false;
     });
 }
 

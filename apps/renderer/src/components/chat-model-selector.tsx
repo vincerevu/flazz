@@ -86,7 +86,11 @@ function isFreeModel(model: ModelOption) {
   return haystack.includes('free')
 }
 
-export function ChatModelSelector() {
+export function ChatModelSelector({
+  onRuntimeConfigChange,
+}: {
+  onRuntimeConfigChange?: (config: ModelConfig | null) => void
+} = {}) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -150,12 +154,13 @@ export function ChatModelSelector() {
         })
 
       setRuntimeConfig(nextRuntime)
+      onRuntimeConfigChange?.(nextRuntime)
       setConnections(nextConnections)
       setGroups(nextGroups)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [onRuntimeConfigChange])
 
   useEffect(() => {
     void loadConfig()
@@ -202,6 +207,7 @@ export function ChatModelSelector() {
       await workspaceIpc.writeFile(PROVIDER_CONNECTIONS_PATH, JSON.stringify(nextConnections, null, 2))
       await modelsActionsIpc.saveConfig(nextRuntime)
       setRuntimeConfig(nextRuntime)
+      onRuntimeConfigChange?.(nextRuntime)
       setConnections(nextConnections)
       setOpen(false)
       toast.success(`Switched to ${modelId}`)
@@ -210,7 +216,7 @@ export function ChatModelSelector() {
     } finally {
       setSaving(false)
     }
-  }, [connections])
+  }, [connections, onRuntimeConfigChange])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

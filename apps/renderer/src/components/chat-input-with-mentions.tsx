@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { LanguageModelUsage } from 'ai'
 import {
   ArrowUp,
   AudioLines,
@@ -16,6 +17,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { ChatModelSelector } from '@/components/chat-model-selector'
+import { ChatContextIndicator } from '@/features/chat/components/chat-context-indicator'
 import {
   type AttachmentIconKind,
   getAttachmentDisplayName,
@@ -35,6 +37,7 @@ import {
 import { toast } from 'sonner'
 import { shellIpc } from '@/services/shell-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
+import { MODEL_CONFIG_PATH, type ModelConfig } from '@/features/providers/provider-connections'
 
 export type StagedAttachment = {
   id: string
@@ -109,6 +112,9 @@ interface ChatInputInnerProps {
   runId?: string | null
   initialDraft?: string
   onDraftChange?: (text: string) => void
+  conversation?: import('@/lib/chat-conversation').ConversationItem[]
+  modelUsage?: LanguageModelUsage | null
+  modelUsageUpdatedAt?: number | null
 }
 
 function ChatInputInner({
@@ -122,13 +128,34 @@ function ChatInputInner({
   runId,
   initialDraft,
   onDraftChange,
+  conversation = [],
+  modelUsage = null,
+  modelUsageUpdatedAt = null,
 }: ChatInputInnerProps) {
   const controller = usePromptInputController()
   const message = controller.textInput.value
   const [attachments, setAttachments] = useState<StagedAttachment[]>([])
   const [focusNonce, setFocusNonce] = useState(0)
+  const [runtimeConfig, setRuntimeConfig] = useState<ModelConfig | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canSubmit = (Boolean(message.trim()) || attachments.length > 0) && !isProcessing
+
+  useEffect(() => {
+    let cancelled = false
+    const loadRuntimeConfig = async () => {
+      try {
+        const result = await workspaceIpc.readFile(MODEL_CONFIG_PATH)
+        if (cancelled) return
+        setRuntimeConfig(JSON.parse(result.data) as ModelConfig)
+      } catch {
+        if (!cancelled) setRuntimeConfig(null)
+      }
+    }
+    void loadRuntimeConfig()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Restore the tab draft when this input mounts.
   useEffect(() => {
@@ -368,10 +395,17 @@ function ChatInputInner({
         >
           <Plus className="h-4 w-4" />
         </button>
-        <ChatModelSelector />
+        <ChatModelSelector onRuntimeConfigChange={setRuntimeConfig} />
         <div className="flex-1" />
+        <ChatContextIndicator
+          conversation={conversation}
+          usage={modelUsage}
+          usageUpdatedAt={modelUsageUpdatedAt}
+          runtimeConfig={runtimeConfig}
+          className="mr-1"
+        />
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{message.trim().length}</span>
+          {message.trim().length > 0 ? <span>{message.trim().length}</span> : null}
           {isProcessing ? (
             <Button
               size="icon"
@@ -425,6 +459,8 @@ export interface ChatInputWithMentionsProps {
   runId?: string | null
   initialDraft?: string
   onDraftChange?: (text: string) => void
+  conversation?: import('@/lib/chat-conversation').ConversationItem[]
+  modelUsage?: LanguageModelUsage | null
 }
 
 export function ChatInputWithMentions({
@@ -441,6 +477,8 @@ export function ChatInputWithMentions({
   runId,
   initialDraft,
   onDraftChange,
+  conversation,
+  modelUsage,
 }: ChatInputWithMentionsProps) {
   return (
     <PromptInputProvider memoryFiles={memoryFiles} recentFiles={recentFiles} visibleFiles={visibleFiles}>
@@ -455,6 +493,8 @@ export function ChatInputWithMentions({
         runId={runId}
         initialDraft={initialDraft}
         onDraftChange={onDraftChange}
+        conversation={conversation}
+        modelUsage={modelUsage}
       />
     </PromptInputProvider>
   )

@@ -15,6 +15,7 @@ import {
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
+import { ContextCompactionCard } from '@/components/ai-elements/context-compaction'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { WebSearchResult } from '@/components/ai-elements/web-search-result'
@@ -35,6 +36,7 @@ import {
   createEmptyChatTabViewState,
   getWebSearchCardData,
   isChatMessage,
+  isContextCompactionItem,
   isErrorMessage,
   isToolCall,
   normalizeToolInput,
@@ -86,6 +88,7 @@ interface ChatSidebarProps {
   onOpenFullScreen?: () => void
   conversation: ConversationItem[]
   currentAssistantMessage: string
+  modelUsage?: import('ai').LanguageModelUsage | null
   chatTabStates?: Record<string, ChatTabViewState>
   isProcessing: boolean
   isStopping?: boolean
@@ -124,6 +127,7 @@ export function ChatSidebar({
   onOpenFullScreen,
   conversation,
   currentAssistantMessage,
+  modelUsage = null,
   chatTabStates = {},
   isProcessing,
   isStopping,
@@ -236,6 +240,7 @@ export function ChatSidebar({
     runId: runId ?? null,
     conversation,
     currentAssistantMessage,
+    modelUsage,
     pendingAskHumanRequests,
     allPermissionRequests,
     permissionResponses,
@@ -243,6 +248,7 @@ export function ChatSidebar({
     runId,
     conversation,
     currentAssistantMessage,
+    modelUsage,
     pendingAskHumanRequests,
     allPermissionRequests,
     permissionResponses,
@@ -338,6 +344,10 @@ export function ChatSidebar({
           </MessageContent>
         </Message>
       )
+    }
+
+    if (isContextCompactionItem(item)) {
+      return <ContextCompactionCard key={item.id} item={item} />
     }
 
     return null
@@ -539,6 +549,8 @@ export function ChatSidebar({
                           runId={tabState.runId}
                           initialDraft={getInitialDraft?.(tab.id)}
                           onDraftChange={onDraftChangeForTab ? (text) => onDraftChangeForTab(tab.id, text) : undefined}
+                          conversation={tabState.conversation}
+                          modelUsage={tabState.modelUsage}
                         />
                       </div>
                     )

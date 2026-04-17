@@ -86,6 +86,56 @@ export const RunStoppedEvent = BaseRunEvent.extend({
     reason: z.enum(["user-requested", "force-stopped"]).optional(),
 });
 
+export const ContextCompactionStartEvent = BaseRunEvent.extend({
+    type: z.literal("context-compaction-start"),
+    compactionId: z.string(),
+    strategy: z.literal("summary-window"),
+    escalated: z.boolean().optional(),
+    messageCountBefore: z.number().int().nonnegative(),
+    estimatedTokensBefore: z.number().int().nonnegative(),
+    contextLimit: z.number().int().positive(),
+    usableInputBudget: z.number().int().positive(),
+    compactionThreshold: z.number().int().positive(),
+    targetThreshold: z.number().int().positive(),
+});
+
+export const ContextCompactionCompleteEvent = BaseRunEvent.extend({
+    type: z.literal("context-compaction-complete"),
+    compactionId: z.string(),
+    strategy: z.literal("summary-window"),
+    escalated: z.boolean().optional(),
+    summary: z.string(),
+    anchorHash: z.string(),
+    omittedMessages: z.number().int().nonnegative(),
+    recentMessages: z.number().int().nonnegative(),
+    messageCountBefore: z.number().int().nonnegative(),
+    messageCountAfter: z.number().int().nonnegative(),
+    estimatedTokensBefore: z.number().int().nonnegative(),
+    estimatedTokensAfter: z.number().int().nonnegative(),
+    tokensSaved: z.number().int().nonnegative(),
+    reductionPercent: z.number().int().min(0).max(100),
+    contextLimit: z.number().int().positive(),
+    usableInputBudget: z.number().int().positive(),
+    compactionThreshold: z.number().int().positive(),
+    targetThreshold: z.number().int().positive(),
+    provenanceRefs: z.array(z.string()).optional(),
+    reused: z.boolean().optional(),
+});
+
+export const ContextCompactionFailedEvent = BaseRunEvent.extend({
+    type: z.literal("context-compaction-failed"),
+    compactionId: z.string(),
+    strategy: z.literal("summary-window"),
+    escalated: z.boolean().optional(),
+    error: z.string(),
+    messageCountBefore: z.number().int().nonnegative(),
+    estimatedTokensBefore: z.number().int().nonnegative(),
+    contextLimit: z.number().int().positive(),
+    usableInputBudget: z.number().int().positive(),
+    compactionThreshold: z.number().int().positive(),
+    targetThreshold: z.number().int().positive(),
+});
+
 export const RunEvent = z.union([
     RunProcessingStartEvent,
     RunProcessingEndEvent,
@@ -101,6 +151,9 @@ export const RunEvent = z.union([
     ToolPermissionResponseEvent,
     RunErrorEvent,
     RunStoppedEvent,
+    ContextCompactionStartEvent,
+    ContextCompactionCompleteEvent,
+    ContextCompactionFailedEvent,
 ]);
 
 export const ToolPermissionAuthorizePayload = ToolPermissionResponseEvent.pick({
