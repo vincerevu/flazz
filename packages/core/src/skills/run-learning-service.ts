@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, streamText } from "ai";
 import crypto from "node:crypto";
 import { Run } from "@flazz/shared";
 import z from "zod";
@@ -316,13 +316,13 @@ export class RunLearningService {
 
       const provider = createProvider(modelConfig.provider);
       const model = provider.languageModel(modelConfig.model);
-      const response = await generateText({
+      const response = streamText({
         model,
         prompt: buildPrompt(run, loadedSkills, promoteNow),
       });
 
       const parsed = LearningDecision.safeParse(
-        JSON.parse(stripCodeFence(response.text))
+        JSON.parse(stripCodeFence(await response.text))
       );
 
       if (!parsed.success) {

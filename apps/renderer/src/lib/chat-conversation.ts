@@ -1,4 +1,4 @@
-import type { ToolUIPart } from 'ai'
+import type { LanguageModelUsage, ToolUIPart } from 'ai'
 import z from 'zod'
 import { AskHumanRequestEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
 
@@ -35,13 +35,40 @@ export interface ErrorMessage {
   timestamp: number
 }
 
-export type ConversationItem = ChatMessage | ToolCall | ErrorMessage
+export interface ContextCompactionItem {
+  id: string
+  kind: 'context-compaction'
+  status: 'running' | 'completed' | 'failed'
+  strategy: 'summary-window'
+  escalated?: boolean
+  provenanceRefs?: string[]
+  omittedMessages?: number
+  recentMessages?: number
+  messageCountBefore: number
+  messageCountAfter?: number
+  estimatedTokensBefore: number
+  estimatedTokensAfter?: number
+  tokensSaved?: number
+  reductionPercent?: number
+  contextLimit: number
+  usableInputBudget: number
+  compactionThreshold: number
+  targetThreshold?: number
+  summary?: string
+  error?: string
+  reused?: boolean
+  timestamp: number
+}
+
+export type ConversationItem = ChatMessage | ToolCall | ErrorMessage | ContextCompactionItem
 export type PermissionResponse = 'approve' | 'deny'
 
 export type ChatTabViewState = {
   runId: string | null
   conversation: ConversationItem[]
   currentAssistantMessage: string
+  modelUsage: LanguageModelUsage | null
+  modelUsageUpdatedAt: number | null
   pendingAskHumanRequests: Map<string, z.infer<typeof AskHumanRequestEvent>>
   allPermissionRequests: Map<string, z.infer<typeof ToolPermissionRequestEvent>>
   permissionResponses: Map<string, PermissionResponse>
@@ -51,6 +78,8 @@ export const createEmptyChatTabViewState = (): ChatTabViewState => ({
   runId: null,
   conversation: [],
   currentAssistantMessage: '',
+  modelUsage: null,
+  modelUsageUpdatedAt: null,
   pendingAskHumanRequests: new Map(),
   allPermissionRequests: new Map(),
   permissionResponses: new Map(),
@@ -62,6 +91,8 @@ export const isChatMessage = (item: ConversationItem): item is ChatMessage => 'r
 export const isToolCall = (item: ConversationItem): item is ToolCall => 'name' in item
 export const isErrorMessage = (item: ConversationItem): item is ErrorMessage =>
   'kind' in item && item.kind === 'error'
+export const isContextCompactionItem = (item: ConversationItem): item is ContextCompactionItem =>
+  'kind' in item && item.kind === 'context-compaction'
 
 export const toToolState = (status: ToolCall['status']): ToolState => {
   switch (status) {

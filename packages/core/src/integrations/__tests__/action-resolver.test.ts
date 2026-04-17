@@ -68,3 +68,48 @@ test("full support providers declare preferred write actions for write capabilit
     }
   }
 });
+
+test("all normalized providers declare preferred read-path actions for their declared capabilities", () => {
+  const normalizedProviders = PROVIDER_CATALOG.filter((entry) => entry.normalizedSupport !== "none");
+
+  for (const provider of normalizedProviders) {
+    const preferences = getProviderActionPreferences(provider.app);
+    if (provider.capabilities.includes("list")) {
+      assert.ok((preferences.list?.length ?? 0) > 0, `${provider.app} is missing preferred list actions`);
+    }
+    if (provider.capabilities.includes("search")) {
+      assert.ok((preferences.search?.length ?? 0) > 0, `${provider.app} is missing preferred search actions`);
+    }
+    if (provider.capabilities.includes("read")) {
+      assert.ok((preferences.read?.length ?? 0) > 0, `${provider.app} is missing preferred read actions`);
+    }
+  }
+});
+
+test("github preferred actions target assigned issues and issue reads instead of notification-only flows", () => {
+  const preferences = getProviderActionPreferences("github");
+
+  assert.deepEqual(preferences.list?.[0], "GITHUB_LIST_ASSIGNED_ISSUES");
+  assert.deepEqual(preferences.search?.[0], "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS");
+  assert.deepEqual(preferences.read?.[0], "GITHUB_GET_AN_ISSUE");
+  assert.deepEqual(preferences.comment?.[0], "GITHUB_CREATE_AN_ISSUE_COMMENT");
+  assert.ok(!(preferences.list ?? []).includes("GITHUB_LIST_NOTIFICATIONS_FOR_THE_AUTHENTICATED_USER"));
+  assert.ok(!(preferences.read ?? []).includes("GITHUB_GET_A_THREAD"));
+});
+
+test("p2 full and read-only providers resolve to live-verified preferred actions", () => {
+  const shortcut = getProviderActionPreferences("shortcut");
+  const wrike = getProviderActionPreferences("wrike");
+  const miro = getProviderActionPreferences("miro");
+  const zoom = getProviderActionPreferences("zoom");
+  const box = getProviderActionPreferences("box");
+  const sentry = getProviderActionPreferences("sentry");
+
+  assert.equal(shortcut.list?.[0], "SHORTCUT_LIST_STORIES");
+  assert.equal(shortcut.comment?.[0], "SHORTCUT_CREATE_STORY_COMMENT");
+  assert.equal(wrike.update?.[0], "WRIKE_MODIFY_TASK");
+  assert.equal(miro.search?.[0], "MIRO_GET_BOARDS");
+  assert.equal(zoom.create?.[0], "ZOOM_CREATE_A_MEETING");
+  assert.equal(box.search?.[0], "BOX_SEARCH_FOR_CONTENT");
+  assert.equal(sentry.read?.[0], "SENTRY_GET_ORGANIZATION_ISSUE_DETAILS");
+});

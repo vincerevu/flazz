@@ -109,11 +109,13 @@ export async function resolveToolForOperation(
   const preferredActions = providerMapper.getPreferredActions(app)[capability] ?? [];
 
   if (preferredActions.length > 0) {
-    const fallback = await listToolkitTools(app, null);
-    const preferred = fallback.items.find((tool) => preferredActions.includes(tool.slug));
-    if (preferred) {
-      console.log(`[Integrations] Resolved ${app}:${capability} via preferred action map -> ${preferred.slug}`);
-      return preferred;
+    for (const preferredAction of preferredActions) {
+      const searched = await listToolkitTools(app, preferredAction);
+      const preferred = searched.items.find((tool) => tool.slug === preferredAction);
+      if (preferred) {
+        console.log(`[Integrations] Resolved ${app}:${capability} via preferred action map -> ${preferred.slug}`);
+        return preferred;
+      }
     }
   }
 

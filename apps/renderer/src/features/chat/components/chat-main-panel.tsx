@@ -6,6 +6,7 @@ import {
   ScrollPositionPreserver,
 } from '@/components/ai-elements/conversation'
 import { AskHumanRequest } from '@/components/ai-elements/ask-human-request'
+import { ContextCompactionCard } from '@/components/ai-elements/context-compaction'
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import { PermissionRequest } from '@/components/ai-elements/permission-request'
 import { Suggestions } from '@/components/ai-elements/suggestions'
@@ -23,6 +24,7 @@ import {
   type PermissionResponse,
   getWebSearchCardData,
   isChatMessage,
+  isContextCompactionItem,
   isErrorMessage,
   isToolCall,
   normalizeToolInput,
@@ -161,6 +163,10 @@ function renderConversationItem(
         </MessageContent>
       </Message>
     )
+  }
+
+  if (isContextCompactionItem(item)) {
+    return <ContextCompactionCard key={item.id} item={item} />
   }
 
   return null
@@ -314,6 +320,8 @@ export function ChatMainPanel({
                     runId={tabState.runId}
                     initialDraft={undefined}
                     onDraftChange={(text) => setChatDraftForTab(tab.id, text)}
+                    conversation={tabState.conversation}
+                    modelUsage={tabState.modelUsage}
                   />
                 </div>
               )

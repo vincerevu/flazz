@@ -4,7 +4,6 @@ import { executeAction, isConfigured } from "../composio/client.js";
 import { capabilityRegistry, integrationIdempotencyRepo, integrationRetrievalController, providerMapper } from "../di/container.js";
 import { buildSlicesView, buildStructuredView, buildSummaryView, normalizeResource } from "./provider-transformers.js";
 import { resolveToolForOperation, type ResolvedTool } from "./action-resolver.js";
-import { IntegrationProviderStatus } from "@flazz/shared/dist/integration-resources.js";
 import type { IntegrationCapability, IntegrationResourceType, IntegrationRetrievalMode } from "./types.js";
 import { enforceWritePolicy } from "./write-policy.js";
 import { integrationError, type IntegrationErrorResult } from "./errors.js";
@@ -218,7 +217,7 @@ async function executeNormalizedOperation(
 export const integrationService = {
   listProviders() {
     const connected = composioAccountsRepo.getConnectedToolkits();
-    return providerMapper.listStatuses(connected) as Array<z.infer<typeof IntegrationProviderStatus>>;
+    return providerMapper.listStatuses(connected);
   },
 
   async listItemsCompact(rawInput: unknown) {

@@ -1,8 +1,11 @@
 import { z } from "zod";
 import { Agent } from "@flazz/shared";
 import { AssistantMessage, MessageList, ToolCallPart, ToolMessage } from "@flazz/shared";
-import { AskHumanRequestEvent, RunEvent, ToolPermissionRequestEvent } from "@flazz/shared";
+import { AskHumanRequestEvent, ToolPermissionRequestEvent } from "@flazz/shared";
+import { RunEvent } from "@flazz/shared/dist/runs.js";
 import { extractCommandNames } from "../../application/lib/command-executor.js";
+import { deriveActiveTaskState, parseCarryover } from "./context-compaction.js";
+import type { ActiveTaskState, StructuredCarryover } from "./context-compaction.js";
 
 export class AgentState {
     runId: string | null = null;
@@ -10,6 +13,11 @@ export class AgentState {
     agentName: string | null = null;
     messages: z.infer<typeof MessageList> = [];
     lastAssistantMsg: z.infer<typeof AssistantMessage> | null = null;
+    compactedContextSummary: string | null = null;
+    compactedContextCarryover: StructuredCarryover | null = null;
+    compactedTaskState: ActiveTaskState | null = null;
+    compactedContextAnchorHash: string | null = null;
+    lastCompactionMessageCount: number | null = null;
     subflowStates: Record<string, AgentState> = {};
     toolCallIdMap: Record<string, z.infer<typeof ToolCallPart>> = {};
     pendingToolCalls: Record<string, true> = {};
@@ -188,6 +196,13 @@ export class AgentState {
                 delete this.pendingAskHumanRequests[ogEvent.toolCallId];
                 break;
             }
+            case "context-compaction-complete":
+                this.compactedContextSummary = event.summary;
+                this.compactedContextCarryover = parseCarryover(event.summary);
+                this.compactedTaskState = deriveActiveTaskState(this.compactedContextCarryover);
+                this.compactedContextAnchorHash = event.anchorHash;
+                this.lastCompactionMessageCount = event.messageCountBefore;
+                break;
         }
     }
 }

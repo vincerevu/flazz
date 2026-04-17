@@ -302,6 +302,7 @@ function App() {
     runId,
     conversation,
     currentAssistantMessage,
+    modelUsage,
     isProcessing,
     isStopping,
     processingRunIds,
@@ -568,6 +569,7 @@ function App() {
       onOpenFullScreen={toggleRightPaneMaximize}
       conversation={conversation}
       currentAssistantMessage={currentAssistantMessage}
+      modelUsage={modelUsage}
       chatTabStates={chatViewStateByTab}
       isProcessing={isProcessing}
       isStopping={isStopping}

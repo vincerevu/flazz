@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { WorkDir } from "../config/config.js";
 import { getNoteCreationStrictness } from "../config/note_creation_config.js";
 import { Agent, AssistantMessage } from "@flazz/shared";
-import { RunEvent } from "@flazz/shared";
+import { RunEvent } from "@flazz/shared/dist/runs.js";
 import { CopilotAgent } from "../application/assistant/agent.js";
 import container, { contextBuilder, runLearningService, runMemoryService } from "../di/container.js";
 import { IModelConfigRepo } from "../models/repo.js";
@@ -34,8 +34,13 @@ import {
     buildTools,
     executeToolOrchestrator,
     handleSubflowDelegation,
-    handlePermissionAndHumanRequests
+    handlePermissionAndHumanRequests,
+    trimMessagesForPrompt,
+    deriveRunCompactionMetrics,
 } from "./runtime/index.js";
+import { buildSafeRecentMessages } from "./runtime/history-window.js";
+import { prepareCompactedContext } from "./runtime/context-compaction.js";
+import { estimatePromptTokens, resolveModelContextBudget } from "./runtime/model-context-budget.js";
 import { isToolCallFinishReason } from "../llm/stream-normalizers/index.js";
 
 export interface IAgentRuntime {
@@ -159,6 +164,17 @@ export class AgentRuntime implements IAgentRuntime {
             try {
                 const completedRun = await this.runsRepo.fetch(runId);
                 if (completedRun) {
+                    const compactionMetrics = deriveRunCompactionMetrics(completedRun.log);
+                    if (compactionMetrics.totalAttempts > 0) {
+                        console.log(JSON.stringify({
+                            ts: new Date().toISOString(),
+                            level: "info",
+                            service: "agent-runtime",
+                            runId,
+                            message: "context compaction summary",
+                            ...compactionMetrics,
+                        }));
+                    }
                     runMemoryService.recordRun(completedRun);
                     if (!signal.aborted) {
                         await runLearningService.learnFromRun(completedRun);
@@ -515,19 +531,205 @@ export async function* streamAgent({
             sanitizeTextArtifacts: executionPolicy.sanitizeTextArtifacts,
         });
         
-        // Limit conversation history to prevent context overflow
-        const MAX_HISTORY = 20;
-        const recentMessages = state.messages.length > MAX_HISTORY 
-            ? state.messages.slice(-MAX_HISTORY)
-            : state.messages;
-        
-        if (state.messages.length > MAX_HISTORY) {
-            loopLogger.log(`truncating conversation history: ${state.messages.length} -> ${MAX_HISTORY} messages`);
+        // Budget prompt per model/provider rather than trimming by fixed message count.
+        const MINIMUM_RECENT_MESSAGES = 20;
+        const budget = resolveModelContextBudget(modelConfig.provider, modelId);
+        const trimmedPrompt = trimMessagesForPrompt(state.messages, MINIMUM_RECENT_MESSAGES);
+        if (trimmedPrompt.droppedMessages > 0 || trimmedPrompt.downgradedMessages > 0) {
+            loopLogger.log(
+                `trimmed prompt before compaction: dropped=${trimmedPrompt.droppedMessages} ` +
+                `downgraded=${trimmedPrompt.downgradedMessages} ` +
+                `messages=${state.messages.length}->${trimmedPrompt.messages.length}`
+            );
+        }
+        const promptMessages = trimmedPrompt.messages;
+        const estimatedPromptTokens = estimatePromptTokens({
+            messages: promptMessages,
+            instructions: instructionsWithDateTime,
+            tools,
+        });
+        const safeRecentMessages = buildSafeRecentMessages(promptMessages, MINIMUM_RECENT_MESSAGES);
+        let modelMessages = estimatedPromptTokens >= budget.compactionThreshold
+            ? safeRecentMessages
+            : promptMessages;
+
+        const messagesSinceLastCompaction = state.lastCompactionMessageCount == null
+            ? Number.POSITIVE_INFINITY
+            : Math.max(0, state.messages.length - state.lastCompactionMessageCount);
+        const cooldownSatisfied = messagesSinceLastCompaction >= budget.recompactCooldownMessages;
+        const mustCompactNow = estimatedPromptTokens >= budget.usableInputBudget;
+        const shouldCompact = estimatedPromptTokens >= budget.compactionThreshold
+            && (cooldownSatisfied || mustCompactNow);
+
+        if (!cooldownSatisfied && estimatedPromptTokens >= budget.compactionThreshold && !mustCompactNow) {
+            loopLogger.log(
+                `skipping compaction due to cooldown: est=${estimatedPromptTokens} ` +
+                `messagesSinceLast=${messagesSinceLastCompaction}/${budget.recompactCooldownMessages}`
+            );
+        }
+
+        if (shouldCompact) {
+            const compactionId = await idGenerator.next();
+            const estimatedTokensBefore = estimatePromptTokens({
+                messages: promptMessages,
+                instructions: instructionsWithDateTime,
+                tools,
+            });
+            const messageCountBefore = promptMessages.length;
+
+            loopLogger.log(
+                `preparing context compaction: est=${estimatedPromptTokens} threshold=${budget.compactionThreshold} `
+                + `target=${budget.targetPromptTokens} usable=${budget.usableInputBudget} context=${budget.contextLimit}`
+            );
+            const compactionStartEvent = {
+                runId,
+                type: "context-compaction-start",
+                compactionId,
+                strategy: "summary-window",
+                escalated: false,
+                messageCountBefore,
+                estimatedTokensBefore,
+                contextLimit: budget.contextLimit,
+                usableInputBudget: budget.usableInputBudget,
+                compactionThreshold: budget.compactionThreshold,
+                targetThreshold: budget.targetPromptTokens,
+                subflow: [],
+                ts: new Date().toISOString(),
+            } as z.infer<typeof RunEvent>;
+            yield* processEvent(compactionStartEvent);
+
+            try {
+                let compacted = await prepareCompactedContext({
+                    messages: promptMessages,
+                    model,
+                    signal,
+                    recentBudgetTokens: budget.recentMessagesBudget,
+                    minimumRecentMessages: MINIMUM_RECENT_MESSAGES,
+                    previousSummary: state.compactedContextSummary,
+                    previousAnchorHash: state.compactedContextAnchorHash,
+                    previousCarryover: state.compactedContextCarryover,
+                    previousTaskState: state.compactedTaskState,
+                });
+                let escalated = false;
+
+                if (compacted.snapshot) {
+                    const landedNearTarget = compacted.snapshot.estimatedTokensAfter <= budget.targetPromptTokens;
+                    const savedEnough = compacted.snapshot.tokensSaved >= budget.minimumSavingsTokens;
+                    if (!landedNearTarget || !savedEnough) {
+                        escalated = true;
+                        const escalatedStartEvent = {
+                            runId,
+                            type: "context-compaction-start",
+                            compactionId: `${compactionId}-escalated`,
+                            strategy: "summary-window",
+                            escalated: true,
+                            messageCountBefore,
+                            estimatedTokensBefore,
+                            contextLimit: budget.contextLimit,
+                            usableInputBudget: budget.usableInputBudget,
+                            compactionThreshold: budget.compactionThreshold,
+                            targetThreshold: budget.targetPromptTokens,
+                            subflow: [],
+                            ts: new Date().toISOString(),
+                        } as z.infer<typeof RunEvent>;
+                        yield* processEvent(escalatedStartEvent);
+
+                        loopLogger.log(
+                            `escalating compaction: after=${compacted.snapshot.estimatedTokensAfter} `
+                            + `target=${budget.targetPromptTokens} saved=${compacted.snapshot.tokensSaved}`
+                        );
+
+                        compacted = await prepareCompactedContext({
+                            messages: promptMessages,
+                            model,
+                            signal,
+                            recentBudgetTokens: Math.max(8_000, Math.floor(budget.recentMessagesBudget * 0.7)),
+                            minimumRecentMessages: 10,
+                            previousSummary: state.compactedContextSummary,
+                            previousAnchorHash: state.compactedContextAnchorHash,
+                            previousCarryover: state.compactedContextCarryover,
+                            previousTaskState: state.compactedTaskState,
+                        });
+                    }
+                }
+                modelMessages = compacted.messages;
+
+                if (compacted.snapshot) {
+                    const landedNearTarget = compacted.snapshot.estimatedTokensAfter <= budget.targetPromptTokens;
+                    const savedEnough = compacted.snapshot.tokensSaved >= budget.minimumSavingsTokens;
+                    loopLogger.log(
+                        `compacted history: ${compacted.snapshot.omittedMessages} older messages summarized, `
+                        + `${messageCountBefore} -> ${modelMessages.length} prompt messages `
+                        + `(saved=${compacted.snapshot.tokensSaved}, target=${budget.targetPromptTokens}, `
+                        + `landed=${landedNearTarget}, minSaved=${budget.minimumSavingsTokens})`
+                    );
+                    const compactionCompleteEvent = {
+                        runId,
+                        type: "context-compaction-complete",
+                        compactionId,
+                        strategy: "summary-window",
+                        escalated,
+                        summary: compacted.snapshot.summary,
+                        anchorHash: compacted.snapshot.anchorHash,
+                        provenanceRefs: compacted.snapshot.provenanceRefs,
+                        omittedMessages: compacted.snapshot.omittedMessages,
+                        recentMessages: compacted.snapshot.recentMessages,
+                        messageCountBefore,
+                        messageCountAfter: modelMessages.length,
+                        estimatedTokensBefore: compacted.snapshot.estimatedTokensBefore,
+                        estimatedTokensAfter: compacted.snapshot.estimatedTokensAfter,
+                        tokensSaved: compacted.snapshot.tokensSaved,
+                        reductionPercent: compacted.snapshot.reductionPercent,
+                        contextLimit: budget.contextLimit,
+                        usableInputBudget: budget.usableInputBudget,
+                        compactionThreshold: budget.compactionThreshold,
+                        targetThreshold: budget.targetPromptTokens,
+                        reused: compacted.snapshot.reused,
+                        subflow: [],
+                        ts: new Date().toISOString(),
+                    } as z.infer<typeof RunEvent>;
+                    yield* processEvent(compactionCompleteEvent);
+                    state.compactedContextCarryover = compacted.snapshot.carryover;
+                    state.compactedTaskState = compacted.snapshot.taskState;
+
+                    if (!landedNearTarget || !savedEnough) {
+                        loopLogger.log(
+                            `compaction under target: after=${compacted.snapshot.estimatedTokensAfter} `
+                            + `target=${budget.targetPromptTokens} saved=${compacted.snapshot.tokensSaved}`
+                        );
+                    }
+                }
+            } catch (error) {
+                const compactionError = error instanceof Error ? error.message : "Context compaction failed";
+                emitLog("warn", "context compaction failed", {
+                    error: compactionError,
+                    messages: state.messages.length,
+                });
+                const compactionFailedEvent = {
+                    runId,
+                    type: "context-compaction-failed",
+                    compactionId,
+                    strategy: "summary-window",
+                    escalated: false,
+                    error: compactionError,
+                    messageCountBefore,
+                    estimatedTokensBefore,
+                    contextLimit: budget.contextLimit,
+                    usableInputBudget: budget.usableInputBudget,
+                    compactionThreshold: budget.compactionThreshold,
+                    targetThreshold: budget.targetPromptTokens,
+                    subflow: [],
+                    ts: new Date().toISOString(),
+                } as z.infer<typeof RunEvent>;
+                yield* processEvent(compactionFailedEvent);
+                modelMessages = safeRecentMessages;
+                loopLogger.log(`falling back to safe recent history: ${messageCountBefore} -> ${modelMessages.length} messages`);
+            }
         }
         
         for await (const event of streamLlm(
             model,
-            recentMessages,
+            modelMessages,
             instructionsWithDateTime,
             tools,
             signal,
