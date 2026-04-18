@@ -95,6 +95,14 @@ function candidateToPanelItem(candidate: SkillCandidate): SkillPanelItem {
     status: candidate.status,
     confidence: candidate.confidence,
     occurrences: candidate.occurrences,
+    relatedSkillName: candidate.relatedSkillName,
+    recentRunIds: candidate.recentRunIds,
+    intentFingerprint: candidate.intentFingerprint,
+    toolSequenceFingerprint: candidate.toolSequenceFingerprint,
+    outputShape: candidate.outputShape,
+    explicitUserReuseSignal: candidate.explicitUserReuseSignal,
+    complexityScore: candidate.complexityScore,
+    recurrenceScore: candidate.recurrenceScore,
   }
 }
 

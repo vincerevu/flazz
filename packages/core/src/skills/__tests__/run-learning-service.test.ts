@@ -9,8 +9,11 @@ import { LearningStateRepo } from '../learning-state-repo.js';
 import { SkillRepo } from '../skill-repo.js';
 import {
   buildRunSignature,
+  deriveRunLearningSignals,
   getLoadedSkills,
+  normalizeLearningDecision,
   runHasFailureSignal,
+  scoreRunForLearning,
   shouldConsiderRun,
 } from '../run-learning-service.js';
 
@@ -101,6 +104,14 @@ test('shouldConsiderRun accepts successful complex runs', () => {
   assert.deepEqual(shouldConsiderRun(run), { ok: true });
 });
 
+test('shouldConsiderRun still accepts shorter valid workflows', () => {
+  const run = createRunFixture({
+    toolNames: ['workspace-readFile', 'workspace-writeFile', 'workspace-search'],
+  });
+
+  assert.deepEqual(shouldConsiderRun(run), { ok: true });
+});
+
 test('shouldConsiderRun rejects failed runs and reports the reason', () => {
   const run = createRunFixture({ withError: true });
   assert.deepEqual(shouldConsiderRun(run), {
@@ -109,11 +120,13 @@ test('shouldConsiderRun rejects failed runs and reports the reason', () => {
   });
 });
 
-test('buildRunSignature is stable across duplicate tool ordering noise', () => {
+test('buildRunSignature is stable across duplicate tool noise while preserving ordered workflow shape', () => {
   const a = createRunFixture({ toolNames: ['loadSkill', 'workspace-readFile', 'workspace-writeFile', 'workspace-readFile', 'workspace-grep'] });
-  const b = createRunFixture({ toolNames: ['workspace-grep', 'workspace-writeFile', 'loadSkill', 'workspace-readFile'] });
+  const b = createRunFixture({ toolNames: ['loadSkill', 'workspace-readFile', 'workspace-writeFile', 'workspace-grep'] });
+  const c = createRunFixture({ toolNames: ['workspace-grep', 'workspace-writeFile', 'loadSkill', 'workspace-readFile'] });
 
   assert.equal(buildRunSignature(a), buildRunSignature(b));
+  assert.notEqual(buildRunSignature(a), buildRunSignature(c));
 });
 
 test('getLoadedSkills extracts successful loadSkill tool results', () => {
@@ -133,6 +146,50 @@ test('runHasFailureSignal detects both error and stop events', () => {
   assert.equal(runHasFailureSignal(createRunFixture({ withError: true })), true);
   assert.equal(runHasFailureSignal(createRunFixture({ withStop: true })), true);
   assert.equal(runHasFailureSignal(createRunFixture()), false);
+});
+
+test('deriveRunLearningSignals captures reuse cues and output shape', () => {
+  const run = createRunFixture({
+    toolNames: ['workspace-readFile', 'workspace-search', 'workspace-writeFile'],
+  });
+
+  const signals = deriveRunLearningSignals(run);
+  assert.equal(signals.explicitUserReuseSignal, true);
+  assert.equal(signals.outputShape, 'narrative');
+  assert.ok(signals.complexityScore > 0.3);
+  assert.equal(signals.orderedToolNames.join(','), 'workspace-readFile,workspace-search,workspace-writeFile');
+});
+
+test('scoreRunForLearning rewards recurrence and explicit reuse signals', () => {
+  const signals = deriveRunLearningSignals(createRunFixture());
+  const score = scoreRunForLearning({
+    signals,
+    recurrenceScore: 0.44,
+    relatedSkillScore: 0.5,
+  });
+
+  assert.ok(score >= 0.6);
+});
+
+test('normalizeLearningDecision converts create into update for a strong related skill match', () => {
+  const normalized = normalizeLearningDecision({
+    decision: {
+      action: 'create',
+      name: 'deploy-workflow-v2',
+      description: 'Improved deploy workflow',
+      content: '---\nname: deploy-workflow\ndescription: Improved deploy workflow\n---\n## Steps\n- Do it',
+    },
+    relatedWorkspaceSkill: {
+      name: 'deploy-workflow',
+      score: 0.82,
+    },
+    recurrenceScore: 0.48,
+  });
+
+  assert.equal(normalized.action, 'update');
+  if (normalized.action === 'update') {
+    assert.equal(normalized.targetSkill, 'deploy-workflow');
+  }
 });
 
 test('LearningStateRepo tracks candidate promotion and failure stats', () => {
@@ -165,13 +222,56 @@ test('rejected candidates return to pending and gain confidence only after recur
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-learning-'));
   try {
     const repo = new LearningStateRepo(tempDir);
-    repo.bumpCandidate('sig-2', 'run-1', 'triage-workflow');
+    repo.bumpCandidate('sig-2', 'run-1', 'triage-workflow', {
+      intentFingerprint: 'triage-issues',
+      toolSequenceFingerprint: 'workspace-search-workspace-readFile',
+      explicitUserReuseSignal: true,
+      complexityScore: 0.6,
+      recurrenceScore: 0.22,
+    });
     repo.rejectCandidate('sig-2');
-    const retried = repo.bumpCandidate('sig-2', 'run-2', 'triage-workflow');
+    const retried = repo.bumpCandidate('sig-2', 'run-2', 'triage-workflow', {
+      intentFingerprint: 'triage-issues',
+      toolSequenceFingerprint: 'workspace-search-workspace-readFile',
+      explicitUserReuseSignal: true,
+      complexityScore: 0.6,
+      recurrenceScore: 0.44,
+    });
 
     assert.equal(retried.status, 'pending');
     assert.equal(retried.occurrences, 2);
     assert.ok(retried.confidence >= 0.5);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('LearningStateRepo can find related candidates by recurrence fingerprints', () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-learning-'));
+  try {
+    const repo = new LearningStateRepo(tempDir);
+    repo.bumpCandidate('sig-a', 'run-1', 'deploy-workflow', {
+      intentFingerprint: 'deploy-workflow',
+      toolSequenceFingerprint: 'workspace-readFile-workspace-writeFile',
+      relatedSkillName: 'deploy-workflow',
+      complexityScore: 0.7,
+      recurrenceScore: 0.2,
+    });
+    repo.bumpCandidate('sig-b', 'run-2', 'deploy-checklist', {
+      intentFingerprint: 'deploy-workflow',
+      toolSequenceFingerprint: 'workspace-readFile-workspace-writeFile',
+      relatedSkillName: 'deploy-workflow',
+      complexityScore: 0.75,
+      recurrenceScore: 0.44,
+    });
+
+    const related = repo.findRelatedCandidates({
+      intentFingerprint: 'deploy-workflow',
+      toolSequenceFingerprint: 'workspace-readFile-workspace-writeFile',
+      relatedSkillName: 'deploy-workflow',
+    });
+
+    assert.equal(related.length, 2);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

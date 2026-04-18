@@ -84,6 +84,8 @@ export function SkillsMainPanel({
                   <StatCard label="Rejected" value={String(learningStats.rejectedCandidateCount)} />
                   <StatCard label="Tracked skills" value={String(learningStats.trackedSkillCount)} />
                   <StatCard label="Repair signals" value={String(learningStats.repairCandidateCount)} />
+                  <StatCard label="High-confidence" value={String(learningStats.highConfidenceCandidateCount)} />
+                  <StatCard label="Avg confidence" value={`${Math.round(learningStats.averageCandidateConfidence * 100)}%`} />
                 </div>
               </div>
             )}
@@ -97,6 +99,38 @@ export function SkillsMainPanel({
                 <div className="mb-4 grid gap-3 sm:grid-cols-2">
                   <StatCard label="Confidence" value={`${Math.round(selectedSkill.confidence * 100)}%`} />
                   <StatCard label="Matched runs" value={String(selectedSkill.occurrences)} />
+                  <StatCard label="Recurrence" value={`${Math.round(selectedSkill.recurrenceScore * 100)}%`} />
+                  <StatCard label="Complexity" value={`${Math.round(selectedSkill.complexityScore * 100)}%`} />
+                </div>
+                <div className="mb-4 space-y-3 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
+                  {selectedSkill.relatedSkillName ? (
+                    <div>
+                      <span className="font-medium text-foreground">Closest existing skill:</span>{' '}
+                      {selectedSkill.relatedSkillName}
+                    </div>
+                  ) : null}
+                  {selectedSkill.outputShape ? (
+                    <div>
+                      <span className="font-medium text-foreground">Observed output shape:</span>{' '}
+                      {selectedSkill.outputShape}
+                    </div>
+                  ) : null}
+                  <div>
+                    <span className="font-medium text-foreground">Explicit reuse request:</span>{' '}
+                    {selectedSkill.explicitUserReuseSignal ? 'yes' : 'no'}
+                  </div>
+                  {selectedSkill.recentRunIds.length > 0 ? (
+                    <div>
+                      <div className="mb-1 font-medium text-foreground">Recent matching runs</div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedSkill.recentRunIds.map((runId) => (
+                          <Badge key={runId} variant="outline" className="rounded-full px-2 text-[11px] font-normal">
+                            {runId}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <Button

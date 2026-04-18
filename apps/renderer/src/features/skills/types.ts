@@ -31,6 +31,14 @@ export type SkillCandidateItem = {
   status: 'pending' | 'promoted' | 'rejected'
   confidence: number
   occurrences: number
+  relatedSkillName?: string
+  recentRunIds: string[]
+  intentFingerprint?: string
+  toolSequenceFingerprint?: string
+  outputShape?: string
+  explicitUserReuseSignal: boolean
+  complexityScore: number
+  recurrenceScore: number
 }
 
 export type SkillPanelItem = SkillItem | SkillCandidateItem
