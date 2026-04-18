@@ -16,6 +16,14 @@ const LearningCandidate = z.object({
   draftContent: z.string().optional(),
   rationale: z.string().optional(),
   promotedSkillName: z.string().optional(),
+  relatedSkillName: z.string().optional(),
+  recentRunIds: z.array(z.string()).default([]),
+  intentFingerprint: z.string().optional(),
+  toolSequenceFingerprint: z.string().optional(),
+  outputShape: z.string().optional(),
+  explicitUserReuseSignal: z.boolean().default(false),
+  complexityScore: z.number().min(0).max(1).default(0),
+  recurrenceScore: z.number().min(0).max(1).default(0),
 });
 
 const LearnedSkillStats = z.object({
@@ -57,12 +65,20 @@ function computeCandidateConfidence(candidate: {
   proposedDescription?: string;
   rationale?: string;
   status?: "pending" | "promoted" | "rejected";
+  relatedSkillName?: string;
+  explicitUserReuseSignal?: boolean;
+  complexityScore?: number;
+  recurrenceScore?: number;
 }): number {
-  let score = 0.2;
-  score += Math.min(candidate.occurrences, 3) * 0.2;
+  let score = 0.1;
+  score += Math.min(candidate.occurrences, 4) * 0.12;
   if (candidate.draftContent) score += 0.2;
   if (candidate.proposedDescription) score += 0.1;
   if (candidate.rationale) score += 0.05;
+  if (candidate.relatedSkillName) score += 0.08;
+  if (candidate.explicitUserReuseSignal) score += 0.12;
+  score += Math.max(0, Math.min(1, candidate.complexityScore ?? 0)) * 0.16;
+  score += Math.max(0, Math.min(1, candidate.recurrenceScore ?? 0)) * 0.17;
   if (candidate.status === "promoted") score = 1;
   if (candidate.status === "rejected") score = Math.min(score, 0.2);
   return Math.max(0, Math.min(1, Number(score.toFixed(2))));
@@ -86,34 +102,80 @@ export class LearningStateRepo {
     return state.candidates[signature] ?? null;
   }
 
-  bumpCandidate(signature: string, runId: string, proposedSkillName?: string): Candidate {
+  bumpCandidate(
+    signature: string,
+    runId: string,
+    proposedSkillName?: string,
+    metadata?: {
+      relatedSkillName?: string;
+      intentFingerprint?: string;
+      toolSequenceFingerprint?: string;
+      outputShape?: string;
+      explicitUserReuseSignal?: boolean;
+      complexityScore?: number;
+      recurrenceScore?: number;
+    }
+  ): Candidate {
     const state = this.load();
     const now = new Date().toISOString();
     const existing = state.candidates[signature];
+    const recentRunIds = existing
+      ? Array.from(new Set([...existing.recentRunIds, runId])).slice(-5)
+      : [runId];
 
     const next: Candidate = existing
       ? {
           ...existing,
           confidence: computeCandidateConfidence({
             ...existing,
+            status: existing.status === "rejected" ? "pending" : existing.status,
             occurrences: existing.occurrences + 1,
             proposedSkillName: proposedSkillName ?? existing.proposedSkillName,
+            relatedSkillName: metadata?.relatedSkillName ?? existing.relatedSkillName,
+            explicitUserReuseSignal:
+              metadata?.explicitUserReuseSignal ?? existing.explicitUserReuseSignal,
+            complexityScore: metadata?.complexityScore ?? existing.complexityScore,
+            recurrenceScore: metadata?.recurrenceScore ?? existing.recurrenceScore,
           }),
           occurrences: existing.occurrences + 1,
           lastSeenAt: now,
           lastRunId: runId,
           status: existing.status === "rejected" ? "pending" : existing.status,
           proposedSkillName: proposedSkillName ?? existing.proposedSkillName,
+          relatedSkillName: metadata?.relatedSkillName ?? existing.relatedSkillName,
+          recentRunIds,
+          intentFingerprint: metadata?.intentFingerprint ?? existing.intentFingerprint,
+          toolSequenceFingerprint:
+            metadata?.toolSequenceFingerprint ?? existing.toolSequenceFingerprint,
+          outputShape: metadata?.outputShape ?? existing.outputShape,
+          explicitUserReuseSignal:
+            metadata?.explicitUserReuseSignal ?? existing.explicitUserReuseSignal,
+          complexityScore: metadata?.complexityScore ?? existing.complexityScore,
+          recurrenceScore: metadata?.recurrenceScore ?? existing.recurrenceScore,
         }
       : {
           signature,
           status: "pending",
-          confidence: computeCandidateConfidence({ occurrences: 1 }),
+          confidence: computeCandidateConfidence({
+            occurrences: 1,
+            relatedSkillName: metadata?.relatedSkillName,
+            explicitUserReuseSignal: metadata?.explicitUserReuseSignal,
+            complexityScore: metadata?.complexityScore,
+            recurrenceScore: metadata?.recurrenceScore,
+          }),
           occurrences: 1,
           firstSeenAt: now,
           lastSeenAt: now,
           lastRunId: runId,
           proposedSkillName,
+          relatedSkillName: metadata?.relatedSkillName,
+          recentRunIds,
+          intentFingerprint: metadata?.intentFingerprint,
+          toolSequenceFingerprint: metadata?.toolSequenceFingerprint,
+          outputShape: metadata?.outputShape,
+          explicitUserReuseSignal: metadata?.explicitUserReuseSignal ?? false,
+          complexityScore: metadata?.complexityScore ?? 0,
+          recurrenceScore: metadata?.recurrenceScore ?? 0,
         };
 
     state.candidates[signature] = next;
@@ -163,6 +225,10 @@ export class LearningStateRepo {
       proposedDescription?: string;
       draftContent?: string;
       rationale?: string;
+      relatedSkillName?: string;
+      explicitUserReuseSignal?: boolean;
+      complexityScore?: number;
+      recurrenceScore?: number;
     }
   ): Candidate | null {
     const state = this.load();
@@ -179,12 +245,22 @@ export class LearningStateRepo {
       proposedDescription: updates.proposedDescription ?? existing.proposedDescription,
       draftContent: updates.draftContent ?? existing.draftContent,
       rationale: updates.rationale ?? existing.rationale,
+      relatedSkillName: updates.relatedSkillName ?? existing.relatedSkillName,
+      explicitUserReuseSignal:
+        updates.explicitUserReuseSignal ?? existing.explicitUserReuseSignal,
+      complexityScore: updates.complexityScore ?? existing.complexityScore,
+      recurrenceScore: updates.recurrenceScore ?? existing.recurrenceScore,
       confidence: computeCandidateConfidence({
         ...existing,
         status: existing.status === "promoted" ? "promoted" : "pending",
         proposedDescription: updates.proposedDescription ?? existing.proposedDescription,
         draftContent: updates.draftContent ?? existing.draftContent,
         rationale: updates.rationale ?? existing.rationale,
+        relatedSkillName: updates.relatedSkillName ?? existing.relatedSkillName,
+        explicitUserReuseSignal:
+          updates.explicitUserReuseSignal ?? existing.explicitUserReuseSignal,
+        complexityScore: updates.complexityScore ?? existing.complexityScore,
+        recurrenceScore: updates.recurrenceScore ?? existing.recurrenceScore,
       }),
       lastSeenAt: new Date().toISOString(),
     };
@@ -197,6 +273,35 @@ export class LearningStateRepo {
   listCandidates(): Candidate[] {
     const state = this.load();
     return Object.values(state.candidates).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  findRelatedCandidates(filters: {
+    signature?: string;
+    intentFingerprint?: string;
+    toolSequenceFingerprint?: string;
+    relatedSkillName?: string;
+  }): Candidate[] {
+    return Object.values(this.load().candidates).filter((candidate) => {
+      if (filters.signature && candidate.signature === filters.signature) {
+        return true;
+      }
+
+      const sameIntent =
+        filters.intentFingerprint &&
+        candidate.intentFingerprint === filters.intentFingerprint;
+      const sameToolSequence =
+        filters.toolSequenceFingerprint &&
+        candidate.toolSequenceFingerprint === filters.toolSequenceFingerprint;
+      const sameRelatedSkill =
+        filters.relatedSkillName &&
+        candidate.relatedSkillName === filters.relatedSkillName;
+
+      return Boolean(
+        (sameIntent && sameToolSequence) ||
+          (sameIntent && sameRelatedSkill) ||
+          (sameToolSequence && sameRelatedSkill)
+      );
+    });
   }
 
   getState(): LearningState {

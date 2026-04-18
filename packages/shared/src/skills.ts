@@ -45,6 +45,14 @@ export const SkillCandidate = z.object({
   firstSeenAt: z.string(),
   lastSeenAt: z.string(),
   promotedSkillName: z.string().optional(),
+  relatedSkillName: z.string().optional(),
+  recentRunIds: z.array(z.string()).default([]),
+  intentFingerprint: z.string().optional(),
+  toolSequenceFingerprint: z.string().optional(),
+  outputShape: z.string().optional(),
+  explicitUserReuseSignal: z.boolean().default(false),
+  complexityScore: z.number().default(0),
+  recurrenceScore: z.number().default(0),
 });
 
 export const SkillLearningStats = z.object({
@@ -54,6 +62,8 @@ export const SkillLearningStats = z.object({
   rejectedCandidateCount: z.number(),
   trackedSkillCount: z.number(),
   repairCandidateCount: z.number(),
+  highConfidenceCandidateCount: z.number().default(0),
+  averageCandidateConfidence: z.number().default(0),
 });
 
 export const SkillRevision = z.object({
