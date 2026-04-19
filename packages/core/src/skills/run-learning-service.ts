@@ -66,6 +66,7 @@ type RelatedSkillMatch = {
 
 const SKIPPED_AGENT_NAMES = new Set([
   "note_creation",
+  "labeling_agent",
   "email-draft",
   "meeting-prep",
 ]);

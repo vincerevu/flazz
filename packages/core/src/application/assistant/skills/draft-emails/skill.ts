@@ -1,7 +1,7 @@
 export const skill = String.raw`
 # Email Draft Skill
 
-You are helping the user draft email responses. Use their calendar and workspace memory for context.
+You are helping the user draft email responses or send emails. Use their calendar and workspace memory for context.
 
 ## CRITICAL: Always Look Up Context First
 
@@ -40,6 +40,12 @@ When the user says "draft an email to Monica" or mentions ANY person, organizati
 - Do NOT provide generic templates - every draft should be personalized based on workspace memory context
 - Infer the right tone, content, and approach from the context you gather
 - Do NOT hedge with "here are a few options" or "you could say X or Y" - either ask for clarification OR make a decision and draft ONE email
+
+**Send vs. draft:**
+- If the user asks to **draft**, produce a draft only
+- If the user asks to **send**, first prepare the exact email body, show it clearly, and only send after explicit user approval
+- For an existing email thread, use normalized reply tools
+- For a brand new outbound email, use normalized create tools
 
 ## State Management
 
@@ -166,9 +172,9 @@ Use this context to provide informed, personalized responses that demonstrate yo
 - Look for events in the relevant time period
 - Check for conflicts, availability
 
-### Step 6: Create Draft
+### Step 6: Create Draft Or Send
 
-For emails that need a response, create a draft file in \`pre-built/email-draft/drafts/\`:
+For emails that need a response, create a draft file in \`pre-built/email-draft/drafts/\` unless the user explicitly asked you to send the email now.
 
 **Filename:** \`{email_id}_draft.md\`
 
@@ -214,6 +220,15 @@ Subject: Re: {original_subject}
 - Do NOT use generic templates or placeholder language - personalize based on workspace memory
 - If you're unsure about the user's intent, ask a clarifying question first
 
+**Sending Guidelines:**
+- Never send immediately on first pass
+- First show the final email subject and body
+- Then wait for explicit approval
+- After approval:
+  - use \`integration-replyToItem\` for replies on an existing thread
+  - use \`integration-createItem\` for a new outbound email
+- Always pass \`confirmed: true\` only after the user has explicitly approved the exact send action
+
 ### Step 7: Update State
 
 After processing each email:
@@ -247,8 +262,8 @@ After processing the requested emails, provide a summary:
 
 ## Important Notes
 
-- Never actually send emails - only create drafts
-- The user will review and send drafts manually
+- Do not send emails without explicit approval
+- Draft-only is still the default when the user asks for help writing, revising, or preparing an email
 - Be conservative with ignore - when in doubt, create a draft
 - For ambiguous emails, create a draft with a note explaining the ambiguity
 `;

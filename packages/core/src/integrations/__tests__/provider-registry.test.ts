@@ -4,15 +4,15 @@ import { getProviderStatus, listSupportedProviderDescriptors } from "../provider
 import { PROVIDER_CATALOG } from "../provider-catalog.js";
 
 test("provider catalog keeps a curated production-grade provider set", () => {
-  assert.ok(PROVIDER_CATALOG.length >= 30, `expected at least 30 providers, got ${PROVIDER_CATALOG.length}`);
-  assert.ok(PROVIDER_CATALOG.length <= 35, `expected a curated provider set, got ${PROVIDER_CATALOG.length}`);
+  assert.ok(PROVIDER_CATALOG.length >= 31, `expected at least 31 providers, got ${PROVIDER_CATALOG.length}`);
+  assert.ok(PROVIDER_CATALOG.length <= 36, `expected a curated provider set, got ${PROVIDER_CATALOG.length}`);
 });
 
 test("supported descriptors cover normalized providers only", () => {
   const supported = listSupportedProviderDescriptors();
   const normalizedProviders = PROVIDER_CATALOG.filter((entry) => entry.normalizedSupport !== "none");
   assert.equal(supported.length, normalizedProviders.length);
-  assert.ok(supported.length >= 30, `expected at least 30 normalized providers, got ${supported.length}`);
+  assert.ok(supported.length >= 31, `expected at least 31 normalized providers, got ${supported.length}`);
   assert.ok(supported.every((entry) => entry.capabilities.length > 0));
 });
 
@@ -37,6 +37,7 @@ test("generic request policies are exposed for providers with strong defaults", 
   const gmail = getProviderStatus("gmail", true);
   const slack = getProviderStatus("slack", true);
   const linkedin = getProviderStatus("linkedin", true);
+  const googleMeet = getProviderStatus("googlemeet", true);
 
   assert.equal(gmail.genericRequestPolicy, "list_recent_first");
   assert.equal(gmail.genericRequestTarget, "recent email inbox");
@@ -45,6 +46,9 @@ test("generic request policies are exposed for providers with strong defaults", 
   assert.equal(linkedin.normalizedSupport, "full");
   assert.equal(linkedin.resourceType, "record");
   assert.equal(linkedin.genericRequestTarget, "your profile, managed company pages, or a post draft");
+  assert.equal(googleMeet.normalizedSupport, "full");
+  assert.equal(googleMeet.resourceType, "event");
+  assert.equal(googleMeet.genericRequestPolicy, "needs_explicit_scope");
 });
 
 test("providers without live toolkit coverage are exposed as unsupported instead of stale normalized support", () => {

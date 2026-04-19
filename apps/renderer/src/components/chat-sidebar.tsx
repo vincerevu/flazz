@@ -89,6 +89,7 @@ interface ChatSidebarProps {
   conversation: ConversationItem[]
   currentAssistantMessage: string
   modelUsage?: import('ai').LanguageModelUsage | null
+  modelUsageUpdatedAt?: number | null
   chatTabStates?: Record<string, ChatTabViewState>
   isProcessing: boolean
   isStopping?: boolean
@@ -128,6 +129,7 @@ export function ChatSidebar({
   conversation,
   currentAssistantMessage,
   modelUsage = null,
+  modelUsageUpdatedAt = null,
   chatTabStates = {},
   isProcessing,
   isStopping,
@@ -241,6 +243,7 @@ export function ChatSidebar({
     conversation,
     currentAssistantMessage,
     modelUsage,
+    modelUsageUpdatedAt,
     pendingAskHumanRequests,
     allPermissionRequests,
     permissionResponses,
@@ -249,6 +252,7 @@ export function ChatSidebar({
     conversation,
     currentAssistantMessage,
     modelUsage,
+    modelUsageUpdatedAt,
     pendingAskHumanRequests,
     allPermissionRequests,
     permissionResponses,

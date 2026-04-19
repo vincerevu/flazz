@@ -2,15 +2,17 @@
 
 import * as React from "react"
 import { useState, useEffect, useCallback } from "react"
-import { Server, Key, Shield, Palette, Loader2, CheckCircle2, Plug } from "lucide-react"
+import { Server, Key, Shield, Palette, Loader2, CheckCircle2, Plug, X } from "lucide-react"
 
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -28,6 +30,7 @@ import { modelsIpc } from "@/services/models-ipc"
 import { modelsActionsIpc } from "@/services/models-actions-ipc"
 
 type ConfigTab = "accounts" | "models" | "mcp" | "security" | "appearance"
+const CHAT_NOTIFICATIONS_STORAGE_KEY = 'flazz:chat-notifications-enabled'
 
 interface TabConfig {
   id: ConfigTab
@@ -62,7 +65,7 @@ const tabs: TabConfig[] = [
     id: "security",
     label: "Security",
     icon: Shield,
-    path: "config/security.json",
+    path: "config/system-policy.json",
     description: "Configure allowed shell commands",
   },
   {
@@ -103,6 +106,19 @@ function AccountsSettings() {
 
 function AppearanceSettings() {
   const { colorScheme, setColorScheme } = useTheme()
+  const [chatNotificationsEnabled, setChatNotificationsEnabled] = React.useState<boolean>(() => {
+    if (typeof window === "undefined") return true
+    const raw = window.localStorage.getItem(CHAT_NOTIFICATIONS_STORAGE_KEY)
+    return raw == null ? true : raw === "true"
+  })
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(CHAT_NOTIFICATIONS_STORAGE_KEY, String(chatNotificationsEnabled))
+    window.dispatchEvent(new CustomEvent("flazz:chat-notifications-changed", {
+      detail: { enabled: chatNotificationsEnabled },
+    }))
+  }, [chatNotificationsEnabled])
 
   return (
     <div className="flex flex-col gap-2">
@@ -128,6 +144,12 @@ function AppearanceSettings() {
               </SelectItem>
             </SelectContent>
           </Select>
+        </AppearanceRow>
+        <AppearanceRow
+          title="Chat notifications"
+          description="Show a system notification when Flazz finishes a run or needs your answer while you're not looking at that chat."
+        >
+          <Switch checked={chatNotificationsEnabled} onCheckedChange={setChatNotificationsEnabled} />
         </AppearanceRow>
       </div>
     </div>
@@ -533,9 +555,25 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
       setContent(formattedContent)
       setOriginalContent(formattedContent)
     } catch {
-      setError(`Failed to load ${tabConfig.label} config`)
-      setContent("")
-      setOriginalContent("")
+      if (tab === "security") {
+        const fallbackContent = formatJson(JSON.stringify([
+          "cat",
+          "date",
+          "echo",
+          "grep",
+          "jq",
+          "ls",
+          "pwd",
+          "yq",
+          "whoami",
+        ]))
+        setContent(fallbackContent)
+        setOriginalContent(fallbackContent)
+      } else {
+        setError(`Failed to load ${tabConfig.label} config`)
+        setContent("")
+        setOriginalContent("")
+      }
     } finally {
       setLoading(false)
     }
@@ -585,6 +623,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
+        showCloseButton={false}
         className="max-w-[900px]! w-[900px] h-[min(720px,calc(100vh-3rem))] p-0 gap-0 overflow-hidden"
       >
         <div className="flex h-full overflow-hidden">
@@ -615,7 +654,16 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
           {/* Main content */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
             {/* Header */}
-            <div className="px-4 py-3 border-b">
+            <div className="px-4 py-3 border-b relative">
+              <DialogClose asChild>
+                <button
+                  type="button"
+                  aria-label="Close settings"
+                  className="absolute right-3 top-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <X className="size-4" />
+                </button>
+              </DialogClose>
               <h3 className="font-medium text-sm">{activeTabConfig.label}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {activeTabConfig.description}

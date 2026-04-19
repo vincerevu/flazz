@@ -3,7 +3,7 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import { glob } from "glob";
 import { WorkDir } from "../../../config/config.js";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import * as workspace from "../../../workspace/workspace.js";
 import { generateText } from "ai";
 import { createProvider } from "../../../models/models.js";
@@ -37,6 +37,63 @@ const LLMPARSE_MIME_TYPES: Record<string, string> = {
     ".bmp": "image/bmp",
     ".tiff": "image/tiff",
 };
+
+async function grepFallbackSearch({
+    pattern,
+    resolvedTargetPath,
+    fileGlob,
+    maxResults,
+}: {
+    pattern: string;
+    resolvedTargetPath: string;
+    fileGlob?: string;
+    maxResults: number;
+}) {
+    const regex = new RegExp(pattern, "i");
+    const stats = await fs.lstat(resolvedTargetPath);
+    const files = stats.isDirectory()
+        ? await glob(fileGlob ?? "**/*", {
+            cwd: resolvedTargetPath,
+            absolute: true,
+            nodir: true,
+            dot: false,
+        })
+        : [resolvedTargetPath];
+
+    const matches: Array<{ file: string; line: number; content: string }> = [];
+    for (const file of files) {
+        let content: string;
+        try {
+            content = await fs.readFile(file, "utf8");
+        } catch {
+            continue;
+        }
+
+        const lines = content.split(/\r?\n/);
+        for (let index = 0; index < lines.length; index += 1) {
+            const line = lines[index]!;
+            if (!regex.test(line)) continue;
+            matches.push({
+                file: path.relative(WorkDir, file),
+                line: index + 1,
+                content: line.trim(),
+            });
+            if (matches.length >= maxResults) {
+                return {
+                    matches,
+                    count: matches.length,
+                    tool: 'js-grep',
+                };
+            }
+        }
+    }
+
+    return {
+        matches,
+        count: matches.length,
+        tool: 'js-grep',
+    };
+}
 
 export const workspaceTools = {
     'workspace-getRoot': {
@@ -374,15 +431,19 @@ export const workspaceTools = {
                 try {
                     const rgArgs = [
                         '--json',
-                        '-e', JSON.stringify(pattern),
-                        contextLines > 0 ? `-C ${contextLines}` : '',
-                        fileGlob ? `--glob ${JSON.stringify(fileGlob)}` : '',
-                        `--max-count ${maxResults}`,
+                        '-e', pattern,
                         '--ignore-case',
-                        JSON.stringify(resolvedTargetPath),
-                    ].filter(Boolean).join(' ');
+                        '--max-count', String(maxResults),
+                    ];
+                    if (contextLines > 0) {
+                        rgArgs.push('-C', String(contextLines));
+                    }
+                    if (fileGlob) {
+                        rgArgs.push('--glob', fileGlob);
+                    }
+                    rgArgs.push(resolvedTargetPath);
 
-                    const output = execSync(`rg ${rgArgs}`, {
+                    const output = execFileSync('rg', rgArgs, {
                         encoding: 'utf8',
                         maxBuffer: 10 * 1024 * 1024,
                         cwd: WorkDir,
@@ -409,42 +470,12 @@ export const workspaceTools = {
                         tool: 'ripgrep',
                     };
                 } catch (_rgError) { // eslint-disable-line @typescript-eslint/no-unused-vars
-                    // Fallback to basic grep if ripgrep not available or failed
-                    const grepArgs = [
-                        '-rn',
-                        fileGlob ? `--include=${JSON.stringify(fileGlob)}` : '',
-                        JSON.stringify(pattern),
-                        JSON.stringify(resolvedTargetPath),
-                        `| head -${maxResults}`,
-                    ].filter(Boolean).join(' ');
-
-                    try {
-                        const output = execSync(`grep ${grepArgs}`, {
-                            encoding: 'utf8',
-                            maxBuffer: 10 * 1024 * 1024,
-                            shell: '/bin/sh',
-                        });
-
-                        const lines = output.trim().split('\n').filter(Boolean);
-                        return {
-                            matches: lines.map(line => {
-                                const match = line.match(/^(.+?):(\d+):(.*)$/);
-                                if (match) {
-                                    return {
-                                        file: path.relative(WorkDir, match[1]),
-                                        line: parseInt(match[2], 10),
-                                        content: match[3].trim(),
-                                    };
-                                }
-                                return { file: '', line: 0, content: line };
-                            }),
-                            count: lines.length,
-                            tool: 'grep',
-                        };
-                    } catch {
-                        // No matches found (grep returns non-zero on no matches)
-                        return { matches: [], count: 0, tool: 'grep' };
-                    }
+                    return await grepFallbackSearch({
+                        pattern,
+                        resolvedTargetPath,
+                        fileGlob,
+                        maxResults,
+                    });
                 }
             } catch (error) {
                 return { error: error instanceof Error ? error.message : 'Unknown error' };

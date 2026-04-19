@@ -54,6 +54,26 @@ type RunRecord = {
 const STREAM_FLUSH_MS = 16
 const getStreamingAssistantId = (runId: string) => `assistant-stream-${runId}`
 const getCompactionItemId = (compactionId: string) => `context-compaction-${compactionId}`
+const getAskHumanRequestMessageId = (toolCallId: string) => `ask-human-request-${toolCallId}`
+const getAskHumanResponseMessageId = (toolCallId: string) => `ask-human-response-${toolCallId}`
+
+const buildAskHumanRequestMessage = (
+  request: z.infer<typeof AskHumanRequestEvent>
+): ChatMessage => ({
+  id: getAskHumanRequestMessageId(request.toolCallId),
+  role: 'assistant',
+  content: request.query,
+  timestamp: request.ts ? new Date(request.ts).getTime() : Date.now(),
+})
+
+const buildAskHumanResponseMessage = (
+  event: { toolCallId: string; response: string; ts?: string }
+): ChatMessage => ({
+  id: getAskHumanResponseMessageId(event.toolCallId),
+  role: 'user',
+  content: event.response,
+  timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
+})
 
 const normalizeUsage = (usage?: Partial<LanguageModelUsage> | null): LanguageModelUsage | null => {
   if (!usage) return null
@@ -263,6 +283,16 @@ const hydrateRunConversation = (run: RunRecord) => {
           modelUsage = normalizeUsage(event.event.usage)
           modelUsageUpdatedAt = event.ts ? new Date(event.ts).getTime() : Date.now()
         }
+        break
+      case 'usage-update':
+        modelUsage = normalizeUsage(event.usage)
+        modelUsageUpdatedAt = event.ts ? new Date(event.ts).getTime() : Date.now()
+        break
+      case 'ask-human-request':
+        items.push(buildAskHumanRequestMessage(event))
+        break
+      case 'ask-human-response':
+        items.push(buildAskHumanResponseMessage(event))
         break
     }
   }
@@ -764,6 +794,12 @@ export function useChatRuntime({
         })
         break
 
+      case 'usage-update':
+        if (!isActiveRun) return
+        setModelUsage(normalizeUsage(event.usage))
+        setModelUsageUpdatedAt(event.ts ? new Date(event.ts).getTime() : Date.now())
+        break
+
       case 'message': {
         const msg = event.message
         if (msg.role === 'user' && typeof msg.content === 'string') {
@@ -879,6 +915,10 @@ export function useChatRuntime({
 
       case 'ask-human-request':
         if (!isActiveRun) return
+        setConversation((prev) => {
+          const nextItem = buildAskHumanRequestMessage(event)
+          return prev.some((item) => item.id === nextItem.id) ? prev : [...prev, nextItem]
+        })
         setPendingAskHumanRequests((prev) => {
           const next = new Map(prev)
           next.set(event.toolCallId, event)
@@ -888,6 +928,10 @@ export function useChatRuntime({
 
       case 'ask-human-response':
         if (!isActiveRun) return
+        setConversation((prev) => {
+          const nextItem = buildAskHumanResponseMessage(event)
+          return prev.some((item) => item.id === nextItem.id) ? prev : [...prev, nextItem]
+        })
         setPendingAskHumanRequests((prev) => {
           const next = new Map(prev)
           next.delete(event.toolCallId)

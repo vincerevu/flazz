@@ -8,12 +8,14 @@ const PROVIDER_ACTION_MAP: Record<string, ProviderActionPreferences> = {
     search: ["GMAIL_FETCH_EMAILS", "GMAIL_LIST_THREADS"],
     read: ["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
     reply: ["GMAIL_REPLY_TO_THREAD", "GMAIL_SEND_EMAIL"],
+    create: ["GMAIL_SEND_EMAIL"],
   },
   outlook: {
     list: ["OUTLOOK_OUTLOOK_LIST_MESSAGES"],
     search: ["OUTLOOK_OUTLOOK_SEARCH_MESSAGES"],
     read: ["OUTLOOK_OUTLOOK_GET_MESSAGE"],
     reply: ["OUTLOOK_OUTLOOK_REPLY_EMAIL", "OUTLOOK_OUTLOOK_SEND_EMAIL"],
+    create: ["OUTLOOK_OUTLOOK_SEND_EMAIL"],
   },
   slack: {
     list: ["SLACK_FETCH_CONVERSATION_HISTORY", "SLACK_LIST_CONVERSATIONS"],
@@ -50,6 +52,8 @@ const PROVIDER_ACTION_MAP: Record<string, ProviderActionPreferences> = {
     list: ["CONFLUENCE_GET_PAGES", "CONFLUENCE_GET_SPACES"],
     search: ["CONFLUENCE_SEARCH_CONTENT"],
     read: ["CONFLUENCE_GET_PAGE_BY_ID"],
+    create: ["CONFLUENCE_CREATE_PAGE"],
+    update: ["CONFLUENCE_UPDATE_PAGE"],
   },
   coda: {
     list: ["CODA_LIST_AVAILABLE_DOCS"],
@@ -134,8 +138,16 @@ const PROVIDER_ACTION_MAP: Record<string, ProviderActionPreferences> = {
   googlecalendar: {
     list: ["GOOGLECALENDAR_FIND_EVENT", "GOOGLECALENDAR_EVENTS_LIST"],
     search: ["GOOGLECALENDAR_FIND_EVENT"],
+    read: ["GOOGLECALENDAR_EVENTS_INSTANCES"],
     create: ["GOOGLECALENDAR_CREATE_EVENT"],
     update: ["GOOGLECALENDAR_PATCH_EVENT", "GOOGLECALENDAR_UPDATE_EVENT"],
+  },
+  googlemeet: {
+    list: ["GOOGLEMEET_LIST_CONFERENCE_RECORDS"],
+    search: ["GOOGLEMEET_GET_CONFERENCE_RECORD_FOR_MEET"],
+    read: ["GOOGLEMEET_GET_MEET"],
+    create: ["GOOGLEMEET_CREATE_MEET"],
+    update: ["GOOGLEMEET_UPDATE_SPACE"],
   },
   zoom: {
     list: ["ZOOM_LIST_MEETINGS"],
@@ -147,6 +159,8 @@ const PROVIDER_ACTION_MAP: Record<string, ProviderActionPreferences> = {
     list: ["GOOGLEDRIVE_LIST_FILES"],
     search: ["GOOGLEDRIVE_FIND_FILE"],
     read: ["GOOGLEDRIVE_GET_FILE_METADATA", "GOOGLEDRIVE_DOWNLOAD_FILE"],
+    create: ["GOOGLEDRIVE_CREATE_FILE_FROM_TEXT", "GOOGLEDRIVE_CREATE_FILE"],
+    update: ["GOOGLEDRIVE_EDIT_FILE", "GOOGLEDRIVE_UPDATE_FILE_PUT"],
   },
   dropbox: {
     list: ["DROPBOX_LIST_FILES_IN_FOLDER", "DROPBOX_LIST_FOLDERS"],

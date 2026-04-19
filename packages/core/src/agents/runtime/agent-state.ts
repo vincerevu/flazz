@@ -183,17 +183,22 @@ export class AgentState {
                 this.pendingAskHumanRequests[event.toolCallId] = event;
                 break;
             case "ask-human-response": {
-                // console.error('im here', this.agentName, this.runId, event.subflow);
                 const ogEvent = this.pendingAskHumanRequests[event.toolCallId];
+                const toolCallId = ogEvent?.toolCallId ?? event.toolCallId;
+                const toolName = this.toolCallIdMap[toolCallId]?.toolName;
+                if (!toolName) {
+                    delete this.pendingAskHumanRequests[event.toolCallId];
+                    break;
+                }
                 this.messages.push({
                     role: "tool",
                     content: JSON.stringify({
                         userResponse: event.response,
                     }),
-                    toolCallId: ogEvent.toolCallId,
-                    toolName: this.toolCallIdMap[ogEvent.toolCallId]!.toolName,
+                    toolCallId,
+                    toolName,
                 });
-                delete this.pendingAskHumanRequests[ogEvent.toolCallId];
+                delete this.pendingAskHumanRequests[event.toolCallId];
                 break;
             }
             case "context-compaction-complete":

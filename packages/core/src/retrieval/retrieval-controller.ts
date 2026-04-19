@@ -53,7 +53,17 @@ export class RetrievalController {
         title: note.title,
         path: note.path,
         preview: note.preview,
-        score: Math.max(1, limits.memorySearchLimit - index),
+        score: note.score ?? Math.max(1, limits.memorySearchLimit - index),
+        scoreBreakdown: note.scoreBreakdown
+          ? {
+              keyword: note.scoreBreakdown.keyword,
+              recency: note.scoreBreakdown.recency,
+              graph: note.scoreBreakdown.graph,
+              usage: 0,
+              failurePenalty: 0,
+              total: note.scoreBreakdown.total,
+            }
+          : undefined,
       }));
     }
 

@@ -222,6 +222,11 @@ export async function readFile(
 // Debounced commit for long-lived memory note edits
 let memoryCommitTimer: ReturnType<typeof setTimeout> | null = null;
 
+function isDisallowedGeneratedMemoryFile(relPath: string): boolean {
+  const normalized = relPath.replace(/\\/g, '/').toLowerCase();
+  return normalized === 'skip-log.md' || normalized === 'memory/skip-log.md';
+}
+
 function scheduleMemoryCommit(filename: string): void {
   if (memoryCommitTimer) {
     clearTimeout(memoryCommitTimer);
@@ -239,6 +244,10 @@ export async function writeFile(
   data: string,
   opts?: z.infer<typeof WriteFileOptions>
 ): Promise<z.infer<typeof WriteFileResult>> {
+  if (isDisallowedGeneratedMemoryFile(relPath)) {
+    throw new Error(`Writes to ${relPath} are blocked. Skip/debug logs must not be stored in memory notes.`);
+  }
+
   const filePath = resolveWorkspacePath(relPath);
   const encoding = opts?.encoding || 'utf8';
   const atomic = opts?.atomic !== false; // default true

@@ -3,8 +3,8 @@ import type { IntegrationCapability } from "./types.js";
 export const COMMON_FIELD_ALIASES = {
   query: ["query", "search", "q", "keyword", "keywords", "term", "text_search", "jql"],
   limit: ["limit", "count", "max_results", "maxResults", "page_size", "pageSize"],
-  title: ["title", "subject", "name", "summary", "item_name"],
-  content: ["content", "body", "text", "message", "comment", "description", "htmlBody", "markdown", "message_body", "comment_text"],
+  title: ["title", "subject", "name", "summary", "item_name", "file_name"],
+  content: ["content", "body", "text", "message", "comment", "description", "htmlBody", "markdown", "message_body", "comment_text", "text_content"],
   itemId: ["id"],
 } as const;
 
@@ -35,6 +35,7 @@ const PROVIDER_ITEM_ID_ALIASES: Record<string, string[]> = {
   sentry: ["issue_id"],
   miro: ["board_id"],
   googlecalendar: ["eventId"],
+  googlemeet: ["space_name", "name", "meeting_code", "conferenceRecord_id"],
   zoom: ["meetingId"],
   googledrive: ["fileId"],
   dropbox: ["path"],
@@ -46,6 +47,7 @@ const PROVIDER_ITEM_ID_ALIASES: Record<string, string[]> = {
 
 const PROVIDER_QUERY_ALIASES: Record<string, string[]> = {
   salesforce: ["query", "name", "email", "phone", "title", "account_name"],
+  googlemeet: ["meeting_code", "space_name"],
 };
 
 export function getItemIdAliases(app: string, resourceType: keyof typeof FAMILY_ITEM_ID_ALIASES) {

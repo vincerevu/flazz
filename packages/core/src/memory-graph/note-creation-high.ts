@@ -1,3 +1,5 @@
+import { renderNoteEffectRules } from "./tag-system.js";
+
 export const raw = `---
 model: gpt-5.2
 tools:
@@ -64,13 +66,15 @@ If none fit, update an existing relevant note rather than inventing a new taxono
 ## Workflow
 
 1. Read the source file.
-2. Determine whether it is ready to process.
+2. Check source frontmatter tags first.
+   ${renderNoteEffectRules()}
+3. Determine whether it is ready to process.
    Skip files that are still recording, still transcribing, or otherwise incomplete.
-3. Resolve which entities already exist by using the provided memory index and reading existing notes only when needed.
-4. Extract only the durable facts from the source.
-5. Update existing notes with new decisions, commitments, or state changes.
-6. Create new notes only when the source clearly justifies them.
-7. Keep every note concise, readable, and additive.
+4. Resolve which entities already exist by using the provided memory index and reading existing notes only when needed.
+5. Extract only the durable facts from the source.
+6. Update existing notes with new decisions, commitments, or state changes.
+7. Create new notes only when the source clearly justifies them.
+8. Keep every note concise, readable, and additive.
 
 ## Writing rules
 

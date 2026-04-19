@@ -14,6 +14,25 @@ function toStringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : undefined;
 }
 
+function toContactArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const results = value
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      const record = asRecord(entry);
+      const emailAddress = asRecord(record.emailAddress);
+      return (
+        toStringValue(record.address) ??
+        toStringValue(record.email) ??
+        toStringValue(record.value) ??
+        toStringValue(emailAddress.address) ??
+        toStringValue(emailAddress.name)
+      );
+    })
+    .filter((entry): entry is string => !!entry);
+  return results.length ? results : undefined;
+}
+
 function pickFirst(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = toStringValue(record[key]);
@@ -44,13 +63,28 @@ function normalizeMessage(app: string, item: unknown) {
   const record = asRecord(item);
 
   if (app === "gmail" || app === "outlook") {
+    const labels = toStringArray(record.labelIds) ?? toStringArray(record.labels) ?? toStringArray(record.categories);
     return integrationNormalizer.normalizeMessage({
       id: pickFirst(record, ["id", "messageId", "threadId"]) ?? crypto.randomUUID(),
       threadId: pickFirst(record, ["threadId", "conversationId"]),
       title: pickFirst(record, ["subject", "title"]) ?? "Untitled message",
       author: pickFirst(record, ["from", "sender", "author"]),
+      recipients: toContactArray(record.toRecipients) ?? toContactArray(record.to) ?? toContactArray(record.cc) ?? toContactArray(record.recipients),
+      labels,
       timestamp: pickFirst(record, ["internalDate", "date", "createdAt", "timestamp"]),
       snippet: summarizeText(pickFirst(record, ["snippet", "preview", "textBody", "body"])),
+      importance:
+        typeof record.importance === "boolean"
+          ? record.importance
+          : labels?.some((label) => /important|starred/i.test(label)) || undefined,
+      isUnread:
+        typeof record.isUnread === "boolean"
+          ? record.isUnread
+          : typeof record.unread === "boolean"
+            ? record.unread
+            : typeof record.isRead === "boolean"
+              ? !record.isRead
+              : undefined,
       hasAttachment: typeof record.hasAttachment === "boolean" ? record.hasAttachment : undefined,
       source: app,
       estimatedChars: pickFirst(record, ["body", "textBody"])?.length,
@@ -123,13 +157,15 @@ function normalizeTicket(app: string, item: unknown) {
     const title = pickFirst(record, ["title", "subject", "summary"]) ?? "Untitled GitHub item";
     const prefix = [repository, issueOrPullNumber ? `#${issueOrPullNumber}` : undefined, state].filter(Boolean).join(" • ");
     return integrationNormalizer.normalizeTicket({
-      id: pickFirst(record, ["id", "node_id", "identifier", "number", "issue_number", "pull_number"]) ?? crypto.randomUUID(),
+      id: pickFirst(record, ["number", "issue_number", "pull_number", "identifier", "id", "node_id"]) ?? crypto.randomUUID(),
       title,
       status: state,
       assignee:
         pickFirst(assigneeRecord, ["login", "name"]) ??
         pickFirst(authorRecord, ["login", "name"]) ??
         pickFirst(record, ["assignee", "assigneeName", "actor", "author"]),
+      project: repository,
+      url: pickFirst(record, ["html_url", "url"]),
       updatedAt: pickFirst(record, ["updatedAt", "updated_at", "last_read_at", "created_at"]),
       preview: summarizeText(
         [prefix, pickFirst(record, ["description", "preview", "body", "url", "html_url"])]
@@ -146,6 +182,8 @@ function normalizeTicket(app: string, item: unknown) {
     title: pickFirst(record, ["title", "summary"]) ?? "Untitled ticket",
     status: pickFirst(record, ["status", "state"]),
     assignee: pickFirst(record, ["assignee", "assigneeName"]),
+    project: pickFirst(record, ["project", "projectName", "project_name", "repo", "repository"]),
+    url: pickFirst(record, ["url", "html_url", "permalink"]),
     updatedAt: pickFirst(record, ["updatedAt"]),
     preview: summarizeText(pickFirst(record, ["description", "preview"])),
     source: app,
@@ -155,12 +193,30 @@ function normalizeTicket(app: string, item: unknown) {
 
 function normalizeEvent(app: string, item: unknown) {
   const record = asRecord(item);
+  if (app === "googlemeet") {
+    const meetingCode = pickFirst(record, ["meeting_code", "meetingCode"]);
+    const spaceName = pickFirst(record, ["space_name", "name", "space"]);
+    const uri = pickFirst(record, ["meetingUri", "meeting_uri", "uri"]);
+    return integrationNormalizer.normalizeEvent({
+      id: pickFirst(record, ["name", "space_name", "conferenceRecord_id", "conferenceRecordId", "meeting_code", "meetingCode"]) ?? crypto.randomUUID(),
+      title: meetingCode || spaceName || "Google Meet",
+      startAt: pickFirst(record, ["start_time", "startTime", "startAt"]),
+      endAt: pickFirst(record, ["end_time", "endTime", "endAt"]),
+      organizer: pickFirst(record, ["owner", "organizer", "host"]),
+      project: pickFirst(record, ["spaceType", "meetingType", "conferenceType"]),
+      attendees: toStringArray(record.attendees),
+      source: app,
+      estimatedChars: uri?.length,
+    });
+  }
   return integrationNormalizer.normalizeEvent({
     id: pickFirst(record, ["id"]) ?? crypto.randomUUID(),
     title: pickFirst(record, ["title", "summary"]) ?? "Untitled event",
     startAt: pickFirst(record, ["startAt", "start"]),
     endAt: pickFirst(record, ["endAt", "end"]),
     attendees: toStringArray(record.attendees),
+    organizer: pickFirst(record, ["organizer", "creator", "host", "owner"]),
+    project: pickFirst(record, ["project", "projectName", "calendarName"]),
     source: app,
   });
 }
@@ -200,6 +256,86 @@ function normalizeRecord(app: string, item: unknown) {
       estimatedChars: headline?.length,
     });
   }
+  if (app === "hubspot") {
+    const firstName = pickFirst(record, ["firstname", "firstName", "first_name"]);
+    const lastName = pickFirst(record, ["lastname", "lastName", "last_name"]);
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+    const companyName = pickFirst(record, ["company", "associatedcompanyid", "companyName"]);
+    const email = pickFirst(record, ["email", "work_email"]);
+    const jobTitle = pickFirst(record, ["jobtitle", "jobTitle"]);
+    const title = fullName || companyName || email || pickFirst(record, ["name", "displayName", "subject"]) || "HubSpot record";
+    const previewParts = [jobTitle, companyName, email].filter(Boolean);
+    return integrationNormalizer.normalizeRecord({
+      id: pickFirst(record, ["id", "contactId", "companyId", "dealId", "recordId", "objectId"]) ?? crypto.randomUUID(),
+      title,
+      recordType:
+        pickFirst(record, ["objectType", "recordType", "type"]) ??
+        (companyName && !fullName ? "hubspot_company" : "hubspot_contact"),
+      owner: pickFirst(record, ["owner", "ownerName", "hubspot_owner_id", "owneremail", "ownername"]),
+      updatedAt: pickFirst(record, ["updatedAt", "modifiedAt", "lastModifiedAt", "lastmodifieddate"]),
+      preview: summarizeText(previewParts.join(" • ")),
+      source: app,
+      estimatedChars: [jobTitle, companyName, email].filter(Boolean).join(" ").length || undefined,
+    });
+  }
+  if (app === "salesforce") {
+    const attributesRecord = asRecord(record.attributes);
+    const accountRecord = asRecord(record.Account);
+    const ownerRecord = asRecord(record.Owner);
+    const firstName = pickFirst(record, ["FirstName", "first_name", "firstName"]);
+    const lastName = pickFirst(record, ["LastName", "last_name", "lastName"]);
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+    const accountName =
+      pickFirst(accountRecord, ["Name"]) ??
+      pickFirst(record, ["account_name", "AccountName", "company", "companyName"]);
+    const email = pickFirst(record, ["Email", "email"]);
+    const jobTitle = pickFirst(record, ["Title", "title"]);
+    const title = fullName || accountName || email || pickFirst(record, ["name", "displayName", "subject"]) || "Salesforce record";
+    const previewParts = [jobTitle, accountName, email].filter(Boolean);
+    return integrationNormalizer.normalizeRecord({
+      id: pickFirst(record, ["Id", "id", "contact_id", "recordId", "objectId"]) ?? crypto.randomUUID(),
+      title,
+      recordType:
+        pickFirst(attributesRecord, ["type"]) ??
+        pickFirst(record, ["recordType", "type", "objectType"]) ??
+        (accountName && !fullName ? "salesforce_account" : "salesforce_contact"),
+      owner: pickFirst(ownerRecord, ["Name"]) ?? pickFirst(record, ["owner", "ownerName", "owner_id"]),
+      updatedAt: pickFirst(record, ["LastModifiedDate", "updatedAt", "modifiedAt", "lastModifiedAt"]),
+      preview: summarizeText(previewParts.join(" • ")),
+      source: app,
+      estimatedChars: [jobTitle, accountName, email].filter(Boolean).join(" ").length || undefined,
+    });
+  }
+  if (app === "pipedrive") {
+    const personName = pickFirst(record, ["name", "title", "displayName"]);
+    const organizationName =
+      pickFirst(asRecord(record.org_id), ["name"]) ??
+      pickFirst(record, ["org_name", "organizationName", "company"]);
+    const email = Array.isArray(record.email)
+      ? record.email
+          .map((entry) => typeof entry === "string" ? entry : pickFirst(asRecord(entry), ["value", "email"]))
+          .find(Boolean)
+      : pickFirst(record, ["email"]);
+    const phone = Array.isArray(record.phone)
+      ? record.phone
+          .map((entry) => typeof entry === "string" ? entry : pickFirst(asRecord(entry), ["value", "phone"]))
+          .find(Boolean)
+      : pickFirst(record, ["phone"]);
+    const title = personName || organizationName || email || phone || "Pipedrive record";
+    const previewParts = [organizationName, email, phone].filter(Boolean);
+    return integrationNormalizer.normalizeRecord({
+      id: pickFirst(record, ["id", "person_id", "organization_id", "recordId", "objectId"]) ?? crypto.randomUUID(),
+      title,
+      recordType:
+        pickFirst(record, ["recordType", "type", "objectType"]) ??
+        (organizationName && !personName ? "pipedrive_organization" : "pipedrive_person"),
+      owner: pickFirst(record, ["owner_name", "ownerName", "owner", "assigned_to"]),
+      updatedAt: pickFirst(record, ["update_time", "updatedAt", "modifiedAt", "lastModifiedAt"]),
+      preview: summarizeText(previewParts.join(" • ")),
+      source: app,
+      estimatedChars: [organizationName, email, phone].filter(Boolean).join(" ").length || undefined,
+    });
+  }
   return integrationNormalizer.normalizeRecord({
     id: pickFirst(record, ["id", "recordId", "objectId", "dealId", "contactId", "companyId"]) ?? crypto.randomUUID(),
     title: pickFirst(record, ["title", "name", "displayName", "subject"]) ?? "Untitled record",
@@ -227,14 +363,28 @@ function normalizeCode(app: string, item: unknown) {
 
 function normalizeSpreadsheet(app: string, item: unknown) {
   const record = asRecord(item);
+  const valuesArray = Array.isArray(record.values) ? record.values : Array.isArray(record.rowValues) ? record.rowValues : undefined;
+  const previewFromValues = valuesArray
+    ? summarizeText(
+        valuesArray
+          .map((entry) => {
+            if (Array.isArray(entry)) return entry.join(" | ");
+            if (typeof entry === "string") return entry;
+            if (typeof entry === "number" || typeof entry === "boolean") return String(entry);
+            return "";
+          })
+          .filter(Boolean)
+          .join(" ; "),
+      )
+    : undefined;
   return integrationNormalizer.normalizeSpreadsheet({
-    id: pickFirst(record, ["id", "rowId", "recordId"]) ?? crypto.randomUUID(),
-    title: pickFirst(record, ["title", "name", "primaryField", "label"]) ?? "Untitled row",
-    sheetName: pickFirst(record, ["sheetName", "tableName", "worksheet", "sheet"]),
-    rowLabel: pickFirst(record, ["rowLabel", "primaryField", "label"]),
-    preview: summarizeText(pickFirst(record, ["preview", "summary", "content", "values"])),
+    id: pickFirst(record, ["rowId", "recordId", "id", "spreadsheet_id", "spreadsheetId"]) ?? crypto.randomUUID(),
+    title: pickFirst(record, ["title", "name", "primaryField", "label", "sheet_name", "sheetName"]) ?? "Untitled row",
+    sheetName: pickFirst(record, ["sheetName", "sheet_name", "tableName", "worksheet", "sheet"]),
+    rowLabel: pickFirst(record, ["rowLabel", "primaryField", "label", "query"]),
+    preview: previewFromValues ?? summarizeText(pickFirst(record, ["preview", "summary", "content", "values"])),
     source: app,
-    estimatedChars: pickFirst(record, ["summary", "content", "values"])?.length,
+    estimatedChars: previewFromValues?.length ?? pickFirst(record, ["summary", "content", "values"])?.length,
   });
 }
 
@@ -292,6 +442,37 @@ export function buildStructuredView(app: string, resourceType: IntegrationResour
         bodyPreview: summarizeText(body, 800),
       };
     case "event":
+      if (app === "googlemeet") {
+        const conferenceRecordId = pickFirst(record, ["conferenceRecordId", "conferenceRecord_id"]);
+        const recordingCount =
+          typeof record.recordingCount === "number"
+            ? record.recordingCount
+            : Array.isArray(record.recordings)
+              ? record.recordings.length
+              : undefined;
+        const transcriptCount =
+          typeof record.transcriptCount === "number"
+            ? record.transcriptCount
+            : Array.isArray(record.transcripts)
+              ? record.transcripts.length
+              : undefined;
+        const artifactPreviewParts = [
+          conferenceRecordId ? `conference ${conferenceRecordId}` : undefined,
+          typeof recordingCount === "number" ? `${recordingCount} recording${recordingCount === 1 ? "" : "s"}` : undefined,
+          typeof transcriptCount === "number" ? `${transcriptCount} transcript${transcriptCount === 1 ? "" : "s"}` : undefined,
+        ].filter(Boolean);
+        return {
+          kind: "event",
+          normalized,
+          location: pickFirst(record, ["location"]),
+          meetingCode: pickFirst(record, ["meeting_code", "meetingCode"]),
+          conferenceRecordId,
+          recordingCount,
+          transcriptCount,
+          artifactPreview: artifactPreviewParts.length ? artifactPreviewParts.join(" • ") : undefined,
+          notesPreview: summarizeText(body, 600),
+        };
+      }
       return {
         kind: "event",
         normalized,

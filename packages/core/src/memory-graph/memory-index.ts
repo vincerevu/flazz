@@ -200,6 +200,12 @@ function scanDirectoryRecursive(dir: string): string[] {
         const stat = fs.statSync(fullPath);
 
         if (stat.isDirectory()) {
+            if (entry === 'Sources') {
+                continue;
+            }
+            if (entry.endsWith('_sync')) {
+                continue;
+            }
             // Recursively scan subdirectories
             files.push(...scanDirectoryRecursive(fullPath));
         } else if (stat.isFile() && entry.endsWith('.md')) {

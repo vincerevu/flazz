@@ -11,16 +11,13 @@ import {
   FilePlus,
   Folder,
   FolderPlus,
-  HelpCircle,
   Mic,
   Network,
   Pencil,
   LoaderIcon,
   Settings,
-  Sparkles,
   Square,
   Trash2,
-  Workflow,
 } from "lucide-react"
 
 import {
@@ -71,7 +68,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { useSidebarSection } from "@/contexts/sidebar-context"
-import { HelpPopover } from "@/components/help-popover"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { MainSidebarMenu } from "@/components/main-sidebar-menu"
 import { toast } from "@/lib/toast"
@@ -80,8 +76,6 @@ import z from "zod"
 import type { TreeNode } from "@/features/memory/types"
 import { servicesIpc } from "@/services/services-ipc"
 import { workspaceIpc } from "@/services/workspace-ipc"
-import type { SkillPanelItem } from "@/features/skills/types"
-import type { WorkflowBlueprint } from "@/features/workflow/mock-workflows"
 
 type MemoryActions = {
   createNote: (parentPath?: string) => void
@@ -126,9 +120,11 @@ const RUN_STALE_MS = 2 * 60 * 60 * 1000
 
 const SERVICE_LABELS: Record<string, string> = {
   gmail: "Syncing Gmail",
+  email_labeling: "Labeling email",
   calendar: "Syncing Calendar",
   fireflies: "Syncing Fireflies",
   graph: "Updating memory",
+  graph_sync: "Syncing graph signals",
   voice_memo: "Processing voice memo",
 }
 
@@ -158,12 +154,6 @@ type SidebarContentPanelProps = {
   tasksActions?: TasksActions
   backgroundTasks?: BackgroundTaskItem[]
   selectedBackgroundTask?: string | null
-  skills?: SkillPanelItem[]
-  selectedSkillId?: string
-  onSelectSkill?: (skillId: string) => void
-  workflows?: WorkflowBlueprint[]
-  selectedWorkflowId?: string
-  onSelectWorkflow?: (workflowId: string) => void
 } & React.ComponentProps<typeof Sidebar>
 
 function formatEventTime(ts: string): string {
@@ -197,6 +187,7 @@ function SyncStatusBar() {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [logEvents, setLogEvents] = useState<ServiceEventType[]>([])
   const [logLoading, setLogLoading] = useState(false)
+  const [triggeringSync, setTriggeringSync] = useState(false)
   const runTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   // Track active runs from real-time events
@@ -319,10 +310,38 @@ function SyncStatusBar() {
             className="w-96 p-0"
           >
             <div className="p-3 border-b">
-              <h4 className="font-semibold text-sm">Sync Activity</h4>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {isSyncing ? statusLabel : "All services up to date"}
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-sm">Sync Activity</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {isSyncing ? statusLabel : "All services up to date"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 px-2 text-[11px]"
+                  disabled={triggeringSync}
+                  onClick={async () => {
+                    setTriggeringSync(true)
+                    try {
+                      const result = await servicesIpc.triggerGraphSync(true)
+                      if (!result.success) {
+                        toast(result.error || "Could not trigger graph sync.", "error")
+                      } else {
+                        toast("Graph sync started.", "success")
+                      }
+                    } catch (error) {
+                      toast(error instanceof Error ? error.message : "Could not trigger graph sync.", "error")
+                    } finally {
+                      setTriggeringSync(false)
+                    }
+                  }}
+                >
+                  {triggeringSync ? <LoaderIcon className="h-3 w-3 animate-spin" /> : "Sync now"}
+                </Button>
+              </div>
             </div>
             <div className="max-h-80 overflow-y-auto p-2">
               {logLoading ? (
@@ -381,12 +400,6 @@ export function SidebarContentPanel({
   tasksActions,
   backgroundTasks = [],
   selectedBackgroundTask,
-  skills = [],
-  selectedSkillId,
-  onSelectSkill,
-  workflows = [],
-  selectedWorkflowId,
-  onSelectWorkflow,
   ...props
 }: SidebarContentPanelProps) {
   const { activeSection, setActiveSection } = useSidebarSection()
@@ -425,20 +438,6 @@ export function SidebarContentPanel({
             actions={tasksActions}
           />
         )}
-        {activeSection === "skills" && (
-          <SkillsSection
-            skills={skills}
-            selectedSkillId={selectedSkillId}
-            onSelectSkill={onSelectSkill}
-          />
-        )}
-        {activeSection === "workflow" && (
-          <WorkflowSection
-            workflows={workflows}
-            selectedWorkflowId={selectedWorkflowId}
-            onSelectWorkflow={onSelectWorkflow}
-          />
-        )}
       </SidebarContent>
       {/* Bottom actions */}
       <div className="border-t border-sidebar-border px-2 py-2">
@@ -449,12 +448,6 @@ export function SidebarContentPanel({
               <span>Settings</span>
             </button>
           </SettingsDialog>
-          <HelpPopover>
-            <button className={sidebarUtilityButtonClass}>
-              <HelpCircle className="size-4" />
-              <span>Help</span>
-            </button>
-          </HelpPopover>
         </div>
       </div>
       <SyncStatusBar />
@@ -692,6 +685,12 @@ function MemorySection({
 }) {
   const isExpanded = expandedPaths.size > 0
   const treeContainerRef = React.useRef<HTMLDivElement | null>(null)
+  const visibleTree = React.useMemo(
+    () => flattenKnowledgeFolders(
+      tree.filter((node) => node.path !== 'memory/Runs' && node.path !== 'memory/Workflows' && node.path !== 'memory/Signals' && node.path !== 'memory/Sources'),
+    ),
+    [tree],
+  )
 
   useEffect(() => {
     if (!selectedPath) return
@@ -720,7 +719,7 @@ function MemorySection({
       cancelled = true
       if (rafId !== null) cancelAnimationFrame(rafId)
     }
-  }, [selectedPath, expandedPaths, tree])
+  }, [selectedPath, expandedPaths, visibleTree])
 
   const quickActions = [
     { icon: FilePlus, label: "New Note", action: () => actions.createNote() },
@@ -768,7 +767,7 @@ function MemorySection({
           <SidebarGroupContent className="flex-1 overflow-y-auto">
             <div ref={treeContainerRef}>
               <SidebarMenu>
-                {tree.map((item, index) => (
+                {visibleTree.map((item, index) => (
                   <Tree
                     key={index}
                     item={item}
@@ -806,6 +805,19 @@ function countFiles(node: TreeNode): number {
 
 const FOLDER_DISPLAY_NAMES: Record<string, string> = {
   Notes: 'My Notes',
+  Workflows: 'Workflow Memory',
+}
+
+function flattenKnowledgeFolders(nodes: TreeNode[]): TreeNode[] {
+  const visible: TreeNode[] = []
+  for (const node of nodes) {
+    if (node.path === 'memory/Knowledge') {
+      visible.push(...(node.children ?? []))
+      continue
+    }
+    visible.push(node)
+  }
+  return visible
 }
 
 // Tree component for file browser
@@ -1025,8 +1037,10 @@ function Tree({
   const parts = item.path.split('/')
   const isTopLevelMemoryFolder =
     isDir &&
-    parts.length === 2 &&
-    parts[0] === 'memory'
+    (
+      (parts.length === 2 && parts[0] === 'memory') ||
+      (parts.length === 3 && parts[0] === 'memory' && parts[1] === 'Knowledge')
+    )
 
   if (isTopLevelMemoryFolder) {
     return (
@@ -1094,122 +1108,6 @@ function Tree({
       </ContextMenuTrigger>
       {contextMenuContent}
     </ContextMenu>
-  )
-}
-
-function EmptySidebarSection({
-  title,
-  description,
-}: {
-  title: string
-  description: string
-}) {
-  return (
-    <SidebarGroup className="flex-1">
-      <SidebarGroupContent className="flex h-full items-start">
-        <div className="px-3 py-2">
-          <div className="text-xs font-medium text-sidebar-foreground">{title}</div>
-          <p className="mt-1 max-w-[20rem] text-xs leading-5 text-muted-foreground">
-            {description}
-          </p>
-        </div>
-      </SidebarGroupContent>
-    </SidebarGroup>
-  )
-}
-
-function SkillsSection({
-  skills = [],
-  selectedSkillId,
-  onSelectSkill,
-}: {
-  skills?: SkillPanelItem[]
-  selectedSkillId?: string
-  onSelectSkill?: (skillId: string) => void
-}) {
-  if (skills.length === 0) {
-    return (
-      <EmptySidebarSection
-        title="Skills"
-        description="No skills available yet."
-      />
-    )
-  }
-
-  return (
-    <SidebarGroup className="flex-1 flex flex-col overflow-hidden">
-      <SidebarGroupContent className="flex-1 overflow-y-auto">
-        <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
-          Saved skills
-        </div>
-        <SidebarMenu>
-          {skills.map((skill) => (
-            <SidebarMenuItem key={skill.id}>
-              <SidebarMenuButton
-                isActive={selectedSkillId === skill.id}
-                onClick={() => onSelectSkill?.(skill.id)}
-                className="gap-2 data-[active=true]:font-normal"
-              >
-                <Sparkles className="size-4 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs">{skill.name}</div>
-                  <div className="truncate text-[10px] text-muted-foreground">
-                    {skill.category} · {skill.status}
-                  </div>
-                </div>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
-  )
-}
-
-function WorkflowSection({
-  workflows = [],
-  selectedWorkflowId,
-  onSelectWorkflow,
-}: {
-  workflows?: WorkflowBlueprint[]
-  selectedWorkflowId?: string
-  onSelectWorkflow?: (workflowId: string) => void
-}) {
-  return (
-    <SidebarGroup className="flex-1 flex flex-col overflow-hidden">
-      <SidebarGroupContent className="flex-1 overflow-y-auto">
-        <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
-          Workflows
-        </div>
-        {workflows.length > 0 ? (
-          <SidebarMenu>
-            {workflows.map((workflow) => (
-              <SidebarMenuItem key={workflow.id}>
-                <SidebarMenuButton
-                  isActive={selectedWorkflowId === workflow.id}
-                  onClick={() => onSelectWorkflow?.(workflow.id)}
-                  className="gap-2 data-[active=true]:font-normal"
-                >
-                  <div className="relative">
-                    <Workflow className="size-4 shrink-0" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs">{workflow.name}</div>
-                    <div className="truncate text-[10px] text-muted-foreground">
-                      {workflow.cadence}
-                    </div>
-                  </div>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        ) : (
-          <div className="px-3 py-2 text-xs text-muted-foreground">
-            No workflows yet.
-          </div>
-        )}
-      </SidebarGroupContent>
-    </SidebarGroup>
   )
 }
 

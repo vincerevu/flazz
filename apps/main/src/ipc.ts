@@ -1,7 +1,7 @@
 import type { BackgroundService } from "@flazz/core/dist/services/background_service.js";
 import { ipcMain, BrowserWindow } from 'electron';
 import { ipc } from '@flazz/shared';
-import { watcher as watcherCore, workspace } from '@flazz/core';
+import { triggerGmailSyncNow, triggerGoogleMeetSyncNow, triggerGraphSyncNow, watcher as watcherCore, workspace } from '@flazz/core/dist/index.js';
 import { workspace as workspaceShared } from '@flazz/shared';
 import { bus } from '@flazz/core/dist/runs/bus.js';
 import { serviceBus } from '@flazz/core/dist/services/service_bus.js';
@@ -249,6 +249,15 @@ export function emitOAuthEvent(event: { provider: string; success: boolean; erro
   }
 }
 
+export function emitNotificationActivated(event: { runId: string }): void {
+  const windows = BrowserWindow.getAllWindows();
+  for (const win of windows) {
+    if (!win.isDestroyed() && win.webContents) {
+      win.webContents.send('app:notificationActivated', event);
+    }
+  }
+}
+
 let runsWatcher: (() => void) | null = null;
 async function startRunsWatcher(): Promise<void> {
   if (runsWatcher) {
@@ -310,6 +319,35 @@ export function setupIpcHandlers() {
   registerMemoryHandlers(handlers);
   registerSkillsHandlers(handlers);
   registerRunMemoryHandlers(handlers);
+
+  handlers['services:triggerGraphSync'] = async (_event, args) => {
+    const [graphResult, gmailResult, googleMeetResult] = await Promise.all([
+      triggerGraphSyncNow({ force: args.force ?? true }),
+      triggerGmailSyncNow(),
+      triggerGoogleMeetSyncNow(),
+    ]);
+    if (!graphResult.success) {
+      return {
+        success: false,
+        error: graphResult.error,
+      };
+    }
+    if (!gmailResult.success) {
+      return {
+        success: false,
+        error: gmailResult.error,
+      };
+    }
+    if (!googleMeetResult.success) {
+      return {
+        success: false,
+        error: googleMeetResult.error,
+      };
+    }
+    return {
+      success: true,
+    };
+  };
 
   registerIpcHandlers(handlers as InvokeHandlers);
 }

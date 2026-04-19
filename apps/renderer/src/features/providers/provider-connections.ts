@@ -129,7 +129,7 @@ export function connectionToRuntimeConfig(connection: ProviderConnection, select
 
 export function parseProviderConnections(
   raw: unknown,
-  runtimeConfig: ModelConfig | null,
+  _runtimeConfig: ModelConfig | null,
   getDefaultName: (flavor: RuntimeProviderFlavor) => string,
 ): SavedProviderConnections {
   if (raw && typeof raw === "object" && Array.isArray((raw as SavedProviderConnections).connections)) {
@@ -180,20 +180,6 @@ export function parseProviderConnections(
         models: normalizeModelNames([config.model], config.model, config.memoryGraphModel),
         defaultModel: config.model,
         memoryGraphModel: config.memoryGraphModel,
-      })
-    }
-  }
-
-  if (runtimeConfig?.provider?.flavor && runtimeConfig.model) {
-    const fallbackId = providerConnectionId(runtimeConfig.provider.flavor, getDefaultName(runtimeConfig.provider.flavor))
-    if (!connections.some((connection) => connection.id === fallbackId)) {
-      connections.unshift({
-        id: fallbackId,
-        name: getDefaultName(runtimeConfig.provider.flavor),
-        provider: runtimeConfig.provider,
-        models: normalizeModelNames([runtimeConfig.model], runtimeConfig.model, runtimeConfig.memoryGraphModel),
-        defaultModel: runtimeConfig.model,
-        memoryGraphModel: runtimeConfig.memoryGraphModel,
       })
     }
   }

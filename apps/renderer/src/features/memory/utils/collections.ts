@@ -1,4 +1,20 @@
 const KNOWN_COLLECTION_META: Record<string, { label: string; description: string }> = {
+  'memory/Work': {
+    label: 'Work',
+    description: 'Captured work items, synced threads, and actionable context.',
+  },
+  'memory/Projects': {
+    label: 'Projects',
+    description: 'Project knowledge distilled from notes and synced sources.',
+  },
+  'memory/People': {
+    label: 'People',
+    description: 'People knowledge, contacts, and relationship context.',
+  },
+  'memory/Organizations': {
+    label: 'Organizations',
+    description: 'Organization profiles and company context.',
+  },
   'memory/Meetings': {
     label: 'Meetings',
     description: 'Structured meeting notes, recaps, and preparation docs.',
@@ -6,18 +22,6 @@ const KNOWN_COLLECTION_META: Record<string, { label: string; description: string
   'memory/Agent Notes': {
     label: 'Agent Notes',
     description: 'AI-generated working memory, summaries, and operating notes.',
-  },
-  'memory/People': {
-    label: 'People',
-    description: 'Contact intelligence, relationship notes, and people context.',
-  },
-  'memory/Organizations': {
-    label: 'Organizations',
-    description: 'Company profiles, teams, and org-level memory.',
-  },
-  'memory/Projects': {
-    label: 'Projects',
-    description: 'Project updates, plans, decisions, and working documents.',
   },
   'memory/Topics': {
     label: 'Topics',
@@ -31,9 +35,19 @@ const KNOWN_COLLECTION_META: Record<string, { label: string; description: string
     label: 'My Notes',
     description: 'General notes and scratch work across your workspace.',
   },
+  'memory/Skills': {
+    label: 'Skills',
+    description: 'Saved reusable skills and procedures.',
+  },
+  'memory/Workflows': {
+    label: 'Workflow Memory',
+    description: 'Aggregated precedent notes for repeated workflows.',
+  },
 }
 
 export type MemoryCollectionPath = string
+
+const NON_COLLECTION_PATHS = new Set(['memory', 'memory/Knowledge', 'memory/Sources'])
 
 function toCollectionLabel(path: string): string {
   const known = KNOWN_COLLECTION_META[path]
@@ -47,7 +61,8 @@ function toCollectionLabel(path: string): string {
 
 export function isMemoryCollectionPath(path: string | null | undefined): path is MemoryCollectionPath {
   if (!path) return false
-  return path === 'memory' || path.startsWith('memory/')
+  if (!path.startsWith('memory/')) return false
+  return !NON_COLLECTION_PATHS.has(path)
 }
 
 export function getMemoryCollectionMeta(path: string | null | undefined) {

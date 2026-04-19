@@ -3,6 +3,12 @@ import type { TreeNode, DirEntry } from '../types'
 import { stripMemoryPrefix, toMemoryPath } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
+const HIDDEN_MEMORY_UI_PREFIXES = ['memory/Runs', 'memory/Workflows', 'memory/Signals', 'memory/Sources']
+
+function isHiddenMemoryUiPath(path: string): boolean {
+  return HIDDEN_MEMORY_UI_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+}
+
 // Sort nodes (dirs first, then alphabetically)
 function sortNodes(nodes: TreeNode[]): TreeNode[] {
   return nodes.sort((a, b) => {
@@ -130,7 +136,7 @@ export function useWorkspaceTree() {
   }, [])
 
   const memoryFiles = useMemo(() => {
-    const files = collectFilePaths(tree).filter((path) => path.endsWith('.md'))
+    const files = collectFilePaths(tree).filter((path) => path.endsWith('.md') && !isHiddenMemoryUiPath(path))
     return Array.from(new Set(files.map(stripMemoryPrefix)))
   }, [tree])
 

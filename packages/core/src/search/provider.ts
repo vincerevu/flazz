@@ -3,6 +3,13 @@ export interface SearchResult {
   title: string;
   preview: string;
   path: string;
+  score?: number;
+  scoreBreakdown?: {
+    keyword: number;
+    graph: number;
+    recency: number;
+    total: number;
+  };
 }
 
 export interface SearchProvider {

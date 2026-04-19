@@ -25,6 +25,10 @@ export const toMemoryPath = (wikiPath: string) => {
 
 export const wikiLabel = (wikiPath: string) => {
   const normalized = normalizeWikiPath(wikiPath)
-  const name = normalized.split('/').pop() || normalized
+  const parts = normalized.split('/').filter(Boolean)
+  const lastPart = parts[parts.length - 1] || normalized
+  const name = /^skill\.md$/i.test(lastPart)
+    ? (parts[parts.length - 2] || lastPart)
+    : lastPart
   return name.replace(/\.md$/i, '')
 }
