@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron';
 import { isOnboardingComplete, markOnboardingComplete } from '@flazz/core/dist/config/note_creation_config.js';
 import type { InvokeHandlers } from '../ipc.js';
 import type { IPCChannels } from '@flazz/shared';
+import { setAttentionState } from '../attention-state.js';
 
 export function getVersions(): {
   chrome: string;
@@ -56,6 +57,18 @@ export function registerAppHandlers(handlers: Partial<InvokeHandlers>) {
   };
   handlers['app:closeWindow'] = async (event) => {
     getEventWindow(event)?.close();
+    return { success: true };
+  };
+  (handlers as Record<string, unknown>)['app:updateAttentionState'] = async (
+    _event: Electron.IpcMainInvokeEvent,
+    args: IPCChannels['app:updateAttentionState']['req']
+  ) => {
+    setAttentionState({
+      activeRunId: args.activeRunId,
+      isWindowFocused: args.isWindowFocused,
+      isDocumentVisible: args.isDocumentVisible,
+      notificationsEnabled: 'notificationsEnabled' in args ? Boolean(args.notificationsEnabled) : true,
+    });
     return { success: true };
   };
   handlers['onboarding:getStatus'] = async () => {

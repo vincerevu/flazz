@@ -35,17 +35,16 @@ import { useChatRuntime } from '@/features/chat/use-chat-runtime'
 import { runsIpc } from '@/services/runs-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
 import { memoryIpc } from '@/services/memory-ipc'
+import { appIpc } from '@/services/app-ipc'
 import { useDesktopWindow } from '@/features/app/use-desktop-window'
 import { useAppKeyboardShortcuts } from '@/features/app/use-app-keyboard-shortcuts'
 import { useBackgroundTasks } from '@/features/background-tasks/use-background-tasks'
 import { ChatMainPanel } from '@/features/chat/components/chat-main-panel'
-import { SkillsMainPanel } from '@/features/skills/components/skills-main-panel'
-import { useSkillsData } from '@/features/skills/use-skills-data'
-import { mockWorkflows } from '@/features/workflow/mock-workflows'
-import { WorkflowMainPanel } from '@/features/workflow/components/workflow-main-panel'
 import { splitFrontmatter, joinFrontmatter } from '@/lib/frontmatter'
 import { getMemoryCollectionMeta, isMemoryCollectionPath } from '@/features/memory/utils/collections'
 import { MemoryCollectionView } from '@/features/memory/components/memory-collection-view'
+
+const CHAT_NOTIFICATIONS_STORAGE_KEY = 'flazz:chat-notifications-enabled'
 
 function findTreeNode(nodes: TreeNode[], targetPath: string | null): TreeNode | null {
   if (!targetPath) return null
@@ -84,25 +83,6 @@ function App() {
     setSelectedBackgroundTask,
     handleToggleBackgroundTask,
   } = useBackgroundTasks()
-  const {
-    skills,
-    selectedSkill,
-    selectedSkillId,
-    setSelectedSkillId,
-    learningStats,
-    revisions,
-    selectedRevision,
-    selectedRevisionId,
-    setSelectedRevisionId,
-    relatedRepairs,
-    relatedRunMemories,
-    mutatingCandidateId,
-    rollingBackRevisionId,
-    promoteCandidate,
-    rejectCandidate,
-    rollbackToRevision,
-  } = useSkillsData()
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(mockWorkflows[0]?.id ?? '')
   const [pendingFolderRenamePath, setPendingFolderRenamePath] = useState<string | null>(null)
 
   // --- Navigation & History ---
@@ -144,6 +124,7 @@ function App() {
     expandedPaths,
     refreshTree,
     expandPath,
+    expandAncestors,
     expandAll,
     collapseAll,
     memoryFiles,
@@ -251,6 +232,17 @@ function App() {
   const chatRuntimeSnapshotRef = useRef<ChatTabViewState>(createEmptyChatTabViewState())
   const [agentId] = useState<string>('copilot')
   const [presetMessage, setPresetMessage] = useState<string | undefined>(undefined)
+  const [isWindowFocusedForNotifications, setIsWindowFocusedForNotifications] = useState<boolean>(() => (
+    typeof document !== 'undefined' ? document.hasFocus() : true
+  ))
+  const [isDocumentVisibleForNotifications, setIsDocumentVisibleForNotifications] = useState<boolean>(() => (
+    typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
+  ))
+  const [chatNotificationsEnabled, setChatNotificationsEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    const raw = window.localStorage.getItem(CHAT_NOTIFICATIONS_STORAGE_KEY)
+    return raw == null ? true : raw === 'true'
+  })
 
   const isToolOpenForTab = useCallback((tabId: string, toolId: string): boolean => {
     return toolOpenByTab[tabId]?.[toolId] ?? false
@@ -295,6 +287,44 @@ function App() {
     refreshTree()
     navigateToView({ type: 'file', path })
   }, [refreshTree, navigateToView])
+
+  useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => {
+        void refreshTree()
+        refreshTimer = null
+      }, 120)
+    }
+
+    const cleanup = workspaceIpc.onDidChange((event) => {
+      if (event.type === 'bulkChanged') {
+        const paths = event.paths ?? []
+        if (paths.some((path) => path === 'memory' || path.startsWith('memory/'))) {
+          for (const path of paths) {
+            if (path.startsWith('memory/Knowledge/')) {
+              expandAncestors(path)
+            }
+          }
+          scheduleRefresh()
+        }
+        return
+      }
+      const changedPath = 'path' in event ? event.path : undefined
+      if (changedPath && (changedPath === 'memory' || changedPath.startsWith('memory/'))) {
+        if (changedPath.startsWith('memory/Knowledge/')) {
+          expandAncestors(changedPath)
+        }
+        scheduleRefresh()
+      }
+    })
+
+    return () => {
+      cleanup()
+      if (refreshTimer) clearTimeout(refreshTimer)
+    }
+  }, [expandAncestors, refreshTree])
 
   const {
     runs,
@@ -415,10 +445,66 @@ function App() {
     return chatViewStateByTab[tabId] || createEmptyChatTabViewState()
   }, [activeChatTabId, chatRuntimeSnapshot, chatViewStateByTab])
 
+  const activeChatTabState = useMemo(() => (
+    getChatTabStateForRender(activeChatTabId)
+  ), [activeChatTabId, getChatTabStateForRender])
+
   const hasConversation = useMemo(() => {
-    const state = getChatTabStateForRender(activeChatTabId)
-    return state.conversation.length > 0 || !!state.currentAssistantMessage
-  }, [activeChatTabId, getChatTabStateForRender])
+    return activeChatTabState.conversation.length > 0 || !!activeChatTabState.currentAssistantMessage
+  }, [activeChatTabState])
+
+  useEffect(() => {
+    const handleFocus = () => setIsWindowFocusedForNotifications(true)
+    const handleBlur = () => setIsWindowFocusedForNotifications(false)
+    const handleVisibility = () => setIsDocumentVisibleForNotifications(document.visibilityState === 'visible')
+    const handleNotificationPreferenceChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ enabled?: boolean }>).detail
+      if (typeof detail?.enabled === 'boolean') {
+        setChatNotificationsEnabled(detail.enabled)
+        return
+      }
+      const raw = window.localStorage.getItem(CHAT_NOTIFICATIONS_STORAGE_KEY)
+      setChatNotificationsEnabled(raw == null ? true : raw === 'true')
+    }
+
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('blur', handleBlur)
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('flazz:chat-notifications-changed', handleNotificationPreferenceChanged as EventListener)
+
+    handleFocus()
+    handleVisibility()
+    handleNotificationPreferenceChanged(new CustomEvent('flazz:chat-notifications-changed'))
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('blur', handleBlur)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('flazz:chat-notifications-changed', handleNotificationPreferenceChanged as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
+    void appIpc.updateAttentionState({
+      activeRunId: activeChatTabState.runId,
+      isWindowFocused: isWindowFocusedForNotifications,
+      isDocumentVisible: isDocumentVisibleForNotifications,
+      notificationsEnabled: chatNotificationsEnabled,
+    })
+  }, [
+    activeChatTabState.runId,
+    chatNotificationsEnabled,
+    isDocumentVisibleForNotifications,
+    isWindowFocusedForNotifications,
+  ])
+
+  useEffect(() => {
+    const cleanup = appIpc.onNotificationActivated(({ runId: targetRunId }) => {
+      if (!targetRunId) return
+      void navigateToView({ type: 'chat', runId: targetRunId })
+    })
+    return cleanup
+  }, [navigateToView])
 
   const isChatTabProcessing = useCallback((tab: ChatTab) => {
     return processingRunIds.has(tab.runId || '')
@@ -570,6 +656,7 @@ function App() {
       conversation={conversation}
       currentAssistantMessage={currentAssistantMessage}
       modelUsage={modelUsage}
+      modelUsageUpdatedAt={activeChatTabState.modelUsageUpdatedAt}
       chatTabStates={chatViewStateByTab}
       isProcessing={isProcessing}
       isStopping={isStopping}
@@ -683,12 +770,6 @@ function App() {
           }}
           backgroundTasks={backgroundTasks}
           selectedBackgroundTask={selectedBackgroundTask}
-          skills={skills}
-          selectedSkillId={selectedSkillId}
-          onSelectSkill={setSelectedSkillId}
-          workflows={mockWorkflows}
-          selectedWorkflowId={selectedWorkflowId}
-          onSelectWorkflow={setSelectedWorkflowId}
         />
       }
       headerContent={
@@ -1002,58 +1083,6 @@ function App() {
         </>
       }
       auxiliaryPane={isRightPaneContext ? sideChatPane : null}
-      sectionHeaderContent={{
-        skills: (
-          <div className="flex min-w-0 items-center gap-3 px-1">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">Skills</div>
-              <div className="truncate text-xs text-muted-foreground">
-                Learned procedures, built-ins, and review candidates
-              </div>
-            </div>
-          </div>
-        ),
-        workflow: (
-          <div className="flex min-w-0 items-center gap-3 px-1">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">Workflow</div>
-              <div className="truncate text-xs text-muted-foreground">
-                Visual automation blueprints with room for chat on the right
-              </div>
-            </div>
-          </div>
-        ),
-      }}
-      sectionMainContent={{
-        skills: (
-          <SkillsMainPanel
-            skills={skills}
-            selectedSkill={selectedSkill}
-            learningStats={learningStats}
-            revisions={revisions}
-            selectedRevision={selectedRevision}
-            selectedRevisionId={selectedRevisionId}
-            setSelectedRevisionId={setSelectedRevisionId}
-            relatedRepairs={relatedRepairs}
-            relatedRunMemories={relatedRunMemories}
-            mutatingCandidateId={mutatingCandidateId}
-            rollingBackRevisionId={rollingBackRevisionId}
-            onPromoteCandidate={promoteCandidate}
-            onRejectCandidate={rejectCandidate}
-            onRollbackRevision={rollbackToRevision}
-          />
-        ),
-        workflow: (
-          <WorkflowMainPanel
-            workflows={mockWorkflows}
-            selectedWorkflowId={selectedWorkflowId}
-          />
-        ),
-      }}
-      sectionAuxiliaryPane={{
-        skills: sideChatPane,
-        workflow: sideChatPane,
-      }}
       dialogs={
         <SearchDialog
           open={isSearchOpen}

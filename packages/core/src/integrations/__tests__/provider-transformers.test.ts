@@ -60,11 +60,50 @@ test("normalizeResource maps github issue fields into ticket shape", () => {
   }) as { id: string; title: string; status?: string; preview?: string } | null;
 
   assert.ok(result);
-  assert.equal(result?.id, "issue-1");
+  assert.equal(result?.id, "42");
   assert.equal(result?.title, "Fix notification routing");
   assert.equal(result?.status, "open");
   assert.match(result?.preview ?? "", /flazzlabs\/flazz/i);
   assert.match(result?.preview ?? "", /#42/i);
+});
+
+test("normalizeResource maps google meet data into event shape", () => {
+  const result = normalizeResource("googlemeet", "event", {
+    name: "spaces/abc-defg-hij",
+    meeting_code: "abc-defg-hij",
+    start_time: "2026-04-19T10:00:00Z",
+    end_time: "2026-04-19T11:00:00Z",
+    meetingUri: "https://meet.google.com/abc-defg-hij",
+  }) as { id: string; title: string; startAt?: string; endAt?: string } | null;
+
+  assert.ok(result);
+  assert.equal(result?.id, "spaces/abc-defg-hij");
+  assert.equal(result?.title, "abc-defg-hij");
+  assert.equal(result?.startAt, "2026-04-19T10:00:00Z");
+  assert.equal(result?.endAt, "2026-04-19T11:00:00Z");
+});
+
+test("buildStructuredView surfaces google meet artifact metadata", () => {
+  const result = buildStructuredView("googlemeet", "event", {
+    name: "spaces/abc-defg-hij",
+    meeting_code: "abc-defg-hij",
+    conferenceRecordId: "conferenceRecords/123",
+    recordings: [{ name: "recordings/1" }, { name: "recordings/2" }],
+    transcripts: [{ name: "transcripts/1" }],
+  }) as {
+    meetingCode?: string;
+    conferenceRecordId?: string;
+    recordingCount?: number;
+    transcriptCount?: number;
+    artifactPreview?: string;
+  };
+
+  assert.equal(result.meetingCode, "abc-defg-hij");
+  assert.equal(result.conferenceRecordId, "conferenceRecords/123");
+  assert.equal(result.recordingCount, 2);
+  assert.equal(result.transcriptCount, 1);
+  assert.match(result.artifactPreview ?? "", /2 recordings/i);
+  assert.match(result.artifactPreview ?? "", /1 transcript/i);
 });
 
 test("normalizeResource maps CRM-style records into record shape", () => {

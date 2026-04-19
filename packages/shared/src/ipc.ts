@@ -10,7 +10,7 @@ import { UserMessageContent } from './message.js';
 import { ZListToolkitsResponse } from './composio.js';
 import { ListSkillsResponse, ListSkillCandidatesResponse, ListSkillRepairCandidatesResponse, ListSkillRevisionsResponse, Skill, SkillLearningStats, SkillRevision } from './skills.js';
 import { ListRunMemoryResponse } from './run-memory.js';
-  import { IntegrationProviderStatus, ProviderResourceDescriptor } from './integration-resources.js';
+import { IntegrationProviderStatus } from './integration-resources.js';
 
 // ============================================================================
 // Runtime Validation Schemas (Single Source of Truth)
@@ -54,6 +54,23 @@ const ipcSchemas = {
     res: z.object({
       success: z.literal(true),
     }),
+  },
+  'app:updateAttentionState': {
+    req: z.object({
+      activeRunId: z.string().nullable(),
+      isWindowFocused: z.boolean(),
+      isDocumentVisible: z.boolean(),
+      notificationsEnabled: z.boolean(),
+    }),
+    res: z.object({
+      success: z.literal(true),
+    }),
+  },
+  'app:notificationActivated': {
+    req: z.object({
+      runId: z.string(),
+    }),
+    res: z.null(),
   },
   'app:windowStateChanged': {
     req: z.object({
@@ -315,6 +332,15 @@ const ipcSchemas = {
   'services:events': {
     req: ServiceEvent,
     res: z.null(),
+  },
+  'services:triggerGraphSync': {
+    req: z.object({
+      force: z.boolean().optional(),
+    }).optional().default({}),
+    res: z.object({
+      success: z.boolean(),
+      error: z.string().optional(),
+    }),
   },
   'models:list': {
     req: z.null(),

@@ -33,6 +33,7 @@ export interface CuratedToolkit {
 export const CURATED_TOOLKITS: CuratedToolkit[] = [
   { slug: 'gmail', displayName: 'Gmail', section: 'popular' },
   { slug: 'googlecalendar', displayName: 'Google Calendar', section: 'popular' },
+  { slug: 'googlemeet', displayName: 'Google Meet', section: 'popular' },
   { slug: 'googledrive', displayName: 'Google Drive', section: 'popular' },
   { slug: 'slack', displayName: 'Slack', section: 'popular' },
   { slug: 'notion', displayName: 'Notion', section: 'popular' },

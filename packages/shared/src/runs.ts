@@ -32,6 +32,18 @@ export const LlmStreamEvent = BaseRunEvent.extend({
     event: LlmStepStreamEvent,
 });
 
+export const UsageUpdateEvent = BaseRunEvent.extend({
+    type: z.literal("usage-update"),
+    usage: z.object({
+        inputTokens: z.number().optional(),
+        outputTokens: z.number().optional(),
+        totalTokens: z.number().optional(),
+        reasoningTokens: z.number().optional(),
+        cachedInputTokens: z.number().optional(),
+    }),
+    finishReason: z.enum(["stop", "tool-calls", "length", "content-filter", "error", "other", "unknown"]).optional(),
+});
+
 export const MessageEvent = BaseRunEvent.extend({
     type: z.literal("message"),
     messageId: z.string(),
@@ -142,6 +154,7 @@ export const RunEvent = z.union([
     StartEvent,
     SpawnSubFlowEvent,
     LlmStreamEvent,
+    UsageUpdateEvent,
     MessageEvent,
     ToolInvocationEvent,
     ToolResultEvent,

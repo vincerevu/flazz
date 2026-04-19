@@ -10,8 +10,13 @@ import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 
 import { ServiceRegistry } from "@flazz/core/dist/services/service_registry.js";
 import { graphBuilderService } from "@flazz/core/dist/memory-graph/build-graph.js";
+import { graphSyncRunnerService } from "@flazz/core/dist/memory-graph/graph-sync-runner.js";
+import { emailLabelingService } from "@flazz/core/dist/memory-graph/label-emails.js";
+import { gmailSyncService } from "@flazz/core/dist/memory-graph/sync-gmail.js";
+import { googleMeetSyncService } from "@flazz/core/dist/memory-graph/sync-googlemeet.js";
 import { agentRunnerService } from "@flazz/core/dist/agent-schedule/runner.js";
 import { workspaceWatcherService, runsWatcherService, servicesWatcherService } from "./ipc.js";
+import { runNotificationService } from "./run-notifications.js";
 import { initConfigs } from "@flazz/core/dist/config/initConfigs.js";
 import started from "electron-squirrel-startup";
 
@@ -22,6 +27,11 @@ const __dirname = dirname(__filename);
 
 // run this as early in the main process as possible
 if (started) app.quit();
+
+app.setName("Flazz");
+if (process.platform === "win32") {
+  app.setAppUserModelId("Flazz");
+}
 
 // Global error handlers to prevent app crashes
 process.on('uncaughtException', (error) => {
@@ -156,7 +166,12 @@ const serviceRegistry = new ServiceRegistry();
 serviceRegistry.register(workspaceWatcherService);
 serviceRegistry.register(runsWatcherService);
 serviceRegistry.register(servicesWatcherService);
+serviceRegistry.register(runNotificationService);
 serviceRegistry.register(graphBuilderService);
+serviceRegistry.register(emailLabelingService);
+serviceRegistry.register(gmailSyncService);
+serviceRegistry.register(googleMeetSyncService);
+serviceRegistry.register(graphSyncRunnerService);
 serviceRegistry.register(agentRunnerService);
 
 console.time('app-startup');

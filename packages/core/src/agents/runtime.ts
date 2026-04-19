@@ -22,6 +22,8 @@ import { parse } from "yaml";
 import { raw as noteCreationMediumRaw } from "../memory-graph/note-creation-medium.js";
 import { raw as noteCreationLowRaw } from "../memory-graph/note-creation-low.js";
 import { raw as noteCreationHighRaw } from "../memory-graph/note-creation-high.js";
+import { getRaw as getNoteCreationRaw } from "../memory-graph/note-creation.js";
+import { getRaw as getLabelingAgentRaw } from "../memory-graph/labeling-agent.js";
 import { z } from "zod";
 
 import {
@@ -230,18 +232,43 @@ export async function loadAgent(id: string): Promise<z.infer<typeof Agent>> {
         return CopilotAgent;
     }
 
+    if (id === "labeling_agent") {
+        const raw = getLabelingAgentRaw();
+        let agent: z.infer<typeof Agent> = {
+            name: id,
+            instructions: raw,
+        };
+
+        if (raw.startsWith("---")) {
+            const end = raw.indexOf("\n---", 3);
+            if (end !== -1) {
+                const fm = raw.slice(3, end).trim();
+                const content = raw.slice(end + 4).trim();
+                const yaml = parse(fm);
+                const parsed = Agent.omit({ name: true, instructions: true }).parse(yaml);
+                agent = {
+                    ...agent,
+                    ...parsed,
+                    instructions: content,
+                };
+            }
+        }
+
+        return agent;
+    }
+
     if (id === 'note_creation') {
         const strictness = getNoteCreationStrictness();
-        let raw = '';
+        let raw = getNoteCreationRaw();
         switch (strictness) {
             case 'medium':
-                raw = noteCreationMediumRaw;
+                raw = getNoteCreationRaw() || noteCreationMediumRaw;
                 break;
             case 'low':
-                raw = noteCreationLowRaw;
+                raw = getNoteCreationRaw() || noteCreationLowRaw;
                 break;
             case 'high':
-                raw = noteCreationHighRaw;
+                raw = getNoteCreationRaw() || noteCreationHighRaw;
                 break;
         }
         let agent: z.infer<typeof Agent> = {
@@ -358,7 +385,7 @@ export async function* streamAgent({
 
     // set up provider + model
     const provider = createProvider(modelConfig.provider);
-      const memoryGraphAgents = ["note_creation", "email-draft", "meeting-prep"];
+      const memoryGraphAgents = ["note_creation", "labeling_agent", "email-draft", "meeting-prep"];
       const modelId = (memoryGraphAgents.includes(state.agentName!) && modelConfig.memoryGraphModel)
           ? modelConfig.memoryGraphModel
         : modelConfig.model;
@@ -741,6 +768,25 @@ export async function* streamAgent({
                 event: event,
                 subflow: [],
             });
+            if (event.type === "finish-step") {
+                yield* processEvent(RunEvent.parse({
+                    runId,
+                    type: "usage-update",
+                    usage: event.usage,
+                    finishReason: event.finishReason,
+                    subflow: [],
+                    ts: new Date().toISOString(),
+                }));
+            } else if (event.type === "finish" && event.totalUsage) {
+                yield* processEvent(RunEvent.parse({
+                    runId,
+                    type: "usage-update",
+                    usage: event.totalUsage,
+                    finishReason: event.finishReason,
+                    subflow: [],
+                    ts: new Date().toISOString(),
+                }));
+            }
             if (event.type === "error") {
                 streamError = event.error;
                 emitLog("error", "provider error", { error: streamError, messages: state.messages.length });

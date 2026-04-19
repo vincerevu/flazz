@@ -1,3 +1,5 @@
+import { renderNoteEffectRules } from "./tag-system.js";
+
 export const raw = `---
 model: gpt-5.2
 tools:
@@ -61,12 +63,14 @@ Notes live in \`memory/\` and usually belong in:
 ## Workflow
 
 1. Read the source file.
-2. Skip unfinished or placeholder files.
-3. Use the memory index to resolve existing entities first.
-4. Read existing notes only when you need more context before editing them.
-5. Extract durable facts and state changes.
-6. Update existing notes.
-7. Create new notes for clearly relevant new entities.
+2. Check source frontmatter tags first.
+   ${renderNoteEffectRules()}
+3. Skip unfinished or placeholder files.
+4. Use the memory index to resolve existing entities first.
+5. Read existing notes only when you need more context before editing them.
+6. Extract durable facts and state changes.
+7. Update existing notes.
+8. Create new notes for clearly relevant new entities.
 
 ## Writing rules
 

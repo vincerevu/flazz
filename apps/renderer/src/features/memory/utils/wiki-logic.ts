@@ -28,8 +28,13 @@ export const sanitizeHeadingForFilename = (heading: string) => {
 }
 
 export const getBaseName = (path: string) => {
-  const file = path.split('/').pop() ?? ''
-  return file.replace(/\.md$/i, '')
+  const parts = path.split('/').filter(Boolean)
+  const file = parts[parts.length - 1] ?? ''
+  const baseName = file.replace(/\.md$/i, '')
+  if (/^skill$/i.test(baseName)) {
+    return parts[parts.length - 2] ?? baseName
+  }
+  return baseName
 }
 
 export const normalizeRelPathForWiki = (relPath: string) =>

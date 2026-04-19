@@ -32,6 +32,14 @@ import { RunLearningService } from "../skills/run-learning-service.js";
 import { LearningStateRepo } from "../skills/learning-state-repo.js";
 import { RunMemoryRepo } from "../run-memory/run-memory-repo.js";
 import { RunMemoryService } from "../run-memory/run-memory-service.js";
+import { RunMemoryGraphPromoter } from "../memory-graph/run-memory-promoter.js";
+import { GraphSignalRepo } from "../memory-graph/graph-signal-repo.js";
+import { GraphSignalPromoter } from "../memory-graph/graph-signal-promoter.js";
+import { GraphSignalService } from "../memory-graph/graph-signal-service.js";
+import { GraphSyncStateRepo } from "../memory-graph/graph-sync-state-repo.js";
+import { GraphSyncService } from "../memory-graph/graph-sync-service.js";
+import { IntegrationItemMemoryPromoter } from "../memory-graph/integration-item-memory-promoter.js";
+import { IntegrationSourceMemoryPromoter } from "../memory-graph/integration-source-memory-promoter.js";
 import { RetrievalController } from "../retrieval/retrieval-controller.js";
 import { ProviderMapper } from "../integrations/provider-mapper.js";
 import { CapabilityRegistry } from "../integrations/capability-registry.js";
@@ -91,7 +99,15 @@ const skillRegistry = new SkillRegistry([workspaceSkillSource, sourceSkillSource
 setSkillRegistry(skillRegistry);
 const learningStateRepo = new LearningStateRepo(WorkDir);
 const runMemoryRepo = new RunMemoryRepo(WorkDir);
-const runMemoryService = new RunMemoryService(runMemoryRepo);
+const runMemoryGraphPromoter = new RunMemoryGraphPromoter(WorkDir);
+const graphSignalRepo = new GraphSignalRepo(WorkDir);
+const graphSignalPromoter = new GraphSignalPromoter(WorkDir);
+const integrationItemMemoryPromoter = new IntegrationItemMemoryPromoter(WorkDir);
+const integrationSourceMemoryPromoter = new IntegrationSourceMemoryPromoter(WorkDir);
+const graphSyncStateRepo = new GraphSyncStateRepo(WorkDir);
+const graphSyncService = new GraphSyncService(graphSyncStateRepo, WorkDir);
+const graphSignalService = new GraphSignalService(graphSignalRepo, graphSignalPromoter, graphSyncService);
+const runMemoryService = new RunMemoryService(runMemoryRepo, runMemoryGraphPromoter, graphSignalService);
 const runLearningService = new RunLearningService(
     skillManager,
     skillRegistry,
@@ -125,6 +141,10 @@ export {
     skillRegistry,
     runLearningService,
     runMemoryService,
+    graphSyncService,
+    graphSignalService,
+    integrationItemMemoryPromoter,
+    integrationSourceMemoryPromoter,
     retrievalController,
     providerMapper,
     capabilityRegistry,

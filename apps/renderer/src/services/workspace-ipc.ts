@@ -12,6 +12,7 @@ type ReaddirOptions = NonNullable<IPCChannels['workspace:readdir']['req']['opts'
 type Encoding = NonNullable<IPCChannels['workspace:readFile']['req']['encoding']>
 type WriteFileOptions = NonNullable<IPCChannels['workspace:writeFile']['req']['opts']>
 type RemoveOptions = NonNullable<IPCChannels['workspace:remove']['req']['opts']>
+type WorkspaceChangeEvent = IPCChannels['workspace:didChange']['req']
 
 export const workspaceIpc = {
   readdir(path: string, opts?: Pick<ReaddirOptions, 'recursive' | 'includeHidden'>) {
@@ -44,5 +45,9 @@ export const workspaceIpc = {
 
   mkdir(path: string, opts?: { recursive?: boolean }) {
     return window.ipc.invoke('workspace:mkdir', { path, ...(opts ? opts : {}) })
+  },
+
+  onDidChange(handler: (event: WorkspaceChangeEvent) => void) {
+    return window.ipc.on('workspace:didChange', handler)
   },
 }

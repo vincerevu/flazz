@@ -27,7 +27,9 @@ export async function search(query: string, limit = 20, types?: SearchType[]): P
     searchChatsEnabled ? runsProvider.search(trimmed, limit) : Promise.resolve([]),
   ]);
 
-  const results = [...memoryResults, ...chatResults].slice(0, limit);
+  const results = [...memoryResults, ...chatResults]
+    .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+    .slice(0, limit);
   console.timeEnd('search-query');
   return { results };
 }

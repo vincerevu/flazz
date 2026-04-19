@@ -12,4 +12,7 @@ export const servicesIpc = {
   onEvents(handler: (event: ServiceEvent) => void) {
     return window.ipc.on('services:events', handler)
   },
+  triggerGraphSync(force = true) {
+    return window.ipc.invoke('services:triggerGraphSync', { force })
+  },
 }

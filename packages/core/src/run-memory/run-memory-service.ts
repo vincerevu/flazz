@@ -3,9 +3,36 @@ import { z } from "zod";
 import { Run } from "@flazz/shared";
 import { distillRunMemory } from "./run-memory-distiller.js";
 import { RunMemoryRepo } from "./run-memory-repo.js";
+import type { GraphSignalService } from "../memory-graph/graph-signal-service.js";
 
 type RunRecord = z.infer<typeof Run>;
 type RunMemorySummary = z.infer<typeof RunMemorySummary>;
+type RunMemoryPromoter = {
+  promote(
+    record: ReturnType<typeof distillRunMemory>,
+    allRecords: ReturnType<RunMemoryRepo["list"]>
+  ): {
+    path: string;
+    created: boolean;
+    workflowPaths: string[];
+    failurePath?: string;
+  };
+};
+
+const INTERNAL_MEMORY_EXCLUDED_AGENTS = new Set([
+  "note_creation",
+  "labeling_agent",
+  "email-draft",
+  "meeting-prep",
+]);
+
+function shouldRecordRunMemory(run: RunRecord): boolean {
+  if (INTERNAL_MEMORY_EXCLUDED_AGENTS.has(run.agentId)) {
+    return false;
+  }
+
+  return true;
+}
 
 function normalizeWords(input: string): string[] {
   return input
@@ -16,11 +43,21 @@ function normalizeWords(input: string): string[] {
 }
 
 export class RunMemoryService {
-  constructor(private repo: RunMemoryRepo) {}
+  constructor(
+    private repo: RunMemoryRepo,
+    private promoter?: RunMemoryPromoter,
+    private graphSignalService?: Pick<GraphSignalService, "ingestRunMemoryRecord">
+  ) {}
 
   recordRun(run: RunRecord): void {
+    if (!shouldRecordRunMemory(run)) {
+      return;
+    }
+
     const record = distillRunMemory(run);
     this.repo.upsert(record);
+    this.promoter?.promote(record, this.repo.list());
+    this.graphSignalService?.ingestRunMemoryRecord(record);
   }
 
   list(limit = 20): RunMemorySummary[] {

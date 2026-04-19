@@ -43,6 +43,15 @@ import { workspaceIpc } from '@/services/workspace-ipc'
 import type { TreeNode } from '@/features/memory/types'
 import { getMemoryCollectionMeta, type MemoryCollectionPath } from '@/features/memory/utils/collections'
 
+function getDisplayNoteName(path: string, fileName: string): string {
+  const baseName = fileName.replace(/\.md$/i, '')
+  if (/^skill$/i.test(baseName)) {
+    const parts = path.split('/').filter(Boolean)
+    return parts[parts.length - 2] || baseName
+  }
+  return baseName
+}
+
 type NoteEntry = {
   path: string
   name: string
@@ -98,7 +107,7 @@ function toTitleCase(key: string): string {
 function collectFiles(nodes: TreeNode[]): { path: string; name: string; mtimeMs: number }[] {
   return nodes.flatMap((node) =>
     node.kind === 'file' && node.name.endsWith('.md')
-      ? [{ path: node.path, name: node.name.replace(/\.md$/i, ''), mtimeMs: node.stat?.mtimeMs ?? 0 }]
+      ? [{ path: node.path, name: getDisplayNoteName(node.path, node.name), mtimeMs: node.stat?.mtimeMs ?? 0 }]
       : node.children
         ? collectFiles(node.children)
         : [],

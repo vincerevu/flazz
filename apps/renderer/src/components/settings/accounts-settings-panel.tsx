@@ -75,6 +75,7 @@ function BrandIconBadge({
 const integrationBrandClassName: Record<string, string> = {
   gmail: "text-[#EA4335]",
   googlecalendar: "text-[#4285F4]",
+  googlemeet: "text-[#0F9D58]",
   googledrive: "text-[#34A853]",
   slack: "text-[#611F69]",
   notion: "text-black dark:text-white",
@@ -92,6 +93,7 @@ const integrationBrandClassName: Record<string, string> = {
 const integrationIconBySlug: Record<string, React.ElementType> = {
   gmail: SiGoogle,
   googlecalendar: SiGoogle,
+  googlemeet: SiGoogle,
   googledrive: SiGoogle,
   slack: SiSlack,
   notion: SiNotion,

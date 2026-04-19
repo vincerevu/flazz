@@ -178,9 +178,18 @@ export function useFileEditor({
         if (cancelled || fileLoadRequestIdRef.current !== requestId || selectedPathRef.current !== pathToLoad) return
         if (stat.kind === 'file') {
           if (pathToLoad.endsWith('.md')) {
-            await reloadFileFromDisk(pathToLoad, { force: true })
+            const cachedContent = editorContentByPathRef.current.get(pathToLoad)
+            const baselineContent = initialContentByPathRef.current.get(pathToLoad)
+            const hasUnsavedCachedChanges =
+              cachedContent !== undefined
+              && baselineContent !== undefined
+              && normalizeForCompare(cachedContent) !== normalizeForCompare(baselineContent)
+
+            await reloadFileFromDisk(pathToLoad, { force: !hasUnsavedCachedChanges })
             if (!cancelled && fileLoadRequestIdRef.current === requestId && selectedPathRef.current === pathToLoad) {
-              setLastSaved(null)
+              if (!hasUnsavedCachedChanges) {
+                setLastSaved(null)
+              }
             }
           } else {
             const result = await workspaceIpc.readFile(pathToLoad)

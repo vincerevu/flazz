@@ -23,9 +23,10 @@ function compactNumber(value: number) {
   return new Intl.NumberFormat('en-US', { notation: 'compact' }).format(value)
 }
 
-function getIndicatorTone(status: 'idle' | 'running' | 'completed' | 'failed') {
+function getIndicatorTone(status: string) {
   if (status === 'failed') return 'text-destructive'
   if (status === 'running') return 'text-amber-500'
+  if (status === 'pending') return 'text-amber-500'
   if (status === 'completed') return 'text-emerald-500'
   return 'text-muted-foreground'
 }

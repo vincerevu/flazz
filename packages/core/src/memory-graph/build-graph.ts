@@ -16,6 +16,7 @@ import {
 import { buildMemoryIndex, formatIndexForPrompt } from './memory-index.js';
 import { limitEventItems } from './limit-event-items.js';
 import { commitAll } from './version-history.js';
+import { shouldSkipSourceFromFrontmatter } from "./tag-system.js";
 
 /**
  * Build a markdown memory graph by running note creation over
@@ -24,12 +25,52 @@ import { commitAll } from './version-history.js';
 
 const NOTES_OUTPUT_DIR = path.join(WorkDir, 'memory');
 const NOTE_CREATION_AGENT = 'note_creation';
+const LEGACY_DEBUG_NOTE_PATHS = [
+    path.join(WorkDir, 'Skip-Log.md'),
+    path.join(WorkDir, 'memory', 'Skip-Log.md'),
+];
 
 // Configuration for the graph builder service
 const SYNC_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
+const SOURCE_FOLDERS = [
+    'gmail_sync',
+    'googlemeet_sync',
+    'github_sync',
+    'jira_sync',
+    'linear_sync',
+    'googlecalendar_sync',
+    'linkedin_sync',
+    'hubspot_sync',
+    'salesforce_sync',
+    'pipedrive_sync',
+    'notion_sync',
+    'googledocs_sync',
+    'confluence_sync',
+    'googledrive_sync',
+    'dropbox_sync',
+    'box_sync',
+    'googlesheets_sync',
+    'airtable_sync',
+];
 
 // Voice memos are now created directly in memory/Voice Memos/<date>/
 const VOICE_MEMOS_MEMORY_DIR = path.join(NOTES_OUTPUT_DIR, 'Voice Memos');
+
+async function removeLegacyDebugNotes(): Promise<void> {
+    await Promise.all(
+        LEGACY_DEBUG_NOTE_PATHS.map(async filePath => {
+            try {
+                await fs.promises.unlink(filePath);
+                console.log(`[GraphBuilder] Removed legacy debug note: ${filePath}`);
+            } catch (error) {
+                const err = error as NodeJS.ErrnoException;
+                if (err?.code !== 'ENOENT') {
+                    console.error(`[GraphBuilder] Failed to remove legacy debug note ${filePath}:`, error);
+                }
+            }
+        })
+    );
+}
 
 function extractPathFromToolInput(input: string): string | null {
     try {
@@ -187,7 +228,7 @@ async function createNotesFromBatch(
     });
 
     // Build message with index and all files in the batch
-    let message = `Process the following ${files.length} source files and create/update memory notes.\n\n`;
+    let message = `Process the following ${files.length} source files and create/update obsidian-style memory notes.\n\n`;
     message += `**Instructions:**\n`;
     message += `- Use the MEMORY INDEX below to resolve entities - DO NOT grep/search for existing notes\n`;
     message += `- Extract entities (people, organizations, projects, topics) from ALL files below\n`;
@@ -204,7 +245,7 @@ async function createNotesFromBatch(
     // Add each file's content
     message += `# Source Files to Process\n\n`;
     files.forEach((file, idx) => {
-        message += `## Source File ${idx + 1}: ${path.basename(file.path)}\n\n`;
+        message += `## Source File ${idx + 1}: ${path.relative(WorkDir, file.path)}\n\n`;
         message += file.content;
         message += `\n\n---\n\n`;
     });
@@ -273,7 +314,7 @@ async function buildGraphWithFiles(
         return { processedFiles: [], notesCreated: new Set(), notesModified: new Set(), hadError: false };
     }
 
-    const BATCH_SIZE = 10; // Reduced from 25 to 10 files per agent run for faster processing
+    const BATCH_SIZE = 10;
     const totalBatches = Math.ceil(contentFiles.length / BATCH_SIZE);
 
     console.log(`Processing ${contentFiles.length} files in ${totalBatches} batches (${BATCH_SIZE} files per batch)...`);
@@ -532,10 +573,10 @@ async function processVoiceMemosForMemory(): Promise<boolean> {
 
 /**
  * Process all configured source directories.
- * The active automatic source is voice memo transcripts created directly in memory/.
  */
 async function processAllSources(): Promise<void> {
     console.log('[GraphBuilder] Checking for new content...');
+    await removeLegacyDebugNotes();
 
     let anyFilesProcessed = false;
 
@@ -549,9 +590,98 @@ async function processAllSources(): Promise<void> {
         console.error('[GraphBuilder] Error processing voice memos:', error);
     }
 
-    // Graph builder now focuses on automatic extraction from voice memos.
-    // Manual notes and archived memory become part of workspace memory
-    // because the memory index scans memory/ directly.
+    const state = loadState();
+    const folderChanges: { folder: string; sourceDir: string; files: string[] }[] = [];
+    const countsByFolder: Record<string, number> = {};
+    const allFiles: string[] = [];
+
+    for (const folder of SOURCE_FOLDERS) {
+        const sourceDir = path.join(WorkDir, folder);
+        if (!fs.existsSync(sourceDir)) {
+            continue;
+        }
+
+        try {
+            let filesToProcess = getFilesToProcess(sourceDir, state);
+            filesToProcess = filesToProcess.filter(filePath => {
+                try {
+                    const content = fs.readFileSync(filePath, 'utf-8');
+                    if (shouldSkipSourceFromFrontmatter(content)) {
+                        markFileAsProcessed(filePath, state);
+                        return false;
+                    }
+                    return true;
+                } catch {
+                    return false;
+                }
+            });
+            if (filesToProcess.length > 0) {
+                console.log(`[GraphBuilder] Found ${filesToProcess.length} new/changed files in ${folder}`);
+                folderChanges.push({ folder, sourceDir, files: filesToProcess });
+                countsByFolder[folder] = filesToProcess.length;
+                allFiles.push(...filesToProcess);
+            }
+        } catch (error) {
+            console.error(`[GraphBuilder] Error processing ${folder}:`, error);
+        }
+    }
+
+    if (allFiles.length > 0) {
+        const run = await serviceLogger.startRun({
+            service: 'graph',
+            message: 'Syncing memory graph',
+            trigger: 'timer',
+            config: { sources: SOURCE_FOLDERS },
+        });
+
+        const relativeFiles = allFiles.map(filePath => path.relative(WorkDir, filePath));
+        const limitedFiles = limitEventItems(relativeFiles);
+        const foldersList = Object.keys(countsByFolder).join(', ');
+        const folderMessage = foldersList ? ` across ${foldersList}` : '';
+
+        await serviceLogger.log({
+            type: 'changes_identified',
+            service: run.service,
+            runId: run.runId,
+            level: 'info',
+            message: `Found ${allFiles.length} changed file${allFiles.length === 1 ? '' : 's'}${folderMessage}`,
+            counts: countsByFolder,
+            items: limitedFiles.items,
+            truncated: limitedFiles.truncated,
+        });
+
+        const notesCreated = new Set<string>();
+        const notesModified = new Set<string>();
+        const processedFiles: string[] = [];
+        let hadError = false;
+
+        for (const entry of folderChanges) {
+            const result = await buildGraphWithFiles(entry.sourceDir, entry.files, state, run);
+            result.processedFiles.forEach(file => processedFiles.push(file));
+            result.notesCreated.forEach(note => notesCreated.add(note));
+            result.notesModified.forEach(note => notesModified.add(note));
+            if (result.hadError) {
+                hadError = true;
+            }
+        }
+
+        await serviceLogger.log({
+            type: 'run_complete',
+            service: run.service,
+            runId: run.runId,
+            level: hadError ? 'error' : 'info',
+            message: `Graph sync complete: ${processedFiles.length} files, ${notesCreated.size} created, ${notesModified.size} updated`,
+            durationMs: Date.now() - run.startedAt,
+            outcome: hadError ? 'error' : 'ok',
+            summary: {
+                processedFiles: processedFiles.length,
+                notesCreated: notesCreated.size,
+                notesModified: notesModified.size,
+            },
+        });
+
+        anyFilesProcessed = true;
+    }
 
     if (!anyFilesProcessed) {
         console.log('[GraphBuilder] No new content to process');
@@ -582,6 +712,12 @@ function interruptibleSleep(ms: number): Promise<void> {
             resolve();
         };
     });
+}
+
+export function triggerGraphBuilderNow(): void {
+    if (wakeResolve) {
+        wakeResolve();
+    }
 }
 
 let isRunning = false;
