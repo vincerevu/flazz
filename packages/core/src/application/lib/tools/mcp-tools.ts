@@ -4,6 +4,96 @@ import container from "../../../di/container.js";
 import { IMcpConfigRepo } from "../../../mcp/repo.js";
 import { McpServerDefinition } from "@flazz/shared";
 
+const MAX_MCP_RESULT_STRING_CHARS = 4_000;
+const MAX_MCP_RESULT_ARRAY_ITEMS = 8;
+const MAX_MCP_RESULT_OBJECT_KEYS = 24;
+const MAX_MCP_RESULT_JSON_CHARS = 12_000;
+
+function truncateString(value: string): string {
+    if (value.length <= MAX_MCP_RESULT_STRING_CHARS) {
+        return value;
+    }
+
+    return `${value.slice(0, MAX_MCP_RESULT_STRING_CHARS)}\n...[truncated]`;
+}
+
+function summarizeLargeValue(value: unknown, depth = 0): unknown {
+    if (value == null) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        return truncateString(value);
+    }
+
+    if (typeof value !== "object") {
+        return value;
+    }
+
+    if (depth >= 4) {
+        return "[truncated nested value]";
+    }
+
+    if (Array.isArray(value)) {
+        const items = value.slice(0, MAX_MCP_RESULT_ARRAY_ITEMS).map((item) =>
+            summarizeLargeValue(item, depth + 1)
+        );
+
+        if (value.length > MAX_MCP_RESULT_ARRAY_ITEMS) {
+            items.push(`[${value.length - MAX_MCP_RESULT_ARRAY_ITEMS} more items truncated]`);
+        }
+
+        return items;
+    }
+
+    const entries = Object.entries(value);
+    const limitedEntries = entries.slice(0, MAX_MCP_RESULT_OBJECT_KEYS);
+    const summarized = Object.fromEntries(
+        limitedEntries.map(([key, entryValue]) => [key, summarizeLargeValue(entryValue, depth + 1)])
+    );
+
+    if (entries.length > MAX_MCP_RESULT_OBJECT_KEYS) {
+        summarized.__truncatedKeys = entries.length - MAX_MCP_RESULT_OBJECT_KEYS;
+    }
+
+    return summarized;
+}
+
+function safeJsonLength(value: unknown): number {
+    try {
+        return JSON.stringify(value).length;
+    } catch {
+        return Number.MAX_SAFE_INTEGER;
+    }
+}
+
+function compressMcpToolResult(result: unknown): { payload: unknown; truncated: boolean } {
+    if (safeJsonLength(result) <= MAX_MCP_RESULT_JSON_CHARS) {
+        return { payload: result, truncated: false };
+    }
+
+    const summarized = summarizeLargeValue(result);
+    if (safeJsonLength(summarized) <= MAX_MCP_RESULT_JSON_CHARS) {
+        return { payload: summarized, truncated: true };
+    }
+
+    return {
+        payload: {
+            summary: "Large MCP tool result omitted from conversation history.",
+            preview: truncateString(
+                (() => {
+                    try {
+                        return JSON.stringify(summarized);
+                    } catch {
+                        return String(summarized);
+                    }
+                })()
+            ),
+        },
+        truncated: true,
+    };
+}
+
 export const mcpTools = {
     addMcpServer: {
         description: 'Add or update an MCP server in the configuration with validation. This ensures the server definition is valid before saving.',
@@ -93,11 +183,13 @@ export const mcpTools = {
         execute: async ({ serverName, toolName, arguments: args = {} }: { serverName: string, toolName: string, arguments?: Record<string, unknown> }) => {
             try {
                 const result = await executeTool(serverName, toolName, args);
+                const compressed = compressMcpToolResult(result);
                 return {
                     success: true,
                     serverName,
                     toolName,
-                    result,
+                    result: compressed.payload,
+                    truncated: compressed.truncated,
                     message: `Successfully executed tool '${toolName}' from server '${serverName}'`,
                 };
             } catch (error) {

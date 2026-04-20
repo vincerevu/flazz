@@ -63,6 +63,7 @@ function App() {
   const { resolvedTheme } = useTheme()
 
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(true)
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true)
   const [isRightPaneMaximized, setIsRightPaneMaximized] = useState(false)
   const [activeShortcutPane, setActiveShortcutPane] = useState<ShortcutPane>('left')
   const {
@@ -105,18 +106,18 @@ function App() {
   const canNavigateForward = viewHistory.forward.length > 0
 
   // Navigation Orchestration (Ref-based to avoid circular dependencies with hooks)
-  const navigateRef = useRef<(view: ViewState, opts?: { pushHistory?: boolean }) => void>(() => {})
+  const navigateRef = useRef<(view: ViewState, opts?: { pushHistory?: boolean; newTab?: boolean }) => void>(() => {})
 
-  const navigateToView = useCallback((view: ViewState, opts?: { pushHistory?: boolean }) => {
+  const navigateToView = useCallback((view: ViewState, opts?: { pushHistory?: boolean; newTab?: boolean }) => {
     navigateRef.current(view, opts)
   }, [])
 
-  const navigateToFile = useCallback((path: string) => {
-    navigateToView({ type: 'file', path })
+  const navigateToFile = useCallback((path: string, opts?: { newTab?: boolean }) => {
+    navigateToView({ type: 'file', path }, opts)
   }, [navigateToView])
 
-  const navigateToFileRefThunk = useCallback((path: string) => navigateRef.current({ type: 'file', path }), [])
-  const navigateToViewRefThunk = useCallback((view: ViewState) => navigateRef.current(view), [])
+  const navigateToFileRefThunk = useCallback((path: string, opts?: { newTab?: boolean }) => navigateRef.current({ type: 'file', path }, opts), [])
+  const navigateToViewRefThunk = useCallback((view: ViewState, opts?: { newTab?: boolean }) => navigateRef.current(view, opts), [])
 
   // --- Memory Domain Hooks ---
   const {
@@ -501,7 +502,7 @@ function App() {
   useEffect(() => {
     const cleanup = appIpc.onNotificationActivated(({ runId: targetRunId }) => {
       if (!targetRunId) return
-      void navigateToView({ type: 'chat', runId: targetRunId })
+      void navigateToView({ type: 'chat', runId: targetRunId }, { newTab: true })
     })
     return cleanup
   }, [navigateToView])
@@ -525,9 +526,9 @@ function App() {
   const [expandedFrom, setExpandedFrom] = useState<ViewState | null>(null)
 
   // --- Navigation Implementation ---
-  const navigate = useCallback((view: ViewState, { pushHistory = true } = {}) => {
+  const navigate = useCallback((view: ViewState, { pushHistory = true, newTab = false } = {}) => {
     const from = currentViewRef.current
-    if (viewStatesEqual(from, view)) return
+    if (viewStatesEqual(from, view) && !newTab) return
 
     if (pushHistory) {
       setViewHistoryFull({
@@ -540,7 +541,7 @@ function App() {
 
     // Sidebar interaction logic
       if (view.type === 'file' || view.type === 'graph') {
-        ensureFileTabForPath(view.type === 'graph' ? GRAPH_TAB_PATH : view.path)
+        ensureFileTabForPath(view.type === 'graph' ? GRAPH_TAB_PATH : view.path, { newTab })
       } else if (view.type === 'chat') {
         if (view.runId) {
           const existingTab = chatTabs.find((t) => t.runId === view.runId)
@@ -684,8 +685,9 @@ function App() {
 
   return (
     <RendererAppShell
-      isMac={isMac}
       supportsCustomTitlebar={supportsCustomTitlebar}
+      isSidebarVisible={isLeftSidebarOpen}
+      onSidebarVisibilityChange={setIsLeftSidebarOpen}
       logoSrc={titlebarLogoSrc}
       isWindowMaximized={windowState?.isMaximized ?? false}
       shouldCollapseLeftPane={shouldCollapseLeftPane}

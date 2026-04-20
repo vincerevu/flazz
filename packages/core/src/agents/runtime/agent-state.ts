@@ -18,6 +18,12 @@ export class AgentState {
     compactedTaskState: ActiveTaskState | null = null;
     compactedContextAnchorHash: string | null = null;
     lastCompactionMessageCount: number | null = null;
+    /**
+     * Number of consecutive compaction failures. Reset to 0 on any successful
+     * compaction. Used by the runtime circuit breaker to stop retrying when
+     * compaction is persistently broken (e.g. network outage during summarise).
+     */
+    consecutiveCompactionFailures: number = 0;
     subflowStates: Record<string, AgentState> = {};
     toolCallIdMap: Record<string, z.infer<typeof ToolCallPart>> = {};
     pendingToolCalls: Record<string, true> = {};

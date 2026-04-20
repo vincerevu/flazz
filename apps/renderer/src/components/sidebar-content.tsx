@@ -69,9 +69,10 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { useSidebarSection } from "@/contexts/sidebar-context"
 import { SettingsDialog } from "@/components/settings-dialog"
-import { MainSidebarMenu } from "@/components/main-sidebar-menu"
+import { MainSidebarMenu } from "./main-sidebar-menu"
 import { toast } from "@/lib/toast"
 import { ServiceEvent } from "@flazz/shared/src/service-events.js"
+import { ScheduleSection } from "@/features/schedule/schedule-section"
 import z from "zod"
 import type { TreeNode } from "@/features/memory/types"
 import { servicesIpc } from "@/services/services-ipc"
@@ -407,9 +408,7 @@ export function SidebarContentPanel({
   return (
     <Sidebar className="border-r-0" {...props}>
       <SidebarHeader>
-        {/* Top spacer to clear the traffic lights + fixed toggle row */}
-        <div className="titlebar-drag-region h-8 rounded-md" />
-        {/* Section menu - stays in the same slot but uses a vertical sidebar-style menu */}
+        <div className="h-10" />
         <div className="titlebar-no-drag px-2 py-1.5">
           <MainSidebarMenu
             activeSection={activeSection}
@@ -438,6 +437,9 @@ export function SidebarContentPanel({
             actions={tasksActions}
           />
         )}
+        {activeSection === "schedule" && (
+          <ScheduleSection />
+        )}
       </SidebarContent>
       {/* Bottom actions */}
       <div className="border-t border-sidebar-border px-2 py-2">
@@ -456,51 +458,16 @@ export function SidebarContentPanel({
   )
 }
 
-async function transcribeWithDeepgram(audioBlob: Blob): Promise<string | null> {
-  try {
-    const configResult = await workspaceIpc.readFile('config/deepgram.json', 'utf8')
-    const { apiKey } = JSON.parse(configResult.data) as { apiKey: string }
-    if (!apiKey) throw new Error('No apiKey in deepgram.json')
-
-    const response = await fetch(
-      'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Token ${apiKey}`,
-          'Content-Type': audioBlob.type,
-        },
-        body: audioBlob,
-      },
-    )
-
-    if (!response.ok) throw new Error(`Deepgram API error: ${response.status}`)
-    const result = await response.json()
-    return result.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? null
-  } catch (err) {
-    console.error('Deepgram transcription failed:', err)
-    return null
-  }
-}
-
 // Voice Note Recording Button
 function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => void }) {
   const [isRecording, setIsRecording] = React.useState(false)
-  const [hasDeepgramKey, setHasDeepgramKey] = React.useState(false)
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null)
+  const recognitionRef = React.useRef<any>(null)
   const chunksRef = React.useRef<Blob[]>([])
   const notePathRef = React.useRef<string | null>(null)
   const timestampRef = React.useRef<string | null>(null)
   const relativePathRef = React.useRef<string | null>(null)
-
-  React.useEffect(() => {
-    workspaceIpc.readFile('config/deepgram.json', 'utf8').then((result: { data: string }) => {
-      const { apiKey } = JSON.parse(result.data) as { apiKey: string }
-      setHasDeepgramKey(!!apiKey)
-    }).catch(() => {
-      setHasDeepgramKey(false)
-    })
-  }, [])
+  const transcriptRef = React.useRef<string>("")
 
   const startRecording = async () => {
     try {
@@ -513,7 +480,6 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
 
       timestampRef.current = timestamp
       notePathRef.current = notePath
-      // Relative path for linking (from memory/ root, without .md extension)
       const relativePath = `Voice Memos/${dateStr}/${noteName}`
       relativePathRef.current = relativePath
 
@@ -530,17 +496,42 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
 *Recording in progress...*
 `
       await workspaceIpc.writeFile(notePath, initialContent, { encoding: 'utf8' })
-
-      // Select the note so the user can see it
       onNoteCreated?.(notePath)
 
-      // Start actual recording
+      // 1. Setup Speech Recognition (Free)
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition()
+        recognition.lang = 'vi-VN' // Support Vietnamese by default
+        recognition.continuous = true
+        recognition.interimResults = true
+
+        recognition.onresult = (event: any) => {
+          let currentTranscript = ""
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              transcriptRef.current += event.results[i][0].transcript + " "
+            } else {
+              currentTranscript += event.results[i][0].transcript
+            }
+          }
+          // We could update the UI in real-time here if we wanted
+        }
+
+        recognition.onerror = (event: any) => {
+          console.error("Speech recognition error", event.error)
+        }
+
+        recognition.start()
+        recognitionRef.current = recognition
+      }
+
+      // 2. Start Audio Recording (for the file)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
-        ? 'audio/mp4'
-        : 'audio/webm'
+      const mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm'
       const recorder = new MediaRecorder(stream, { mimeType })
       chunksRef.current = []
+      transcriptRef.current = ""
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
@@ -552,28 +543,22 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
         const ext = mimeType === 'audio/mp4' ? 'm4a' : 'webm'
         const audioFilename = `voice-memo-${timestampRef.current}.${ext}`
 
-        // Save audio file to voice_memos folder (for backup/reference)
+        // Save audio raw file
         try {
           await workspaceIpc.mkdir('voice_memos', { recursive: true })
-
           const arrayBuffer = await blob.arrayBuffer()
-          const base64 = btoa(
-            new Uint8Array(arrayBuffer).reduce(
-              (data, byte) => data + String.fromCharCode(byte),
-              '',
-            ),
-          )
-
+          const base64 = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''))
           await workspaceIpc.writeFile(`voice_memos/${audioFilename}`, base64, { encoding: 'base64' })
-        } catch {
-          console.error('Failed to save audio file')
+        } catch (err) {
+          console.error('Failed to save audio file', err)
         }
 
-        // Update note to show transcribing status
+        // Finalize transcript and update note
         const currentNotePath = notePathRef.current
         const currentRelativePath = relativePathRef.current
         if (currentNotePath && currentRelativePath) {
-          const transcribingContent = `# Voice Memo
+          const finalTranscript = transcriptRef.current.trim()
+          const finalContent = `# Voice Memo
 
 **Type:** voice memo
 **Recorded:** ${new Date().toLocaleString()}
@@ -581,45 +566,11 @@ function VoiceNoteButton({ onNoteCreated }: { onNoteCreated?: (path: string) => 
 
 ## Transcript
 
-*Transcribing...*
-`
-          await workspaceIpc.writeFile(currentNotePath, transcribingContent, { encoding: 'utf8' })
-        }
-
-        // Transcribe and update the note with the transcript
-        const transcript = await transcribeWithDeepgram(blob)
-        if (currentNotePath && currentRelativePath) {
-          const finalContent = transcript
-            ? `# Voice Memo
-
-**Type:** voice memo
-**Recorded:** ${new Date().toLocaleString()}
-**Path:** ${currentRelativePath}
-
-## Transcript
-
-${transcript}
-`
-            : `# Voice Memo
-
-**Type:** voice memo
-**Recorded:** ${new Date().toLocaleString()}
-**Path:** ${currentRelativePath}
-
-## Transcript
-
-*Transcription failed. Please try again.*
+${finalTranscript || "*No speech detected.*"}
 `
           await workspaceIpc.writeFile(currentNotePath, finalContent, { encoding: 'utf8' })
-
-          // Re-select to trigger refresh
           onNoteCreated?.(currentNotePath)
-
-          if (transcript) {
-            toast('Voice note transcribed', 'success')
-          } else {
-            toast('Transcription failed', 'error')
-          }
+          toast(finalTranscript ? 'Voice memo saved' : 'Voice memo saved (no transcript)', 'success')
         }
       }
 
@@ -627,7 +578,8 @@ ${transcript}
       mediaRecorderRef.current = recorder
       setIsRecording(true)
       toast('Recording started', 'success')
-    } catch {
+    } catch (err) {
+      console.error(err)
       toast('Could not access microphone', 'error')
     }
   }
@@ -636,11 +588,13 @@ ${transcript}
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+    }
     mediaRecorderRef.current = null
+    recognitionRef.current = null
     setIsRecording(false)
   }
-
-  if (!hasDeepgramKey) return null
 
   return (
     <Tooltip>

@@ -9,7 +9,8 @@ const DEFAULT_OUTPUT_RESERVE = 8_192;
 const DEFAULT_SAFETY_BUFFER = 4_096;
 const DEFAULT_COMPACTION_THRESHOLD_RATIO = 0.82;
 const DEFAULT_TARGET_THRESHOLD_RATIO = 0.55;
-const MIN_RECENT_BUDGET = 12_000;
+const MIN_RECENT_BUDGET = 32_000;
+const ABSOLUTE_MAX_COMPACTION_THRESHOLD = 150_000;
 const DEFAULT_RECOMPACTION_COOLDOWN_MESSAGES = 4;
 const MINIMUM_COMPACTION_SAVINGS_RATIO = 0.12;
 
@@ -25,6 +26,22 @@ export type ModelContextBudget = {
   recompactCooldownMessages: number;
   minimumSavingsTokens: number;
   source: "registry" | "fallback";
+};
+
+/**
+ * Optional per-agent overrides for context compaction thresholds.
+ * All values are in tokens. Only the fields provided are applied;
+ * the rest fall back to the model-derived defaults.
+ */
+export type CompactionConfig = {
+  /** Override the token count at which compaction is triggered. */
+  compactionThreshold?: number;
+  /** Override the target token count after compaction. */
+  targetPromptTokens?: number;
+  /** Override the cooldown (in messages) between compactions. */
+  recompactCooldownMessages?: number;
+  /** Override the minimum token savings required to bother compacting. */
+  minimumSavingsTokens?: number;
 };
 
 type Provider = z.infer<typeof LlmProvider>;
@@ -73,7 +90,11 @@ function safeStringify(value: unknown): string {
   }) ?? "";
 }
 
-export function resolveModelContextBudget(provider: Provider, modelId: string): ModelContextBudget {
+export function resolveModelContextBudget(
+  provider: Provider,
+  modelId: string,
+  config?: CompactionConfig,
+): ModelContextBudget {
   const preset = PRESETS.find((item) => item.match(provider, modelId))?.budget;
   const budget = preset ?? {
     contextLimit: DEFAULT_CONTEXT_LIMIT,
@@ -85,14 +106,24 @@ export function resolveModelContextBudget(provider: Provider, modelId: string): 
     8_000,
     budget.contextLimit - budget.outputReserve - budget.safetyBuffer,
   );
-  const compactionThreshold = Math.floor(usableInputBudget * DEFAULT_COMPACTION_THRESHOLD_RATIO);
-  const targetPromptTokens = Math.floor(usableInputBudget * DEFAULT_TARGET_THRESHOLD_RATIO);
+
+  const defaultCompactionThreshold = Math.min(
+    Math.floor(usableInputBudget * DEFAULT_COMPACTION_THRESHOLD_RATIO),
+    ABSOLUTE_MAX_COMPACTION_THRESHOLD
+  );
+  const defaultTargetPromptTokens = Math.min(
+    Math.floor(usableInputBudget * DEFAULT_TARGET_THRESHOLD_RATIO),
+    Math.floor(ABSOLUTE_MAX_COMPACTION_THRESHOLD * (DEFAULT_TARGET_THRESHOLD_RATIO / DEFAULT_COMPACTION_THRESHOLD_RATIO))
+  );
+
+  const compactionThreshold = config?.compactionThreshold ?? defaultCompactionThreshold;
+  const targetPromptTokens = config?.targetPromptTokens ?? defaultTargetPromptTokens;
   const summaryReserve = Math.min(12_000, Math.max(2_000, Math.floor(usableInputBudget * 0.08)));
   const recentMessagesBudget = Math.max(
     MIN_RECENT_BUDGET,
     targetPromptTokens - summaryReserve,
   );
-  const minimumSavingsTokens = Math.max(2_000, Math.floor(usableInputBudget * MINIMUM_COMPACTION_SAVINGS_RATIO));
+  const defaultMinimumSavings = Math.max(2_000, Math.floor(usableInputBudget * MINIMUM_COMPACTION_SAVINGS_RATIO));
 
   return {
     contextLimit: budget.contextLimit,
@@ -103,8 +134,8 @@ export function resolveModelContextBudget(provider: Provider, modelId: string): 
     targetPromptTokens,
     recentMessagesBudget,
     summaryReserve,
-    recompactCooldownMessages: DEFAULT_RECOMPACTION_COOLDOWN_MESSAGES,
-    minimumSavingsTokens,
+    recompactCooldownMessages: config?.recompactCooldownMessages ?? DEFAULT_RECOMPACTION_COOLDOWN_MESSAGES,
+    minimumSavingsTokens: config?.minimumSavingsTokens ?? defaultMinimumSavings,
     source: preset ? "registry" : "fallback",
   };
 }

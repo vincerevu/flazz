@@ -153,6 +153,8 @@ const hydrateRunConversation = (run: RunRecord) => {
             }
           }
           if (textContent || msgAttachments) {
+            // Skip synthetic messages injected by the runtime (e.g. auto-continue after compaction)
+            if (msg.role === 'user' && isSyntheticMessage(msg)) break
             items.push({
               id: event.messageId,
               role: msg.role,
@@ -339,6 +341,18 @@ const extractMessageText = (content: unknown): string => {
     .filter((part) => part.type === 'text')
     .map((part) => part.text || '')
     .join('')
+}
+
+/**
+ * Returns true if a message was injected synthetically by the runtime
+ * (e.g. auto-continue after context compaction). These should not be
+ * shown in the conversation UI.
+ */
+const isSyntheticMessage = (msg: { role: string; providerOptions?: unknown }): boolean => {
+  if (msg.role !== 'user') return false
+  const opts = msg.providerOptions as Record<string, unknown> | undefined
+  const flazz = opts?.['flazz'] as Record<string, unknown> | undefined
+  return flazz?.['autoContinue'] === true || flazz?.['synthetic'] === true
 }
 
 export function useChatRuntime({
@@ -802,6 +816,8 @@ export function useChatRuntime({
 
       case 'message': {
         const msg = event.message
+        // Skip synthetic auto-continue messages — they are only for the LLM context.
+        if (isSyntheticMessage(msg)) break
         if (msg.role === 'user' && typeof msg.content === 'string') {
           const inferredTitle = inferRunTitleFromMessage(msg.content)
           if (inferredTitle) {
@@ -824,6 +840,11 @@ export function useChatRuntime({
         }
         break
       }
+
+      // context-pruned: tool output pruning happened; no UI change needed
+      // (the compaction event already provides the context window metrics).
+      case 'context-pruned':
+        break
 
       case 'tool-invocation':
         if (!isActiveRun) return

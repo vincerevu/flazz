@@ -276,10 +276,20 @@ function truncate(text: string, limit: number): string {
   return `${text.slice(0, Math.max(0, limit - 17))}\n...[trimmed]`;
 }
 
-function trimMessage(message: Message): { message: Message; changed: boolean } {
+function trimMessage(message: Message, isOldHistory: boolean = false): { message: Message; changed: boolean } {
+  const textLimit = isOldHistory ? 200 : TEXT_CHAR_LIMIT;
+  const toolLimit = isOldHistory ? 200 : TOOL_RESULT_CHAR_LIMIT;
+  const reasonLimit = isOldHistory ? 100 : REASONING_CHAR_LIMIT;
+
   if (message.role === "tool") {
+    if (isOldHistory) {
+      return {
+        message: { ...message, content: JSON.stringify({ kind: "archived-tool-result", message: "Payload dropped for context compression." }) },
+        changed: true,
+      };
+    }
     const structured = summarizeToolPayload(message.toolName, message.content);
-    const next = structured ?? truncate(message.content, TOOL_RESULT_CHAR_LIMIT);
+    const next = structured ?? truncate(message.content, toolLimit);
     return next === message.content
       ? { message, changed: false }
       : { message: { ...message, content: next }, changed: true };
@@ -289,12 +299,12 @@ function trimMessage(message: Message): { message: Message; changed: boolean } {
     let changed = false;
     const nextContent = message.content.map((part) => {
       if (part.type === "text") {
-        const next = truncate(part.text, TEXT_CHAR_LIMIT);
+        const next = truncate(part.text, textLimit);
         changed ||= next !== part.text;
         return next === part.text ? part : { ...part, text: next };
       }
       if (part.type === "reasoning") {
-        const next = truncate(part.text, REASONING_CHAR_LIMIT);
+        const next = truncate(part.text, reasonLimit);
         changed ||= next !== part.text;
         return next === part.text ? part : { ...part, text: next };
       }
@@ -304,7 +314,7 @@ function trimMessage(message: Message): { message: Message; changed: boolean } {
   }
 
   if ((message.role === "assistant" || message.role === "user") && typeof message.content === "string") {
-    const next = truncate(message.content, TEXT_CHAR_LIMIT);
+    const next = truncate(message.content, textLimit);
     return next === message.content
       ? { message, changed: false }
       : { message: { ...message, content: next }, changed: true };
@@ -314,7 +324,7 @@ function trimMessage(message: Message): { message: Message; changed: boolean } {
     let changed = false;
     const nextContent = message.content.map((part) => {
       if (part.type !== "text") return part;
-      const next = truncate(part.text, TEXT_CHAR_LIMIT);
+      const next = truncate(part.text, textLimit);
       changed ||= next !== part.text;
       return next === part.text ? part : { ...part, text: next };
     });
@@ -365,7 +375,7 @@ export function trimMessagesForPrompt(
       continue;
     }
 
-    const trimmed = trimMessage(message);
+    const trimmed = trimMessage(message, true);
     if (trimmed.changed) {
       downgradedMessages += 1;
     }

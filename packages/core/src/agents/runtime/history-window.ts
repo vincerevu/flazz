@@ -3,7 +3,7 @@ import { z } from "zod";
 
 type Message = z.infer<typeof MessageList>[number];
 
-function hasCompleteToolReferences(messages: Message[]): boolean {
+export function hasCompleteToolReferences(messages: Message[]): boolean {
   const seenAssistantToolCalls = new Set<string>();
 
   for (const message of messages) {

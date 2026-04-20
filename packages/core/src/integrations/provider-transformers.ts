@@ -223,6 +223,49 @@ function normalizeEvent(app: string, item: unknown) {
 
 function normalizeFile(app: string, item: unknown) {
   const record = asRecord(item);
+  if (app === "pexels") {
+    const srcRecord = asRecord(record.src);
+    const userRecord = asRecord(record.user);
+    const videoFile = Array.isArray(record.video_files) ? asRecord(record.video_files[0]) : {};
+    const videoPicture = Array.isArray(record.video_pictures) ? asRecord(record.video_pictures[0]) : {};
+    const mediaType =
+      typeof record.type === "string" ? record.type :
+      Array.isArray(record.video_files) ? "video" :
+      srcRecord.original ? "photo" :
+      typeof record.media_count === "number" || typeof record.photos_count === "number" ? "collection" :
+      undefined;
+    const title =
+      pickFirst(record, ["alt", "title", "name"]) ??
+      pickFirst(userRecord, ["name"]) ??
+      pickFirst(record, ["photographer"]) ??
+      "Pexels media";
+    const preview = summarizeText([
+      mediaType,
+      pickFirst(record, ["photographer"]),
+      pickFirst(userRecord, ["name"]),
+      pickFirst(record, ["url"]),
+    ].filter(Boolean).join(" • "));
+
+    return integrationNormalizer.normalizeFile({
+      id: pickFirst(record, ["id"]) ?? crypto.randomUUID(),
+      title,
+      path:
+        pickFirst(srcRecord, ["original", "large2x", "large", "medium", "small", "portrait", "landscape"]) ??
+        pickFirst(videoFile, ["link"]) ??
+        pickFirst(videoPicture, ["picture"]) ??
+        pickFirst(record, ["url"]),
+      mimeType:
+        mediaType === "video"
+          ? pickFirst(videoFile, ["file_type"]) ?? "video/mp4"
+          : mediaType === "photo"
+            ? "image/jpeg"
+            : "application/json",
+      preview,
+      source: app,
+      estimatedChars: preview?.length,
+    });
+  }
+
   return integrationNormalizer.normalizeFile({
     id: pickFirst(record, ["id", "fileId"]) ?? crypto.randomUUID(),
     title: pickFirst(record, ["title", "name"]) ?? "Untitled file",
@@ -480,6 +523,57 @@ export function buildStructuredView(app: string, resourceType: IntegrationResour
         notesPreview: summarizeText(body, 600),
       };
     case "file":
+      if (app === "pexels") {
+        const srcRecord = asRecord(record.src);
+        const userRecord = asRecord(record.user);
+        const videoFile = Array.isArray(record.video_files) ? asRecord(record.video_files[0]) : {};
+        const videoPicture = Array.isArray(record.video_pictures) ? asRecord(record.video_pictures[0]) : {};
+        const mediaType =
+          typeof record.type === "string" ? record.type :
+          Array.isArray(record.video_files) ? "video" :
+          srcRecord.original ? "photo" :
+          typeof record.media_count === "number" || typeof record.photos_count === "number" ? "collection" :
+          undefined;
+        const dimensions =
+          typeof record.width === "number" && typeof record.height === "number"
+            ? `${record.width}x${record.height}`
+            : undefined;
+        return {
+          kind: "file",
+          normalized,
+          mediaType,
+          creator: pickFirst(userRecord, ["name"]) ?? pickFirst(record, ["photographer"]),
+          creatorUrl: pickFirst(userRecord, ["url"]) ?? pickFirst(record, ["photographer_url"]),
+          assetUrl:
+            pickFirst(srcRecord, ["original", "large2x", "large", "medium", "small", "portrait", "landscape"]) ??
+            pickFirst(videoFile, ["link"]) ??
+            pickFirst(record, ["url"]),
+          thumbnailUrl:
+            pickFirst(srcRecord, ["medium", "small", "tiny"]) ??
+            pickFirst(videoPicture, ["picture"]) ??
+            pickFirst(record, ["image"]),
+          duration:
+            typeof record.duration === "number"
+              ? `${record.duration}s`
+              : undefined,
+          dimensions,
+          collectionSize:
+            typeof record.media_count === "number"
+              ? record.media_count
+              : typeof record.photos_count === "number"
+                ? record.photos_count
+                : undefined,
+          preview: summarizeText(
+            [
+              mediaType,
+              pickFirst(userRecord, ["name"]) ?? pickFirst(record, ["photographer"]),
+              dimensions,
+              pickFirst(record, ["url"]),
+            ].filter(Boolean).join(" • "),
+            600,
+          ),
+        };
+      }
       return {
         kind: "file",
         normalized,

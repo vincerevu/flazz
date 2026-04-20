@@ -10,6 +10,26 @@ import { createProvider } from "../../../models/models.js";
 import { IModelConfigRepo } from "../../../models/repo.js";
 import container from "../../../di/container.js";
 
+// ─── File size guards ─────────────────────────────────────────────────────────
+// Prevent large files from flooding the LLM context window.
+
+/** Max bytes returned raw from workspace-readFile (~50k tokens at 4 chars/token) */
+const READ_FILE_MAX_BYTES = 200_000;
+
+/** Max bytes accepted by parseFile / LLMParse before returning a helpful error */
+const PARSE_FILE_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+
+/**
+ * Max total chars for workspace-grep result payload (~15k tokens).
+ * Prevents a single grep from flooding the conversation history.
+ * Individual match content is also capped at 300 chars.
+ */
+const GREP_MAX_OUTPUT_CHARS = 60_000;
+const GREP_MATCH_CONTENT_MAX_CHARS = 300;
+
+/** Suffix appended when a text file is truncated */
+const READ_FILE_TRUNCATE_NOTICE = `\n\n...[File truncated: content exceeded ${READ_FILE_MAX_BYTES.toLocaleString()} bytes. Use workspace-grep or request specific sections.]`;
+
 // Parser libraries are loaded dynamically inside parseFile.execute()
 // to avoid pulling pdfjs-dist's DOM polyfills into the main bundle.
 // Import paths are computed so esbuild cannot statically resolve them.
@@ -143,7 +163,7 @@ export const workspaceTools = {
     },
 
     'workspace-readdir': {
-        description: 'List directory contents. Can recursively explore directory structure with options.',
+        description: 'List directory contents. Can recursively explore directory structure with options. Results are capped at 500 entries — use allowedExtensions or a specific subpath to narrow results for large directories.',
         inputSchema: z.object({
             path: z.string().describe('Workspace-relative directory path (empty string for root)'),
             recursive: z.boolean().optional().describe('Recursively list all subdirectories (default: false)'),
@@ -171,6 +191,19 @@ export const workspaceTools = {
                     includeHidden,
                     allowedExtensions,
                 });
+
+                // Cap output to prevent context flooding on large recursive listings.
+                const MAX_ENTRIES = 500;
+                if (Array.isArray(entries) && entries.length > MAX_ENTRIES) {
+                    return {
+                        entries: entries.slice(0, MAX_ENTRIES),
+                        count: entries.length,
+                        returnedCount: MAX_ENTRIES,
+                        truncated: true,
+                        hint: `Directory listing truncated to ${MAX_ENTRIES} of ${entries.length} entries. Use allowedExtensions or a more specific subpath to narrow results.`,
+                    };
+                }
+
                 return entries;
             } catch (error) {
                 return {
@@ -181,14 +214,28 @@ export const workspaceTools = {
     },
 
     'workspace-readFile': {
-        description: 'Read file contents from the workspace. Supports utf8, base64, and binary encodings.',
+        description: 'Read file contents from the workspace. Supports utf8, base64, and binary encodings. Files larger than 200 KB are automatically truncated — use workspace-grep to search large files instead.',
         inputSchema: z.object({
             path: z.string().min(1).describe('Workspace-relative file path'),
             encoding: z.enum(['utf8', 'base64', 'binary']).optional().describe('File encoding (default: utf8)'),
         }),
         execute: async ({ path: relPath, encoding = 'utf8' }: { path: string; encoding?: 'utf8' | 'base64' | 'binary' }) => {
             try {
-                return await workspace.readFile(relPath, encoding);
+                const result = await workspace.readFile(relPath, encoding);
+
+                // Gate: truncate oversized utf8 text to avoid flooding context.
+                // Binary / base64 encodings are not truncated — callers handle them.
+                if (encoding === 'utf8' && typeof result.data === 'string' && result.data.length > READ_FILE_MAX_BYTES) {
+                    return {
+                        ...result,
+                        data: result.data.slice(0, READ_FILE_MAX_BYTES) + READ_FILE_TRUNCATE_NOTICE,
+                        truncated: true,
+                        originalBytes: Buffer.byteLength(result.data, 'utf8'),
+                        hint: 'File was truncated. Use workspace-grep to search for specific content, or request a byte range.',
+                    };
+                }
+
+                return result;
             } catch (error) {
                 return {
                     error: error instanceof Error ? error.message : 'Unknown error',
@@ -397,20 +444,20 @@ export const workspaceTools = {
     },
 
     'workspace-grep': {
-        description: 'Search file contents using regex. Returns matching files and lines. Uses ripgrep if available, falls back to grep.',
+        description: 'Search file contents using regex. Returns matching files and lines. Uses ripgrep if available, falls back to grep. Results are capped at 50 matches and total output is limited — use fileGlob and searchPath to narrow scope for large workspaces.',
         inputSchema: z.object({
             pattern: z.string().describe('Regex pattern to search for'),
             searchPath: z.string().optional().describe('Directory or file to search, relative to workspace root (default: workspace root)'),
             fileGlob: z.string().optional().describe('File pattern filter (e.g., "*.ts", "*.md")'),
             contextLines: z.number().optional().describe('Lines of context around matches (default: 0)'),
-            maxResults: z.number().optional().describe('Maximum results to return (default: 100)'),
+            maxResults: z.number().optional().describe('Maximum results to return (default: 50, max: 50)'),
         }),
         execute: async ({
             pattern,
             searchPath,
             fileGlob,
             contextLines = 0,
-            maxResults = 100
+            maxResults = 50
         }: {
             pattern: string;
             searchPath?: string;
@@ -427,13 +474,34 @@ export const workspaceTools = {
                     return { error: 'Search path must be within workspace' };
                 }
 
+                // Hard cap: never return more than 50 results regardless of caller input.
+                const effectiveMax = Math.min(maxResults, 50);
+
+                /** Truncate a single match content line to prevent huge lines. */
+                const capContent = (s: string) =>
+                    s.length <= GREP_MATCH_CONTENT_MAX_CHARS
+                        ? s
+                        : s.slice(0, GREP_MATCH_CONTENT_MAX_CHARS) + '…';
+
+                /** Cap the total serialized output size and add a truncation notice. */
+                function capOutput(result: { matches: unknown[]; count: number; tool: string; truncated?: boolean }) {
+                    const json = JSON.stringify(result);
+                    if (json.length <= GREP_MAX_OUTPUT_CHARS) return result;
+                    // Drop matches until we fit, then flag truncation.
+                    let kept = result.matches;
+                    while (kept.length > 1 && JSON.stringify({ ...result, matches: kept }).length > GREP_MAX_OUTPUT_CHARS) {
+                        kept = kept.slice(0, Math.max(1, Math.floor(kept.length * 0.75)));
+                    }
+                    return { ...result, matches: kept, count: result.matches.length, returnedCount: kept.length, truncated: true, hint: 'Output truncated to fit context limit. Use searchPath or fileGlob to narrow the search.' };
+                }
+
                 // Try ripgrep first
                 try {
                     const rgArgs = [
                         '--json',
                         '-e', pattern,
                         '--ignore-case',
-                        '--max-count', String(maxResults),
+                        '--max-count', String(effectiveMax),
                     ];
                     if (contextLines > 0) {
                         rgArgs.push('-C', String(contextLines));
@@ -445,37 +513,42 @@ export const workspaceTools = {
 
                     const output = execFileSync('rg', rgArgs, {
                         encoding: 'utf8',
-                        maxBuffer: 10 * 1024 * 1024,
+                        // 512 KB — enough for 50 matches with context, prevents memory blow-up.
+                        maxBuffer: 512 * 1024,
                         cwd: WorkDir,
                     });
 
                     const matches = output.trim().split('\n')
                         .filter(Boolean)
                         .map(line => {
-                            try {
-                                return JSON.parse(line);
-                            } catch {
-                                return null;
-                            }
+                            try { return JSON.parse(line); } catch { return null; }
                         })
                         .filter(m => m && m.type === 'match');
 
-                    return {
+                    return capOutput({
                         matches: matches.map(m => ({
                             file: path.relative(WorkDir, m.data.path.text),
                             line: m.data.line_number,
-                            content: m.data.lines.text.trim(),
+                            content: capContent(m.data.lines.text.trim()),
                         })),
                         count: matches.length,
                         tool: 'ripgrep',
-                    };
+                    });
                 } catch (_rgError) { // eslint-disable-line @typescript-eslint/no-unused-vars
-                    return await grepFallbackSearch({
+                    const fallback = await grepFallbackSearch({
                         pattern,
                         resolvedTargetPath,
                         fileGlob,
-                        maxResults,
+                        maxResults: effectiveMax,
                     });
+                    if ('matches' in fallback) {
+                        return capOutput({
+                            matches: (fallback.matches as Array<{ file: string; line: number; content: string }>).map(m => ({ ...m, content: capContent(m.content) })),
+                            count: fallback.count,
+                            tool: fallback.tool,
+                        });
+                    }
+                    return fallback;
                 }
             } catch (error) {
                 return { error: error instanceof Error ? error.message : 'Unknown error' };
@@ -498,6 +571,19 @@ export const workspaceTools = {
                     return {
                         success: false,
                         error: `Unsupported file format '${ext}'. Supported formats: ${supportedExts.join(', ')}`,
+                    };
+                }
+
+                // Gate: reject files that are too large to parse safely.
+                const statResult = path.isAbsolute(filePath)
+                    ? await fs.stat(filePath).catch(() => null)
+                    : await workspace.stat(path.relative(WorkDir, path.resolve(WorkDir, filePath))).catch(() => null);
+                const fileSizeBytes = (statResult as { size?: number } | null)?.size ?? 0;
+                if (fileSizeBytes > PARSE_FILE_MAX_BYTES) {
+                    return {
+                        success: false,
+                        error: `File is too large to parse (${(fileSizeBytes / 1024 / 1024).toFixed(1)} MB). Maximum supported size is ${PARSE_FILE_MAX_BYTES / 1024 / 1024} MB.`,
+                        fileSizeBytes,
                     };
                 }
 
@@ -607,6 +693,19 @@ export const workspaceTools = {
                     return {
                         success: false,
                         error: `Unsupported file format '${ext}'. Supported formats: ${Object.keys(LLMPARSE_MIME_TYPES).join(', ')}`,
+                    };
+                }
+
+                // Gate: reject files that are too large to safely pass to the LLM.
+                const statResult = path.isAbsolute(filePath)
+                    ? await fs.stat(filePath).catch(() => null)
+                    : await workspace.stat(path.relative(WorkDir, path.resolve(WorkDir, filePath))).catch(() => null);
+                const fileSizeBytes = (statResult as { size?: number } | null)?.size ?? 0;
+                if (fileSizeBytes > PARSE_FILE_MAX_BYTES) {
+                    return {
+                        success: false,
+                        error: `File is too large for LLMParse (${(fileSizeBytes / 1024 / 1024).toFixed(1)} MB). Maximum supported size is ${PARSE_FILE_MAX_BYTES / 1024 / 1024} MB.`,
+                        fileSizeBytes,
                     };
                 }
 

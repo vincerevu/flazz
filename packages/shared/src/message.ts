@@ -52,6 +52,7 @@ export const UserMessageContent = z.union([z.string(), z.array(UserContentPart)]
 export const UserMessage = z.object({
     role: z.literal("user"),
     content: UserMessageContent,
+    actualTokens: z.number().optional(),
     providerOptions: ProviderOptions.optional(),
 });
 
@@ -61,12 +62,14 @@ export const AssistantMessage = z.object({
         z.string(),
         z.array(AssistantContentPart),
     ]),
+    actualTokens: z.number().optional(),
     providerOptions: ProviderOptions.optional(),
 });
 
 export const SystemMessage = z.object({
     role: z.literal("system"),
     content: z.string(),
+    actualTokens: z.number().optional(),
     providerOptions: ProviderOptions.optional(),
 });
 
@@ -75,6 +78,7 @@ export const ToolMessage = z.object({
     content: z.string(),
     toolCallId: z.string(),
     toolName: z.string(),
+    actualTokens: z.number().optional(),
     providerOptions: ProviderOptions.optional(),
 });
 

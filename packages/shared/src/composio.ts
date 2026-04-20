@@ -41,6 +41,7 @@ export const CURATED_TOOLKITS: CuratedToolkit[] = [
   { slug: 'linear', displayName: 'Linear', section: 'popular' },
   { slug: 'linkedin', displayName: 'LinkedIn', section: 'popular' },
   { slug: 'outlook', displayName: 'Outlook', section: 'popular' },
+  { slug: 'pexels', displayName: 'Pexels', section: 'other' },
   { slug: 'zoom', displayName: 'Zoom', section: 'popular' },
   { slug: 'jira', displayName: 'Jira', section: 'other' },
   { slug: 'zendesk', displayName: 'Zendesk', section: 'other' },

@@ -31,3 +31,44 @@ test("estimatePromptTokens includes messages, instructions, and tool schema", ()
 
   assert.ok(estimate > 0);
 });
+
+// ─── CompactionConfig override tests ─────────────────────────────────────────
+
+test("CompactionConfig: compactionThreshold override is applied", () => {
+  const base = resolveModelContextBudget({ flavor: "anthropic" }, "claude-sonnet-4");
+  const overridden = resolveModelContextBudget(
+    { flavor: "anthropic" },
+    "claude-sonnet-4",
+    { compactionThreshold: 50_000 }
+  );
+  assert.equal(overridden.compactionThreshold, 50_000);
+  assert.notEqual(overridden.compactionThreshold, base.compactionThreshold);
+  // Other fields should be unchanged
+  assert.equal(overridden.contextLimit, base.contextLimit);
+});
+
+test("CompactionConfig: recompactCooldownMessages override is applied", () => {
+  const overridden = resolveModelContextBudget(
+    { flavor: "anthropic" },
+    "claude-sonnet-4",
+    { recompactCooldownMessages: 10 }
+  );
+  assert.equal(overridden.recompactCooldownMessages, 10);
+});
+
+test("CompactionConfig: minimumSavingsTokens override is applied", () => {
+  const overridden = resolveModelContextBudget(
+    { flavor: "anthropic" },
+    "claude-sonnet-4",
+    { minimumSavingsTokens: 1_000 }
+  );
+  assert.equal(overridden.minimumSavingsTokens, 1_000);
+});
+
+test("CompactionConfig: undefined config leaves defaults unchanged", () => {
+  const noOverride = resolveModelContextBudget({ flavor: "anthropic" }, "claude-sonnet-4");
+  const withUndefined = resolveModelContextBudget({ flavor: "anthropic" }, "claude-sonnet-4", undefined);
+  assert.equal(withUndefined.compactionThreshold, noOverride.compactionThreshold);
+  assert.equal(withUndefined.recompactCooldownMessages, noOverride.recompactCooldownMessages);
+  assert.equal(withUndefined.minimumSavingsTokens, noOverride.minimumSavingsTokens);
+});

@@ -69,18 +69,25 @@ function extractKeywords(text: string): Set<string> {
 
 /**
  * Build tools for agent, with smart filtering for MCP tools
- * Only loads MCP tools that are relevant to the user message
+ * Only loads MCP tools that are relevant to the user message.
+ * NOTE: Filtering is only applied when agent has many tools (>5).
+ * For small agents, always include all tools to prevent model hallucination.
  */
 export async function buildTools(
     agent: z.infer<typeof Agent>,
     userMessage?: string
 ): Promise<ToolSet> {
     const tools: ToolSet = {};
-    const messageKeywords = userMessage ? extractKeywords(userMessage) : null;
+    const allTools = Object.entries(agent.tools ?? {});
+    const mcpToolCount = allTools.filter(([, t]) => t.type === 'mcp').length;
+
+    // Only apply keyword filtering if agent has many MCP tools (>5)
+    // For small agents, always include all tools to avoid model calling non-existent tools
+    const shouldFilter = mcpToolCount > 5;
+    const messageKeywords = (shouldFilter && userMessage) ? extractKeywords(userMessage) : null;
     
-    for (const [name, agentTool] of Object.entries(agent.tools ?? {})) {
+    for (const [name, agentTool] of allTools) {
         try {
-            // Smart filtering for MCP tools - only load if relevant to message
             if (agentTool.type === 'mcp' && messageKeywords) {
                 const toolKeywords = extractKeywords(agentTool.description);
                 const hasMatch = Array.from(messageKeywords).some(k => 

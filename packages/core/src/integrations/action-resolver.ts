@@ -107,12 +107,15 @@ export async function resolveToolForOperation(
   app: string,
   resourceType: IntegrationResourceType,
   capability: IntegrationCapability,
+  preferredActionOverride?: string,
 ): Promise<ResolvedTool | null> {
   const cacheKey = `${app}:${resourceType}:${capability}`;
-  if (resolvedToolCache.has(cacheKey)) {
+  if (!preferredActionOverride && resolvedToolCache.has(cacheKey)) {
     return resolvedToolCache.get(cacheKey) ?? null;
   }
-  const preferredActions = providerMapper.getPreferredActions(app)[capability] ?? [];
+  const preferredActions = preferredActionOverride
+    ? [preferredActionOverride]
+    : providerMapper.getPreferredActions(app)[capability] ?? [];
 
   if (preferredActions.length > 0) {
     for (const preferredAction of preferredActions) {
@@ -120,7 +123,9 @@ export async function resolveToolForOperation(
       const preferred = searched.items.find((tool) => tool.slug === preferredAction);
       if (preferred) {
         console.log(`[Integrations] Resolved ${app}:${capability} via preferred action map -> ${preferred.slug}`);
-        resolvedToolCache.set(cacheKey, preferred);
+        if (!preferredActionOverride) {
+          resolvedToolCache.set(cacheKey, preferred);
+        }
         return preferred;
       }
     }
@@ -147,6 +152,8 @@ export async function resolveToolForOperation(
   } else {
     console.warn(`[Integrations] Failed to resolve ${app}:${capability}`);
   }
-  resolvedToolCache.set(cacheKey, resolved ?? null);
+  if (!preferredActionOverride) {
+    resolvedToolCache.set(cacheKey, resolved ?? null);
+  }
   return resolved;
 }
