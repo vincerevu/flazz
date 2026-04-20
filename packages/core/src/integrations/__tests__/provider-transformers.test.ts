@@ -166,3 +166,49 @@ test("normalizeResource maps row-like spreadsheet data into spreadsheet shape", 
   assert.equal(result?.sheetName, "Metrics");
   assert.equal(result?.rowLabel, "Q2 revenue");
 });
+
+test("normalizeResource maps pexels photo payloads into file shape", () => {
+  const result = normalizeResource("pexels", "file", {
+    id: 101,
+    alt: "Developer workstation",
+    photographer: "Ada",
+    src: {
+      original: "https://images.pexels.com/photos/101/original.jpeg",
+      medium: "https://images.pexels.com/photos/101/medium.jpeg",
+    },
+  }) as { id: string; title: string; path?: string; mimeType?: string; preview?: string } | null;
+
+  assert.ok(result);
+  assert.equal(result?.id, "101");
+  assert.equal(result?.title, "Developer workstation");
+  assert.match(result?.path ?? "", /original\.jpeg/i);
+  assert.equal(result?.mimeType, "image/jpeg");
+  assert.match(result?.preview ?? "", /Ada/i);
+});
+
+test("buildStructuredView surfaces pexels media metadata", () => {
+  const result = buildStructuredView("pexels", "file", {
+    id: 202,
+    type: "video",
+    width: 1920,
+    height: 1080,
+    duration: 12,
+    user: { name: "Grace" },
+    video_files: [{ link: "https://videos.pexels.com/video-files/202.mp4", file_type: "video/mp4" }],
+    video_pictures: [{ picture: "https://images.pexels.com/videos/202-preview.jpeg" }],
+  }) as {
+    mediaType?: string;
+    creator?: string;
+    assetUrl?: string;
+    thumbnailUrl?: string;
+    duration?: string;
+    dimensions?: string;
+  };
+
+  assert.equal(result.mediaType, "video");
+  assert.equal(result.creator, "Grace");
+  assert.match(result.assetUrl ?? "", /202\.mp4/i);
+  assert.match(result.thumbnailUrl ?? "", /202-preview\.jpeg/i);
+  assert.equal(result.duration, "12s");
+  assert.equal(result.dimensions, "1920x1080");
+});

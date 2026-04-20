@@ -2,7 +2,9 @@ import crypto from "crypto";
 import { generateText, LanguageModel } from "ai";
 import { MessageList } from "@flazz/shared";
 import { z } from "zod";
-import { buildSafeRecentMessages } from "./history-window.js";
+import { hasCompleteToolReferences } from "./history-window.js";
+import type { AutoContinueReason } from "./auto-continue.js";
+import { pruneToolOutputs } from "./context-pruner.js";
 
 type Message = z.infer<typeof MessageList>[number];
 
@@ -42,6 +44,8 @@ export interface CompactionSnapshot {
 export interface PreparedCompactedContext {
   messages: z.infer<typeof MessageList>;
   snapshot?: CompactionSnapshot;
+  /** Set when the caller should inject an auto-continue user message after compaction */
+  autoContinue?: AutoContinueReason;
 }
 
 const CHARS_PER_TOKEN = 4;
@@ -49,23 +53,22 @@ const TOOL_RESULT_CHAR_LIMIT = 400;
 const TEXT_CHAR_LIMIT = 1200;
 const REASONING_CHAR_LIMIT = 500;
 const SUMMARY_CHAR_LIMIT = 12_000;
-const DEFAULT_MAX_HISTORY = 20;
-const EMPTY_CARRYOVER: StructuredCarryover = {
-  goal: [],
-  instructions: [],
-  decisions: [],
-  progress: [],
-  relevantFilesAndTools: [],
-  openQuestionsNextSteps: [],
-};
-const EMPTY_TASK_STATE: ActiveTaskState = {
-  objective: [],
-  constraints: [],
-  decisions: [],
-  progress: [],
-  nextSteps: [],
-  references: [],
-};
+
+/**
+ * Conservative token estimate for a single file/image attachment.
+ *
+ * Why 512:
+ * - GPT-4o low-detail mode costs 85 tokens; high-detail tiles add 170 each.
+ * - Gemini 1.5 charges ~258 tokens for a typical web image.
+ * - 512 is the practical floor for an average-resolution image across providers.
+ * - Using 512 instead of the previous flat 64 prevents gross undercount on
+ *   vision-heavy runs without requiring a pixel-level calculation at runtime.
+ *
+ * If you later want model-specific accuracy, gate on `mimeType.startsWith("image/")`
+ * and use the provider token-counting API before sending.
+ */
+const ATTACHMENT_TOKEN_ESTIMATE = 512;
+
 
 function truncate(text: string, limit: number): string {
   if (text.length <= limit) return text;
@@ -73,6 +76,10 @@ function truncate(text: string, limit: number): string {
 }
 
 export function estimateMessageTokens(message: Message): number {
+  if (message.actualTokens !== undefined) {
+    return message.actualTokens;
+  }
+
   if (message.role === "user") {
     if (typeof message.content === "string") {
       return Math.ceil(message.content.length / CHARS_PER_TOKEN);
@@ -80,7 +87,8 @@ export function estimateMessageTokens(message: Message): number {
     return Math.ceil(
       message.content.reduce((sum, part) => {
         if (part.type === "text") return sum + part.text.length;
-        return sum + part.filename.length + part.path.length + part.mimeType.length + 64;
+        // File / image attachment: use calibrated estimate instead of flat 64.
+        return sum + part.filename.length + part.path.length + part.mimeType.length + ATTACHMENT_TOKEN_ESTIMATE * CHARS_PER_TOKEN;
       }, 0) / CHARS_PER_TOKEN,
     );
   }
@@ -113,19 +121,15 @@ export function estimateMessagesTokens(messages: z.infer<typeof MessageList>): n
 export function selectRecentMessagesWithinBudget(
   messages: z.infer<typeof MessageList>,
   budgetTokens: number,
-  minimumMessages = 20,
 ): z.infer<typeof MessageList> {
-  if (messages.length <= minimumMessages) return messages;
-
   let accumulated = 0;
   let startIndex = messages.length;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const nextTokens = estimateMessageTokens(messages[index]);
     const wouldExceed = accumulated + nextTokens > budgetTokens;
-    const protectedByMinimum = (messages.length - index) < minimumMessages;
 
-    if (wouldExceed && !protectedByMinimum) {
+    if (wouldExceed) {
       break;
     }
 
@@ -133,7 +137,12 @@ export function selectRecentMessagesWithinBudget(
     startIndex = index;
   }
 
-  return buildSafeRecentMessages(messages.slice(startIndex), messages.length - startIndex);
+  // Ensure tool call references are complete by expanding backward if necessary
+  while (startIndex > 0 && !hasCompleteToolReferences(messages.slice(startIndex))) {
+    startIndex -= 1;
+  }
+
+  return messages.slice(startIndex);
 }
 
 function compactHash(messages: z.infer<typeof MessageList>): string {
@@ -398,7 +407,8 @@ function buildSummaryPrompt(
     "Create a structured carryover for a future agent handoff.",
     "Respond in the same language the user has mostly been using.",
     "Do not answer the user's requests. Do not call tools. Do not add speculation.",
-    "Keep the result concise, factual, and technically complete.",
+    "Keep the result concise, factual, and technically complete. Discard intermediary thought processes.",
+    "Skip verbose explanations. Extract only Facts, File paths read, and Variables.",
     "Each section should contain short bullet points only.",
     "Preserve task state, decisions, blockers, files, tools, and next steps.",
     "Use this exact structure:",
@@ -444,31 +454,38 @@ export async function prepareCompactedContext(args: {
   messages: z.infer<typeof MessageList>;
   model: LanguageModel;
   signal?: AbortSignal;
-  maxHistory?: number;
   recentBudgetTokens?: number;
-  minimumRecentMessages?: number;
   previousSummary?: string | null;
   previousAnchorHash?: string | null;
   previousCarryover?: StructuredCarryover | null;
   previousTaskState?: ActiveTaskState | null;
+  /** Reason surfaced to the caller for auto-continue injection */
+  reason?: AutoContinueReason;
+  /**
+   * Skip the pre-compaction prune step.
+   * Set to true if pruneToolOutputs() was already called by the caller.
+   */
+  skipPrune?: boolean;
 }): Promise<PreparedCompactedContext> {
-  const maxHistory = args.maxHistory ?? DEFAULT_MAX_HISTORY;
+  // Optionally prune old tool outputs before selecting the recent window.
+  // This reduces pressure on recentBudgetTokens and may avoid needing to
+  // summarise anything at all if the pruned messages fit within budget.
+  const workingMessages = args.skipPrune
+    ? args.messages
+    : pruneToolOutputs(args.messages).messages;
+
   const recentMessages = args.recentBudgetTokens
-    ? selectRecentMessagesWithinBudget(
-        args.messages,
-        args.recentBudgetTokens,
-        args.minimumRecentMessages ?? maxHistory,
-      )
-    : buildSafeRecentMessages(args.messages, maxHistory);
-  const startIndex = args.messages.length - recentMessages.length;
-  const omitted = args.messages.slice(0, startIndex);
+    ? selectRecentMessagesWithinBudget(workingMessages, args.recentBudgetTokens)
+    : selectRecentMessagesWithinBudget(workingMessages, 32_000); // 32k tokens as ultimate fallback instead of maxHistory
+  const startIndex = workingMessages.length - recentMessages.length;
+  const omitted = workingMessages.slice(0, startIndex);
 
   if (omitted.length === 0) {
-    return { messages: recentMessages };
+    return { messages: recentMessages, autoContinue: args.reason };
   }
 
   const anchorHash = compactHash(omitted);
-  const estimatedTokensBefore = estimateMessagesTokens(args.messages);
+  const estimatedTokensBefore = estimateMessagesTokens(workingMessages);
 
   if (args.previousSummary && (!args.previousAnchorHash || args.previousAnchorHash === anchorHash)) {
     const carryover = args.previousCarryover ?? parseCarryover(args.previousSummary);
@@ -477,6 +494,7 @@ export async function prepareCompactedContext(args: {
     const compactedMessages = [summaryMessage, ...recentMessages];
     return {
       messages: compactedMessages,
+      autoContinue: args.reason,
       snapshot: buildSnapshot({
         summary: args.previousSummary,
         carryover,
@@ -492,9 +510,19 @@ export async function prepareCompactedContext(args: {
     };
   }
 
+  // SAFEGUARD: If omitted messages to be summarized are too large,
+  // take only the most recent ones that fit within a safe budget.
+  // 20k tokens keeps the compaction call well within small/free model limits
+  // (minimax-m2.5-free, etc.) while still capturing meaningful history.
+  const SUMMARIZATION_INPUT_BUDGET_TOKENS = 20_000;
+  const safeOmitted = selectRecentMessagesWithinBudget(
+    omitted,
+    SUMMARIZATION_INPUT_BUDGET_TOKENS
+  );
+
   const response = await generateText({
     model: args.model,
-    prompt: buildSummaryPrompt(omitted, args.previousSummary, args.previousCarryover),
+    prompt: buildSummaryPrompt(safeOmitted, args.previousSummary, args.previousCarryover),
     abortSignal: args.signal,
   });
 
@@ -506,6 +534,7 @@ export async function prepareCompactedContext(args: {
 
   return {
     messages: compactedMessages,
+    autoContinue: args.reason,
     snapshot: buildSnapshot({
       summary,
       carryover,

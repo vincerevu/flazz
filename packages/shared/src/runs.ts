@@ -148,6 +148,17 @@ export const ContextCompactionFailedEvent = BaseRunEvent.extend({
     targetThreshold: z.number().int().positive(),
 });
 
+/** Emitted when tool outputs are pruned before (or instead of) full compaction. */
+export const ContextPrunedEvent = BaseRunEvent.extend({
+    type: z.literal("context-pruned"),
+    /** Number of tool result messages whose content was trimmed. */
+    prunedCount: z.number().int().nonnegative(),
+    /** Estimated tokens recovered. */
+    tokensSaved: z.number().int().nonnegative(),
+    /** Tokens remaining after prune (estimated). */
+    estimatedTokensAfter: z.number().int().nonnegative(),
+});
+
 export const RunEvent = z.union([
     RunProcessingStartEvent,
     RunProcessingEndEvent,
@@ -167,6 +178,7 @@ export const RunEvent = z.union([
     ContextCompactionStartEvent,
     ContextCompactionCompleteEvent,
     ContextCompactionFailedEvent,
+    ContextPrunedEvent,
 ]);
 
 export const ToolPermissionAuthorizePayload = ToolPermissionResponseEvent.pick({

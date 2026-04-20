@@ -4,6 +4,13 @@ import { executeCommand, executeCommandAbortable } from "../command-executor.js"
 import { WorkDir } from "../../../config/config.js";
 import type { ToolContext } from "../exec-tool.js";
 
+const MAX_OUTPUT_CHARS = 30_000;
+
+function capOutput(text: string): string {
+    if (text.length <= MAX_OUTPUT_CHARS) return text;
+    return text.slice(0, MAX_OUTPUT_CHARS) + '\n...[OUTPUT TRUNCATED]';
+}
+
 export const shellTools = {
     executeCommand: {
         description: 'Execute a shell command and return the output. Use this to run bash/shell commands.',
@@ -42,8 +49,8 @@ export const shellTools = {
 
                     return {
                         success: result.exitCode === 0 && !result.wasAborted,
-                        stdout: result.stdout,
-                        stderr: result.stderr,
+                        stdout: capOutput(result.stdout),
+                        stderr: capOutput(result.stderr),
                         exitCode: result.exitCode,
                         wasAborted: result.wasAborted,
                         command,
@@ -56,8 +63,8 @@ export const shellTools = {
 
                 return {
                     success: result.exitCode === 0,
-                    stdout: result.stdout,
-                    stderr: result.stderr,
+                    stdout: capOutput(result.stdout),
+                    stderr: capOutput(result.stderr),
                     exitCode: result.exitCode,
                     command,
                     workingDir,

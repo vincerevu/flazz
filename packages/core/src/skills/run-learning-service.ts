@@ -91,6 +91,63 @@ function stripCodeFence(text: string): string {
     .trim();
 }
 
+function stripThinkingBlocks(text: string): string {
+  return text
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    .trim();
+}
+
+function extractJsonPayload(text: string): string {
+  const cleaned = stripCodeFence(stripThinkingBlocks(text));
+  const firstBrace = cleaned.indexOf("{");
+
+  if (firstBrace === -1) {
+    return cleaned;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = firstBrace; index < cleaned.length; index += 1) {
+    const char = cleaned[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return cleaned.slice(firstBrace, index + 1);
+      }
+    }
+  }
+
+  return cleaned;
+}
+
 function extractText(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -191,6 +248,21 @@ export function getLoadedSkills(run: RunRecord): LoadedSkill[] {
   }
 
   return Array.from(loadedSkills.values());
+}
+
+export function parseLearningDecisionPayload(text: string): unknown {
+  const extracted = extractJsonPayload(text);
+  try {
+    return JSON.parse(extracted);
+  } catch {
+    // LLM returned prose / markdown instead of JSON — log and return null.
+    // The caller uses LearningDecision.safeParse() so null → graceful skip.
+    console.warn(
+      `[SkillLearning] parseLearningDecisionPayload: response was not valid JSON. ` +
+      `Preview: ${text.slice(0, 200).replace(/\n/g, " ")}`
+    );
+    return null;
+  }
 }
 
 function normalizeWords(input: string): string[] {
@@ -632,6 +704,13 @@ export class RunLearningService {
       const model = provider.languageModel(modelConfig.model);
       const response = streamText({
         model,
+        system: [
+          "You are the Flazz skill-learning controller.",
+          "You MUST respond with a single JSON object and NOTHING else.",
+          "Do NOT include markdown, prose, explanations, or code fences.",
+          "Your entire response must be parseable by JSON.parse().",
+          "Valid actions: none | create | update. See schema in the prompt.",
+        ].join(" "),
         prompt: buildPrompt({
           run,
           signals,
@@ -644,7 +723,7 @@ export class RunLearningService {
       });
 
       const parsed = LearningDecision.safeParse(
-        JSON.parse(stripCodeFence(await response.text))
+        parseLearningDecisionPayload(await response.text)
       );
 
       if (!parsed.success) {

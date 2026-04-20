@@ -43,6 +43,9 @@ import {
 import { buildSafeRecentMessages } from "./runtime/history-window.js";
 import { prepareCompactedContext } from "./runtime/context-compaction.js";
 import { estimatePromptTokens, resolveModelContextBudget } from "./runtime/model-context-budget.js";
+import { checkOverflow } from "./runtime/overflow-detector.js";
+import { pruneToolOutputs } from "./runtime/context-pruner.js";
+import { buildAutoContinueMessage } from "./runtime/auto-continue.js";
 import { isToolCallFinishReason } from "../llm/stream-normalizers/index.js";
 
 export interface IAgentRuntime {
@@ -554,6 +557,8 @@ export async function* streamAgent({
         const instructionsWithDateTime = `Current date and time: ${currentDateTime}\n\n${agent.instructions}${compatibilityNote}${contextSection}`;
         let streamError: string | null = null;
         let lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "error" | "other" | "unknown" | null = null;
+        // Actual input tokens from the last LLM response — used for precise overflow detection.
+        let lastActualInputTokens: number | undefined = undefined;
         const messageBuilder = new StreamStepMessageBuilder({
             sanitizeTextArtifacts: executionPolicy.sanitizeTextArtifacts,
         });
@@ -570,13 +575,23 @@ export async function* streamAgent({
             );
         }
         const promptMessages = trimmedPrompt.messages;
-        const estimatedPromptTokens = estimatePromptTokens({
-            messages: promptMessages,
-            instructions: instructionsWithDateTime,
-            tools,
+        // ── Overflow / compaction decision ──────────────────────────────────────
+        // Primary: use actual tokens from previous LLM turn if available.
+        // Fallback: heuristic estimate before the prompt is sent.
+        const overflowCheck = checkOverflow({
+            actualInputTokens: lastActualInputTokens,
+            estimatedTokens: estimatePromptTokens({
+                messages: promptMessages,
+                instructions: instructionsWithDateTime,
+                tools,
+            }),
+            budget,
         });
+        const estimatedPromptTokens = overflowCheck.usedTokens;
+        loopLogger.log(`context check: tokens=${estimatedPromptTokens} source=${overflowCheck.source} threshold=${budget.compactionThreshold}`);
+
         const safeRecentMessages = buildSafeRecentMessages(promptMessages, MINIMUM_RECENT_MESSAGES);
-        let modelMessages = estimatedPromptTokens >= budget.compactionThreshold
+        let modelMessages = overflowCheck.isOverflow
             ? safeRecentMessages
             : promptMessages;
 
@@ -585,10 +600,10 @@ export async function* streamAgent({
             : Math.max(0, state.messages.length - state.lastCompactionMessageCount);
         const cooldownSatisfied = messagesSinceLastCompaction >= budget.recompactCooldownMessages;
         const mustCompactNow = estimatedPromptTokens >= budget.usableInputBudget;
-        const shouldCompact = estimatedPromptTokens >= budget.compactionThreshold
+        const shouldCompact = overflowCheck.isOverflow
             && (cooldownSatisfied || mustCompactNow);
 
-        if (!cooldownSatisfied && estimatedPromptTokens >= budget.compactionThreshold && !mustCompactNow) {
+        if (!cooldownSatisfied && overflowCheck.isOverflow && !mustCompactNow) {
             loopLogger.log(
                 `skipping compaction due to cooldown: est=${estimatedPromptTokens} ` +
                 `messagesSinceLast=${messagesSinceLastCompaction}/${budget.recompactCooldownMessages}`
@@ -596,6 +611,15 @@ export async function* streamAgent({
         }
 
         if (shouldCompact) {
+            const MAX_CONSECUTIVE_COMPACTION_FAILURES = 3;
+            if (state.consecutiveCompactionFailures >= MAX_CONSECUTIVE_COMPACTION_FAILURES) {
+                // Circuit breaker open — compaction has failed too many times in a row.
+                // Fall back to safe recent messages and continue without compacting.
+                emitLog("warn", "compaction circuit breaker open \u2014 skipping compaction this turn", {
+                    consecutiveFailures: state.consecutiveCompactionFailures,
+                });
+                modelMessages = safeRecentMessages;
+            } else {
             const compactionId = await idGenerator.next();
             const estimatedTokensBefore = estimatePromptTokens({
                 messages: promptMessages,
@@ -626,16 +650,36 @@ export async function* streamAgent({
             yield* processEvent(compactionStartEvent);
 
             try {
+                // ── Step 1: try prune first — avoid full compaction if possible ──
+                const pruneResult = pruneToolOutputs(promptMessages);
+                if (pruneResult.prunedCount > 0) {
+                    loopLogger.log(
+                        `pruned ${pruneResult.prunedCount} tool results, saved ~${pruneResult.tokensSaved} tokens`
+                    );
+                    yield* processEvent(RunEvent.parse({
+                        runId,
+                        type: "context-pruned",
+                        prunedCount: pruneResult.prunedCount,
+                        tokensSaved: pruneResult.tokensSaved,
+                        estimatedTokensAfter: Math.max(0, estimatedPromptTokens - pruneResult.tokensSaved),
+                        subflow: [],
+                        ts: new Date().toISOString(),
+                    }));
+                }
+                const messagesForCompaction = pruneResult.messages;
+
+                // ── Step 2: full compaction ──
                 let compacted = await prepareCompactedContext({
-                    messages: promptMessages,
+                    messages: messagesForCompaction,
                     model,
                     signal,
                     recentBudgetTokens: budget.recentMessagesBudget,
-                    minimumRecentMessages: MINIMUM_RECENT_MESSAGES,
                     previousSummary: state.compactedContextSummary,
                     previousAnchorHash: state.compactedContextAnchorHash,
                     previousCarryover: state.compactedContextCarryover,
                     previousTaskState: state.compactedTaskState,
+                    reason: "compaction",
+                    skipPrune: true, // already pruned above
                 });
                 let escalated = false;
 
@@ -667,15 +711,16 @@ export async function* streamAgent({
                         );
 
                         compacted = await prepareCompactedContext({
-                            messages: promptMessages,
+                            messages: messagesForCompaction,
                             model,
                             signal,
                             recentBudgetTokens: Math.max(8_000, Math.floor(budget.recentMessagesBudget * 0.7)),
-                            minimumRecentMessages: 10,
                             previousSummary: state.compactedContextSummary,
                             previousAnchorHash: state.compactedContextAnchorHash,
                             previousCarryover: state.compactedContextCarryover,
                             previousTaskState: state.compactedTaskState,
+                            reason: "compaction",
+                            skipPrune: true,
                         });
                     }
                 }
@@ -718,6 +763,18 @@ export async function* streamAgent({
                     yield* processEvent(compactionCompleteEvent);
                     state.compactedContextCarryover = compacted.snapshot.carryover;
                     state.compactedTaskState = compacted.snapshot.taskState;
+                    state.consecutiveCompactionFailures = 0; // ← reset circuit breaker on success
+
+                    // Inject auto-continue so the agent resumes without manual user input.
+                    const autoContinueMessage = buildAutoContinueMessage("compaction");
+                    yield* processEvent({
+                        runId,
+                        messageId: await idGenerator.next(),
+                        type: "message",
+                        message: autoContinueMessage,
+                        subflow: [],
+                    });
+                    modelMessages.push(autoContinueMessage);
 
                     if (!landedNearTarget || !savedEnough) {
                         loopLogger.log(
@@ -751,9 +808,17 @@ export async function* streamAgent({
                 yield* processEvent(compactionFailedEvent);
                 modelMessages = safeRecentMessages;
                 loopLogger.log(`falling back to safe recent history: ${messageCountBefore} -> ${modelMessages.length} messages`);
+
+                // Circuit breaker: stop retrying compaction if it fails repeatedly.
+                state.consecutiveCompactionFailures += 1;
+                if (state.consecutiveCompactionFailures >= MAX_CONSECUTIVE_COMPACTION_FAILURES) {
+                    emitLog("warn", `compaction circuit breaker open after ${state.consecutiveCompactionFailures} consecutive failures — compaction disabled for this run`, {
+                        consecutiveFailures: state.consecutiveCompactionFailures,
+                    });
+                }
+                }
             }
-        }
-        
+        } // end if (shouldCompact)
         for await (const event of streamLlm(
             model,
             modelMessages,
@@ -769,6 +834,14 @@ export async function* streamAgent({
                 subflow: [],
             });
             if (event.type === "finish-step") {
+                // Capture actual input tokens for the next overflow check.
+                const usage = event.usage as Record<string, number> | undefined;
+                if (usage) {
+                    const inputTokens = usage.inputTokens ?? usage.promptTokens;
+                    if (inputTokens !== undefined && inputTokens > 0) {
+                        lastActualInputTokens = inputTokens;
+                    }
+                }
                 yield* processEvent(RunEvent.parse({
                     runId,
                     type: "usage-update",
@@ -777,15 +850,19 @@ export async function* streamAgent({
                     subflow: [],
                     ts: new Date().toISOString(),
                 }));
-            } else if (event.type === "finish" && event.totalUsage) {
-                yield* processEvent(RunEvent.parse({
-                    runId,
-                    type: "usage-update",
-                    usage: event.totalUsage,
-                    finishReason: event.finishReason,
-                    subflow: [],
-                    ts: new Date().toISOString(),
-                }));
+            } else if (event.type === "finish") {
+                const finishEvent = event as { usage?: Record<string, number>; totalUsage?: Record<string, number> };
+                const usageInfo: Record<string, number> | undefined = finishEvent.usage ?? finishEvent.totalUsage;
+                if (usageInfo) {
+                    yield* processEvent(RunEvent.parse({
+                        runId,
+                        type: "usage-update",
+                        usage: usageInfo,
+                        finishReason: event.finishReason,
+                        subflow: [],
+                        ts: new Date().toISOString(),
+                    }));
+                }
             }
             if (event.type === "error") {
                 streamError = event.error;
@@ -803,13 +880,13 @@ export async function* streamAgent({
             }
         }
 
-        // build and emit final message from agent response
         let message = await normalizeAssistantMessage({
             message: messageBuilder.get(),
             agent,
             idGenerator,
             allowTextToolFallback: executionPolicy.allowTextToolFallback,
         });
+
         if (lastFinishReason === "length" && !hasVisibleAssistantOutput(message)) {
             message = appendLengthStopNotice(message);
         }

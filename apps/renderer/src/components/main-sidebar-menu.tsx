@@ -1,5 +1,4 @@
-import { Brain, MessageSquare } from "lucide-react"
-
+import { Brain, MessageSquare, CalendarClock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ActiveSection } from "@/contexts/sidebar-context"
 
@@ -12,6 +11,7 @@ type SidebarSectionItem = {
 const sectionItems: SidebarSectionItem[] = [
   { id: "tasks", label: "Chat", icon: MessageSquare },
   { id: "memory", label: "Memory", icon: Brain },
+  { id: "schedule", label: "Schedule", icon: CalendarClock },
 ]
 
 type MainSidebarMenuProps = {

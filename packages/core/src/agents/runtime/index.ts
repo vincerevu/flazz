@@ -5,3 +5,6 @@ export * from "./subflow-orchestrator.js";
 export * from "./permission-orchestrator.js";
 export * from "./context-trim.js";
 export * from "./context-metrics.js";
+export * from "./overflow-detector.js";
+export * from "./context-pruner.js";
+export * from "./auto-continue.js";

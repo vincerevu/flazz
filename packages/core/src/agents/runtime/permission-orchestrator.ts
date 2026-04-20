@@ -33,7 +33,11 @@ export async function* handlePermissionAndHumanRequests({
     if (message.content instanceof Array) {
         for (const part of message.content) {
             if (part.type === "tool-call") {
-                const underlyingTool = agent.tools![part.toolName];
+                const underlyingTool = agent.tools?.[part.toolName];
+                if (!underlyingTool) {
+                    loopLogger.log(`[permission-orchestrator] Unknown tool "${part.toolName}", skipping permission/human-request check`);
+                    continue;
+                }
                 if (underlyingTool.type === "builtin" && underlyingTool.name === "ask-human") {
                     loopLogger.log('emitting ask-human-request, toolCallId:', part.toolCallId);
                     yield* processEvent({

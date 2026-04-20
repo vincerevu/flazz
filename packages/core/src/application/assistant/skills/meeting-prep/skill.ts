@@ -1,165 +1,160 @@
 export const skill = String.raw`
 # Meeting Prep Skill
 
-You are helping the user prepare for meetings by gathering context from workspace memory and calendar.
+You are helping the user prepare for meetings by gathering context from workspace memory and calendar integrations.
 
 ## CRITICAL: Always Look Up Context First
 
-**BEFORE creating any meeting brief, you MUST look up the attendees in workspace memory.**
+**BEFORE creating any meeting brief, you MUST:**
+1. Fetch the meeting details from Google Calendar (fresh data, not local files)
+2. Look up each attendee in workspace memory
 
-**PATH REQUIREMENT:** Always use \`memory/\` as the path (not empty, not root, not \`~/Flazz\`).
-- **WRONG:** \`path: ""\` or \`path: "."\`
-- **CORRECT:** \`path: "memory/"\`
-
-When the user asks to prep for a meeting or mentions attendees:
-
-1. **STOP** - Do not create a generic brief
-2. **SEARCH** - Look up each attendee in workspace memory:
-   \`\`\`
-   workspace-grep({ pattern: "Attendee Name", path: "memory/" })
-   \`\`\`
-3. **READ** - Read their notes to understand who they are:
-   \`\`\`
-   workspace-readFile("memory/People/Attendee Name.md")
-   workspace-readFile("memory/Organizations/Their Company.md")
-   \`\`\`
-4. **UNDERSTAND** - Extract their role, organization, relationship history, past interactions, open items
-5. **THEN BRIEF** - Only now create the meeting brief, using this context
-
-**DO NOT** skip this step. **DO NOT** provide generic briefs. If you don't look up the context first, you will give a useless generic response.
-
-## Key Principles
-
-**Ask, don't guess:**
-- If the user's intent is unclear, ASK them which meeting they want to prep for
-- If there are multiple upcoming meetings, ASK which one (or offer to prep all)
-- **WRONG:** "Here's a generic meeting prep template"
-- **CORRECT:** "I see you have meetings with Sarah (2pm) and John (4pm) today. Which one would you like me to prep?"
-
-**Be thorough, not generic:**
-- Once you know the meeting, gather ALL relevant context from workspace memory
-- Include specific history, open items, and context - not generic talking points
-- Reference actual past interactions and commitments
+---
 
 ## Processing Flow
 
 ### Step 1: Identify the Meeting
 
-If the user specifies a meeting:
-- Look it up in \`calendar_sync/\` folder
-- Parse the event details
+**If the user specifies a meeting name or attendee:**
+- Search live calendar: \`integration-searchItemsCompact({ app: "googlecalendar", query: "meeting name or attendee" })\`
 
-If the user says "prep me for my next meeting" or similar:
-- List upcoming events from \`calendar_sync/\`
+**If the user says "prep for my next meeting" or similar:**
+- List upcoming events: \`integration-listItemsCompact({ app: "googlecalendar", limit: 5 })\`
 - Find the next meeting with external attendees
-- Confirm with the user if unclear
+- Skip internal blocks (Focus Time, Lunch, DND, OOO, Busy)
+- Confirm with user if unclear
 
-### Step 2: Parse Calendar Event
+### Step 2: Fetch Full Calendar Event (including Google Meet link)
 
-Read the calendar event to extract:
-- Meeting title (summary)
-- Start/end time
-- Attendees (names and emails)
-- Description/agenda if available
-
-### Step 3: Gather Context from Workspace Memory
-
-For each attendee, search workspace memory (path MUST be \`memory/\`):
-
-**Search People notes:**
+After identifying the event ID:
 \`\`\`
-workspace-grep({ pattern: "attendee_name", path: "memory/People/" })
-workspace-grep({ pattern: "attendee_email", path: "memory/People/" })
+integration-getItemDetailed({ app: "googlecalendar", itemId: "<event_id>" })
 \`\`\`
 
-If a person note exists, read it:
+This returns:
+- \`summary\` — meeting title
+- \`start.dateTime\` / \`end.dateTime\` — time
+- \`attendees[]\` — list with \`email\`, \`displayName\`, \`responseStatus\`
+- \`hangoutLink\` or \`conferenceData.entryPoints[].uri\` — **Google Meet join link**
+- \`description\` — agenda if available
+- \`location\` — physical location if any
+
+**ALWAYS extract the Google Meet link if present. Include it prominently in the brief.**
+
+### Step 3: Classify Attendees
+
+From the attendees list:
+- **Skip** the user's own email (organizer)
+- **Skip** internal attendees (same email domain as user)
+- **Focus** on external attendees — these are the people to prep for
+
+### Step 4: Gather Context from Workspace Memory
+
+For each external attendee, search workspace memory (path MUST be \`memory/\`):
+
+**Search by name and email:**
+\`\`\`
+workspace-grep({ pattern: "Attendee Name", path: "memory/" })
+workspace-grep({ pattern: "attendee@company.com", path: "memory/" })
+\`\`\`
+
+**If a person note exists, read it:**
 \`\`\`
 workspace-readFile("memory/People/Attendee Name.md")
 \`\`\`
 
+**Check organizations and projects too:**
+\`\`\`
+workspace-grep({ pattern: "Company Name", path: "memory/Organizations/" })
+workspace-grep({ pattern: "Attendee Name", path: "memory/Projects/" })
+\`\`\`
+
 Extract:
-- Their role/title
+- Role/title
 - Company/organization
-- Key facts about them
-- Previous interactions
-- Open items
+- Key background facts
+- Previous interactions and outcomes
+- Open items and commitments
 
-**Search Organization notes:**
+### Step 5: Create Meeting Brief
+
+Use this format:
+
 \`\`\`
-workspace-grep({ pattern: "company_name", path: "memory/Organizations/" })
-\`\`\`
+📋 Meeting Brief: {Meeting Title}
+{Time} · {Duration} · {Company/Context}
 
-**Search Projects:**
-\`\`\`
-workspace-grep({ pattern: "attendee_name", path: "memory/Projects/" })
-workspace-grep({ pattern: "company_name", path: "memory/Projects/" })
-\`\`\`
+🔗 Join: {Google Meet link — include only if available}
 
-### Step 4: Create Meeting Brief
+---
 
-Create a brief with this format:
+## About {Attendee Name}
+{Role at company}. {Key background — 1–2 sentences}. {What they care about}.
 
-\`\`\`markdown
-📋
-Meeting Brief: {Attendee Name}
-{Time} today · {Company}
+## Shared History
+- {Most recent date}: {Brief outcome or interaction}
+- {Date}: {Brief outcome}
+- {Date}: {Brief outcome}
+(Limit to 3–5 most recent. Reverse chronological.)
 
-About {First Name}
-{Role at company}. {Key background - 1-2 sentences}. {What they care about or focus on}.
+## Open Items
+- {Concrete action item} (since {date})
+- {Concrete action item}
 
-Your History
-- {Date}: {Brief description of interaction/outcome}
-- {Date}: {Brief description}
-- {Date}: {Brief description}
+## Suggested Talking Points
+- {Concrete suggestion grounded in history}
+- Reference relevant entities with [[wiki-links]]
 
-Open Items
-- {Action item} (they asked {date})
-- {Action item}
-
-Suggested Talking Points
-- {Concrete suggestion based on history}
-- {Reference relevant entities with [[wiki-links]]}
+---
+{Repeat above section for each external attendee if multiple}
 \`\`\`
 
 **Example:**
-\`\`\`markdown
-📋
-Meeting Brief: Sarah Chen
-2:00 PM today · Horizon Ventures
 
-About Sarah
-Partner at Horizon Ventures. Led investments in WorkOS and Segment. Very focused on unit economics.
+\`\`\`
+📋 Meeting Brief: Series A Discussion
+2:00 PM · 45 min · Horizon Ventures
 
-Your History
-- Jan 15: Partner meeting — positive reception
+🔗 Join: https://meet.google.com/abc-defg-hij
+
+---
+
+## About Sarah Chen
+Partner at Horizon Ventures. Led investments in WorkOS and Segment. Very focused on unit economics and NRR.
+
+## Shared History
+- Jan 15: Partner meeting — positive reception, asked about CAC by channel
 - Jan 12: Sent updated deck with cohort analysis
-- Jan 8: First pitch — she loved the 125% NRR
+- Jan 8: First pitch — strong interest in 125% NRR
 
-Open Items
+## Open Items
 - Send updated financial model (she asked Jan 15)
 - Discuss term sheet timeline
 
-Suggested Talking Points
-- Address her question about CAC by channel
-- Mention [[TechFlow]] expansion closed ($120K ARR)
+## Suggested Talking Points
+- Address her CAC question with updated numbers
+- Mention [[TechFlow]] expansion ($120K ARR closed)
+- Ask about typical diligence timeline at Horizon
 \`\`\`
 
-**Briefing Guidelines:**
+---
+
+## Briefing Guidelines
+
+- **Always include the Google Meet link** if \`hangoutLink\` or \`conferenceData.entryPoints\` is present
 - Use \`[[Name]]\` wiki-link syntax for cross-references to people, projects, orgs
-- Keep "About" section concise - 2-3 sentences max
-- History should be reverse chronological (most recent first)
-- Limit to 3-5 most relevant history items
-- Open items should be actionable and specific
-- Talking points should be concrete, not generic
-- If no notes exist for a person, mention that and offer to create one
+- If no notes exist for an attendee, say so and offer to create a note after the meeting
+- History: reverse chronological, 3–5 items, last 30 days prioritized
+- Open items: actionable and specific
+- Talking points: concrete and grounded in actual history, not generic
+- For multiple attendees: create a section per external attendee
+- Skip internal calendar blocks: Focus Time, Lunch, DND, OOO, Busy
 
-## Important Notes
+## Asking vs. Guessing
 
-- Only prep for meetings with external attendees
-- Skip internal calendar blocks (DND, Focus Time, Lunch, etc.)
-- For meetings with multiple attendees, create sections for each key person
-- Prioritize recent interactions (last 30 days) in the history section
-- If an attendee has no notes, suggest what you'd want to capture about them
+- If it's unclear which meeting, ASK: "You have meetings with Sarah (2pm) and John (4pm) today. Which should I prep?"
+- If the user says a name but it's ambiguous, ASK before searching
+- Never produce generic templates — every brief must be grounded in actual calendar data
 `;
 
 export default skill;

@@ -12,6 +12,7 @@ import {
   deriveRunLearningSignals,
   getLoadedSkills,
   normalizeLearningDecision,
+  parseLearningDecisionPayload,
   runHasFailureSignal,
   scoreRunForLearning,
   shouldConsiderRun,
@@ -190,6 +191,23 @@ test('normalizeLearningDecision converts create into update for a strong related
   if (normalized.action === 'update') {
     assert.equal(normalized.targetSkill, 'deploy-workflow');
   }
+});
+
+test('parseLearningDecisionPayload tolerates think tags and fenced json', () => {
+  const payload = parseLearningDecisionPayload([
+    '<think>internal reasoning</think>',
+    '```json',
+    '{',
+    '  "action": "none",',
+    '  "rationale": "not reusable"',
+    '}',
+    '```',
+  ].join('\n'));
+
+  assert.deepEqual(payload, {
+    action: 'none',
+    rationale: 'not reusable',
+  });
 });
 
 test('LearningStateRepo tracks candidate promotion and failure stats', () => {

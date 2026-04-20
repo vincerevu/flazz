@@ -38,6 +38,7 @@ test("generic request policies are exposed for providers with strong defaults", 
   const slack = getProviderStatus("slack", true);
   const linkedin = getProviderStatus("linkedin", true);
   const googleMeet = getProviderStatus("googlemeet", true);
+  const pexels = getProviderStatus("pexels", true);
 
   assert.equal(gmail.genericRequestPolicy, "list_recent_first");
   assert.equal(gmail.genericRequestTarget, "recent email inbox");
@@ -49,6 +50,10 @@ test("generic request policies are exposed for providers with strong defaults", 
   assert.equal(googleMeet.normalizedSupport, "full");
   assert.equal(googleMeet.resourceType, "event");
   assert.equal(googleMeet.genericRequestPolicy, "needs_explicit_scope");
+  assert.equal(pexels.normalizedSupport, "read_only");
+  assert.equal(pexels.resourceType, "file");
+  assert.equal(pexels.genericRequestPolicy, "search_first");
+  assert.deepEqual(pexels.capabilities, ["list", "search", "read"]);
 });
 
 test("providers without live toolkit coverage are exposed as unsupported instead of stale normalized support", () => {

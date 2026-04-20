@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, CheckCircle2, ChevronLeft, Loader2, Plus, Plug, Search } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronLeft, Image as ImageIcon, Loader2, Plus, Plug, Search } from "lucide-react"
 import { FaLinkedinIn, FaMicrosoft } from "react-icons/fa6"
 import {
   SiDropbox,
@@ -88,6 +88,7 @@ const integrationBrandClassName: Record<string, string> = {
   salesforce: "text-[#00A1E0]",
   dropbox: "text-[#0061FF]",
   onedrive: "text-[#0A64AD]",
+  pexels: "text-[#05A081]",
 }
 
 const integrationIconBySlug: Record<string, React.ElementType> = {
@@ -106,6 +107,7 @@ const integrationIconBySlug: Record<string, React.ElementType> = {
   salesforce: SiSalesforce,
   dropbox: SiDropbox,
   onedrive: FaMicrosoft,
+  pexels: ImageIcon,
 }
 
 export function AccountsSettingsPanel() {

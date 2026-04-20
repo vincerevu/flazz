@@ -28,8 +28,7 @@ test("trimMessagesForPrompt truncates older verbose tool output but preserves re
   const first = result.messages[0];
   assert.equal(first?.role, "tool");
   if (first?.role === "tool") {
-    assert.ok(first.content.length < longToolOutput.length);
-    assert.match(first.content, /\[trimmed\]/);
+    assert.equal(first.content, JSON.stringify({ kind: "archived-tool-result", message: "Payload dropped for context compression." }));
   }
 });
 
@@ -55,10 +54,7 @@ test("trimMessagesForPrompt downgrades structured list-like tool output into com
   const first = result.messages[0];
   assert.equal(first?.role, "tool");
   if (first?.role === "tool") {
-    const parsed = JSON.parse(first.content) as { totalItems: number; keptItems: number; items: unknown[]; outputClass: string };
-    assert.equal(parsed.totalItems, 4);
-    assert.equal(parsed.keptItems, 3);
-    assert.equal(parsed.outputClass, "discovery");
+    assert.equal(first.content, JSON.stringify({ kind: "archived-tool-result", message: "Payload dropped for context compression." }));
   }
 });
 
@@ -82,10 +78,7 @@ test("trimMessagesForPrompt classifies execution-like tool output separately", (
   const first = result.messages[0];
   assert.equal(first?.role, "tool");
   if (first?.role === "tool") {
-    const parsed = JSON.parse(first.content) as { kind: string; outputClass: string; details: { id?: string } };
-    assert.equal(parsed.outputClass, "execution");
-    assert.equal(parsed.kind, "trimmed-execution");
-    assert.equal(parsed.details.id, "T-123");
+    assert.equal(first.content, JSON.stringify({ kind: "archived-tool-result", message: "Payload dropped for context compression." }));
   }
 });
 
@@ -104,11 +97,7 @@ test("trimMessagesForPrompt applies shell-output specialization for shell-comman
   const first = result.messages[0];
   assert.equal(first?.role, "tool");
   if (first?.role === "tool") {
-    const parsed = JSON.parse(first.content) as { outputClass: string; totalLines: number; keptLines: number; tail: string[] };
-    assert.equal(parsed.outputClass, "shell-output");
-    assert.equal(parsed.totalLines, 20);
-    assert.equal(parsed.keptLines, 12);
-    assert.equal(parsed.tail[0], "line-9");
+    assert.equal(first.content, JSON.stringify({ kind: "archived-tool-result", message: "Payload dropped for context compression." }));
   }
 });
 
@@ -128,10 +117,6 @@ test("trimMessagesForPrompt applies filesystem-read specialization for workspace
   const first = result.messages[0];
   assert.equal(first?.role, "tool");
   if (first?.role === "tool") {
-    const parsed = JSON.parse(first.content) as { outputClass: string; totalLines: number; head: string[]; tail: string[] };
-    assert.equal(parsed.outputClass, "filesystem-read");
-    assert.equal(parsed.totalLines, 30);
-    assert.equal(parsed.head[0], "row-1");
-    assert.equal(parsed.tail[0], "row-23");
+    assert.equal(first.content, JSON.stringify({ kind: "archived-tool-result", message: "Payload dropped for context compression." }));
   }
 });

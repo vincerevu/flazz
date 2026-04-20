@@ -39,7 +39,7 @@ test("prepareCompactedContext prepends a summary system message when history exc
   const result = await prepareCompactedContext({
     messages: original as never,
     model,
-    maxHistory: 2,
+    recentBudgetTokens: 20,
     previousSummary: "Prior work summary",
     previousAnchorHash: undefined,
   });
@@ -61,14 +61,14 @@ test("prepareCompactedContext reuses prior summary when anchor is unchanged", as
   const first = await prepareCompactedContext({
     messages: messages as never,
     model,
-    maxHistory: 2,
+    recentBudgetTokens: 20,
     previousSummary: "Reusable summary",
   });
 
   const second = await prepareCompactedContext({
     messages: messages as never,
     model,
-    maxHistory: 2,
+    recentBudgetTokens: 20,
     previousSummary: first.snapshot?.summary,
     previousAnchorHash: first.snapshot?.anchorHash,
   });
@@ -137,7 +137,7 @@ test("prepareCompactedContext includes provenance references from omitted messag
   const result = await prepareCompactedContext({
     messages: messages as never,
     model,
-    maxHistory: 1,
+    recentBudgetTokens: 5,
     previousSummary: [
       "## Goal",
       "- Goal",

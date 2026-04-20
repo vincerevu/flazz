@@ -164,7 +164,7 @@ function extractCollection(data: unknown): unknown[] {
   }
 
   const record = data as Record<string, unknown>;
-  const keys = ["items", "messages", "emails", "threads", "results", "documents", "pages", "issues", "tickets", "events", "files", "records", "rows", "entries", "data"];
+  const keys = ["items", "messages", "emails", "threads", "results", "documents", "pages", "issues", "tickets", "events", "files", "records", "rows", "entries", "data", "photos", "videos", "media", "collections"];
   for (const key of keys) {
     if (Array.isArray(record[key])) {
       return record[key] as unknown[];
@@ -205,6 +205,10 @@ function extractNextCursor(data: unknown): string | null {
   }
   if (typeof nested.next === "string" && nested.next.trim()) {
     return nested.next;
+  }
+
+  if (typeof record.next_page === "string" && record.next_page.trim()) {
+    return record.next_page;
   }
 
   return null;
@@ -461,6 +465,48 @@ function withGoogleSheetsDefaults(
   return merged;
 }
 
+function resolvePexelsActionOverride(
+  capability: IntegrationCapability,
+  additionalInput?: Record<string, unknown>,
+) {
+  const record = { ...(additionalInput ?? {}) };
+  const listMode =
+    typeof record.listMode === "string" ? record.listMode :
+    typeof record.list_mode === "string" ? record.list_mode :
+    typeof record.scope === "string" ? record.scope :
+    undefined;
+  const mediaType =
+    typeof record.mediaType === "string" ? record.mediaType :
+    typeof record.media_type === "string" ? record.media_type :
+    typeof record.type === "string" ? record.type :
+    undefined;
+
+  if (capability === "list") {
+    if (record.collectionId !== undefined || record.collection_id !== undefined) {
+      return "PEXELS_COLLECTION_MEDIA";
+    }
+    if (listMode === "my_collections") {
+      return "PEXELS_MY_COLLECTIONS";
+    }
+    if (listMode === "featured_collections" || listMode === "featured") {
+      return "PEXELS_FEATURED_COLLECTIONS";
+    }
+    if (mediaType === "video" || listMode === "popular_videos" || listMode === "videos") {
+      return "PEXELS_POPULAR_VIDEOS";
+    }
+    return "PEXELS_CURATED_PHOTOS";
+  }
+
+  if (capability === "search") {
+    if (mediaType === "video") {
+      return "PEXELS_SEARCH_VIDEOS";
+    }
+    return "PEXELS_SEARCH_PHOTOS";
+  }
+
+  return null;
+}
+
 function withOperationDefaults(
   app: string,
   capability: IntegrationCapability,
@@ -509,7 +555,13 @@ async function executeNormalizedOperation(
     return integrationError("unsupported_capability", `${app} does not support normalized '${capability}' operations.`);
   }
 
-  const tool = await resolveToolForOperation(app, descriptor.resourceType, capability);
+  const actionOverride = app === "pexels"
+    ? resolvePexelsActionOverride(capability, params.additionalInput)
+    : null;
+
+  const tool = actionOverride
+    ? await resolveToolForOperation(app, descriptor.resourceType, capability, actionOverride)
+    : await resolveToolForOperation(app, descriptor.resourceType, capability);
   if (!tool) {
     return integrationError("resolution_failed", `Could not resolve a Composio tool for ${app}:${capability}.`);
   }
