@@ -25,8 +25,8 @@ function normalizeForCompare(value: string): string {
 
 interface UseFileEditorOptions {
   workspaceRoot: string
-  navigateToFile: (path: string) => void
-  navigateToView: (view: ViewState) => void
+  navigateToFile: (path: string, opts?: { newTab?: boolean }) => void
+  navigateToView: (view: ViewState, opts?: { newTab?: boolean }) => void
   setHistory: (history: { back: ViewState[]; forward: ViewState[] }) => void
   historyRef: React.MutableRefObject<{ back: ViewState[]; forward: ViewState[] }>
   appendUnique: (stack: ViewState[], entry: ViewState) => ViewState[]
@@ -385,7 +385,7 @@ export function useFileEditor({
     fileHistoryHandlersRef.current.delete(tabId)
   }, [activeFileTabId, fileTabs, removeEditorCacheForPath])
 
-  const ensureFileTabForPath = useCallback((path: string) => {
+  const ensureFileTabForPath = useCallback((path: string, options?: { newTab?: boolean }) => {
     const existingTab = fileTabs.find((tab) => tab.path === path)
     if (existingTab) {
       setActiveFileTabId(existingTab.id)
@@ -393,7 +393,7 @@ export function useFileEditor({
       return
     }
 
-    if (activeFileTabId) {
+    if (activeFileTabId && !options?.newTab) {
       const activeTab = fileTabs.find((tab) => tab.id === activeFileTabId)
       if (activeTab && !activeTab.path.includes('__Flazz_graph_view__')) {
         setFileTabs((prev) => prev.map((tab) => (
@@ -545,7 +545,7 @@ export function useFileEditor({
       navigator.clipboard.writeText(fullPath)
     },
     onOpenInNewTab: (path: string) => {
-      openFileInNewTab(path)
+      navigateToFile(path, { newTab: true })
     },
   }), [selectedPath, workspaceRoot, navigateToFile, openFileInNewTab, fileTabs, closeFileTab, removeEditorCacheForPath])
 
