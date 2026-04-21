@@ -437,7 +437,7 @@ pnpm run test          # Run tests
 
 ### Building for Distribution
 
-See [BUILD_AND_RELEASE.md](docs/BUILD_AND_RELEASE.md) for detailed instructions on:
+See [Building and Releasing](docs/development/building.md) for detailed instructions on:
 - Building for Windows, macOS, and Linux
 - Setting up automated releases via GitHub Actions
 - Code signing for Windows and macOS
@@ -464,35 +464,36 @@ See [AGENTS.md](AGENTS.md) for detailed architecture guidelines.
 
 ## Contributing
 
-We welcome contributions! Here's how to get started:
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- Setting up your development environment
+- Code style and architecture guidelines
+- Commit message conventions
+- Pull request process
+- Testing requirements
+
+Quick start for contributors:
 
 1. **Fork the repository**
 2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
-3. **Make your changes** following our architecture guidelines
-4. **Run tests and linting** (`pnpm run check`)
-5. **Commit your changes** (`git commit -m 'Add amazing feature'`)
+3. **Make your changes** following our [architecture guidelines](AGENTS.md)
+4. **Run tests and linting** (`pnpm run lint && pnpm run test`)
+5. **Commit your changes** with [conventional commits](https://www.conventionalcommits.org/)
 6. **Push to your branch** (`git push origin feature/amazing-feature`)
-7. **Open a Pull Request**
+7. **Open a Pull Request** using our [PR template](.github/PULL_REQUEST_TEMPLATE.md)
 
-### Development Guidelines
-
-- Follow the architecture rules in [AGENTS.md](AGENTS.md)
-- Keep layer boundaries clean (renderer → main → core)
-- Add tests for new features
-- Update documentation
-- Use conventional commits
-
-### Code of Conduct
-
-- Be respectful and inclusive
-- Focus on constructive feedback
-- Help others learn and grow
+For detailed development setup, see [Development Setup](docs/development/setup.md).
 
 ## Security
 
-Security is a top priority. Please review our [Security Policy](.github/SECURITY.md).
+Security is a top priority. Please review our [Security Policy](SECURITY.md) for:
 
-**To report a vulnerability**, email `vndt181204@gmail.com` - do not open a public issue.
+- Supported versions
+- How to report vulnerabilities
+- Security best practices
+- Known security considerations
+
+**To report a vulnerability**, email `security@flazz.app` or create a private security advisory on GitHub. Do not open a public issue for security vulnerabilities.
 
 ## License
 

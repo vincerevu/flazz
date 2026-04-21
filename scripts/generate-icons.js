@@ -105,6 +105,22 @@ try {
     stdio: 'inherit'
   });
   
+  // Copy icons from subdirectories to root assets folder
+  const icoPath = path.join(ASSETS_DIR, 'icons', 'win', 'icon.ico');
+  const icnsPath = path.join(ASSETS_DIR, 'icons', 'mac', 'icon.icns');
+  const targetIcoPath = path.join(ASSETS_DIR, 'icon.ico');
+  const targetIcnsPath = path.join(ASSETS_DIR, 'icon.icns');
+  
+  if (fs.existsSync(icoPath)) {
+    fs.copyFileSync(icoPath, targetIcoPath);
+    console.log('\n✓ Copied icon.ico to assets/');
+  }
+  
+  if (fs.existsSync(icnsPath)) {
+    fs.copyFileSync(icnsPath, targetIcnsPath);
+    console.log('✓ Copied icon.icns to assets/');
+  }
+  
   console.log('\n✅ Icons generated successfully!\n');
   console.log('Generated files:');
   console.log('  ✓ assets/icon.ico   (Windows)');
