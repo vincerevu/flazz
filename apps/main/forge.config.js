@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   packagerConfig: {
     name: 'Flazz',
     executableName: process.platform === 'win32' ? 'Flazz' : 'flazz',
