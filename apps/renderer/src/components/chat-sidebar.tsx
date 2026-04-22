@@ -34,6 +34,7 @@ import {
   type ConversationItem,
   type PermissionResponse,
   createEmptyChatTabViewState,
+  getProcessingStatusText,
   getWebSearchCardData,
   isChatMessage,
   isContextCompactionItem,
@@ -446,9 +447,7 @@ export function ChatSidebar({
                   const isActive = tab.id === activeChatTabId
                   const tabState = getTabState(tab.id)
                   const tabHasConversation = tabState.conversation.length > 0 || Boolean(tabState.currentAssistantMessage)
-                  const hasStreamingAssistant = tabState.conversation.some((item) => (
-                    isChatMessage(item) && item.role === 'assistant' && item.streaming
-                  ))
+                  const processingStatusText = getProcessingStatusText(tabState)
                   return (
                     <div
                       key={tab.id}
@@ -504,10 +503,10 @@ export function ChatSidebar({
                                 />
                               ))}
 
-                              {isActive && isProcessing && !hasStreamingAssistant && (
+                              {isActive && isProcessing && (
                                 <Message from="assistant">
                                   <MessageContent>
-                                    <Shimmer duration={1}>Thinking...</Shimmer>
+                                    <Shimmer duration={1}>{processingStatusText}</Shimmer>
                                   </MessageContent>
                                 </Message>
                               )}

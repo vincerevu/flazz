@@ -20,9 +20,9 @@ You determine the optimal layout based on the content provided. The most effecti
   ```
   |  KEY TAKEAWAYS                        |
   |                                        |
-  |  ✓  Takeaway one                      |
-  |  ✓  Takeaway two                      |
-  |  ✓  Takeaway three                    |
+  |  [Bullet/Icon] Takeaway one           |
+  |  [Bullet/Icon] Takeaway two           |
+  |  [Bullet/Icon] Takeaway three         |
   ```
 
 ### 2. CTA / Next Steps Layout
@@ -61,9 +61,9 @@ You determine the optimal layout based on the content provided. The most effecti
   ```
   |  SUMMARY            |  NEXT STEPS      |
   |                      |                  |
-  |  • Point one        |  Contact us at   |
-  |  • Point two        |  email@co.com    |
-  |  • Point three      |  [QR Code]       |
+  |  [Bullet] Point one |  Contact us at   |
+  |  [Bullet] Point two |  email@co.com    |
+  |  [Bullet] Point three | [QR Code]       |
   ```
 
 ## Font Size Hierarchy (Critical)
@@ -80,6 +80,39 @@ You determine the optimal layout based on the content provided. The most effecti
 2. **Scannable items**: Takeaways or action items should be concise (one line each) and easy to scan
 3. **Contact clarity**: If contact info is included, make it legible but not dominant
 4. **Memorable finish**: The slide should feel like a confident, polished ending
+5. **No fake bullets**: Use real PptxGenJS bullets or separate text rows with icons, never typed bullet characters
+
+## Bullet Rules (Mandatory)
+
+- Never type `•`, `*`, or `✓` into slide text to simulate a bullet list
+- Do not handcraft takeaway rows for normal summary slides
+- For recap or CTA rows, first normalize the content into a structured array:
+  - `string[]` for plain bullet lists, rendered with `addBulletList()`
+  - `{ title, body }[]` for icon/takeaway rows, rendered with `addSummaryRows()`
+- Each takeaway or action item should be one short idea
+- If a takeaway contains multiple claims, split it into multiple rows
+
+Preferred structured recap pattern:
+
+```javascript
+const { addSummaryRows } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-summary-helpers.cjs");
+
+const takeawayItems = [
+  { title: "Water has three states", body: "Solid, liquid, and gas each appear in daily life." },
+  { title: "Phase change is the key process", body: "Melting, freezing, evaporation, and condensation connect them." },
+  { title: "Its impact is planetary", body: "Water regulates ecosystems, climate, and human survival." },
+];
+
+addSummaryRows(slide, takeawayItems, {
+  x: 0.9,
+  y: 1.7,
+  w: 7.8,
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+```
+
+Only bypass the helper for centered thank-you layouts or intentionally custom visual compositions.
 
 ## Content Elements
 
@@ -102,5 +135,7 @@ You determine the optimal layout based on the content provided. The most effecti
 
 1. **Analyze**: Understand the closing content — takeaways, CTA, contact info, or thank-you message
 2. **Choose Layout**: Select the most appropriate layout based on content type
-3. **Write Slide**: Use slide-making-skill. Use shapes for decorative elements. **MUST include page number badge.**
-4. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.
+3. **Normalize takeaways**: Split dense text into short takeaway rows before coding. Prefer `{ title, body }[]` for recap rows.
+4. **Write Slide**: Use slide-making-skill. Use `addSummaryRows()` or `addBulletList()` for structured row layouts. Use shapes for decorative elements. **MUST include page number badge.**
+5. **Validate source**: Run `node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-XX.js` before preview. If it fails, split dense bullets and add missing `breakLine: true`.
+6. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.

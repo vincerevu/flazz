@@ -225,17 +225,34 @@ Consider: Purpose (corporate/educational/creative), Audience, Tone, Content Volu
 
 ## 4. Content Page
 
-Pick a subtype based on the content. Each content slide belongs to exactly ONE subtype:
+Pick a subtype based on the content. Each content slide belongs to exactly ONE subtype.
 
-### Subtypes
+Before writing code, also read `references/layout-taxonomy.md` and define a content-slide spec:
+
+```javascript
+const slideSpec = {
+  type: "content",
+  index: 4,
+  title: "Slide title",
+  layoutFamily: "hierarchy",
+  layoutVariant: "stacked-layered-cards",
+  density: "medium",
+};
+```
+
+Use `slideSpec.layoutFamily` to select the helper. Do not draw a content slide before choosing a layout family.
+
+Subtypes:
 
 **Text** — Bullets, quotes, or short paragraphs
 - Must still include icons or SVG shapes — never plain text only
+- If using bullets, use real slide bullets, not typed characters
+- Each bullet should express one idea only
 ```
 |  SLIDE TITLE                          |
-|  * Bullet point one                   |
-|  * Bullet point two                   |
-|  * Bullet point three                 |
+|  [Bullet] Point one                   |
+|  [Bullet] Point two                   |
+|  [Bullet] Point three                 |
 ```
 
 **Mixed Media** — Two-column or half-bleed image + text
@@ -244,6 +261,12 @@ Pick a subtype based on the content. Each content slide belongs to exactly ONE s
 |  Text content     |  [Image/Visual]   |
 |  and bullets      |                   |
 ```
+
+For standard image + text slides, prefer structured media panels:
+
+- build `{ imagePath, title?, bullets?, caption? }`
+- render with `scripts/pptx-media-helpers.cjs`
+- avoid handwritten image/text spacing for ordinary mixed-media panels
 
 **Data Visualization** — Chart (SVG bar/progress/ring) + takeaways
 - Must include data source
@@ -254,6 +277,12 @@ Pick a subtype based on the content. Each content slide belongs to exactly ONE s
 |                   Source: xxx          |
 ```
 
+For standard data slides, prefer structured chart data:
+
+- build `{ series, takeaways, source }`
+- render with `scripts/pptx-data-helpers.cjs`
+- avoid handwritten chart spacing and takeaway placement for ordinary bar-chart layouts
+
 **Comparison** — Side-by-side columns or cards (A vs B, pros/cons)
 ```
 |  SLIDE TITLE                          |
@@ -262,12 +291,45 @@ Pick a subtype based on the content. Each content slide belongs to exactly ONE s
 |  └────────────┘  └────────────┘      |
 ```
 
+For standard comparison slides, prefer structured columns:
+
+- build exactly two columns as `{ title, items }[]`
+- render with `scripts/pptx-comparison-helpers.cjs`
+- avoid handwritten card spacing for ordinary pros/cons layouts
+
 **Timeline / Process** — Steps with arrows, journey, phases
 ```
 |  SLIDE TITLE                          |
 |  [1] ──→ [2] ──→ [3] ──→ [4]         |
 |  Step    Step    Step    Step          |
 ```
+
+For process slides, prefer structured steps:
+
+- build `steps[]` as `{ label, caption }[]`
+- render with `scripts/pptx-process-helpers.cjs`
+- avoid handwritten arrows and node spacing unless the layout is intentionally custom
+
+**Roadmap** — Future plan, maturity path, rollout, phases
+- Best for strategic plans, implementation steps, learning paths, or near/mid/long-term framing
+- For standard roadmap slides, prefer structured stages:
+- build stages as `{ tag?, label, caption }[]`
+- render with `scripts/pptx-roadmap-helpers.cjs`
+- avoid generic timeline when the content is about planned progression rather than chronology
+
+**Hierarchy** — Layers, categories, systems, dependency stacks
+- Best for breaking down a concept into levels or showing conceptual structure
+- For standard hierarchy slides, prefer structured nodes:
+- build nodes as `{ title, detail? }[]`
+- render with `scripts/pptx-hierarchy-helpers.cjs`
+- avoid turning a hierarchy into a paragraph or bullet dump
+
+**Quadrant** — 2x2 framework, prioritization, positioning, risk/impact matrix
+- Best for impact/effort, importance/urgency, market map, or decision frameworks
+- For standard quadrant slides, prefer structured quadrants:
+- build exactly four quadrants as `{ title, body? }` or `{ title, items }`
+- render with `scripts/pptx-quadrant-helpers.cjs`
+- include axis labels when they clarify the framework
 
 **Image Showcase** — Hero image, gallery, visual-first layout
 ```
@@ -277,6 +339,15 @@ Pick a subtype based on the content. Each content slide belongs to exactly ONE s
 |  └────────────────────────────────┘   |
 |  Caption or supporting text           |
 ```
+
+Use `scripts/pptx-media-helpers.cjs` when an image showcase also needs a side text column or supporting bullets.
+
+**Stats / KPI Grid** — 2-6 metric cards with short labels and optional detail
+- Best for survey numbers, business KPIs, research highlights, or fact snapshots
+- For standard stat slides, prefer structured cards:
+- build cards as `{ value, label, detail? }[]`
+- render with `scripts/pptx-stat-helpers.cjs`
+- avoid handwritten metric boxes for ordinary grid layouts
 
 ### Font Size Hierarchy
 
@@ -329,9 +400,9 @@ Pick a subtype based on the content. Each content slide belongs to exactly ONE s
 **Key Takeaways** — Best for educational, corporate, data-driven presentations
 ```
 |  KEY TAKEAWAYS                        |
-|  ✓  Takeaway one                      |
-|  ✓  Takeaway two                      |
-|  ✓  Takeaway three                    |
+|  [Bullet/Icon] Takeaway one           |
+|  [Bullet/Icon] Takeaway two           |
+|  [Bullet/Icon] Takeaway three         |
 ```
 
 **CTA / Next Steps** — Best for sales pitches, proposals, project kick-offs
@@ -352,9 +423,9 @@ Pick a subtype based on the content. Each content slide belongs to exactly ONE s
 **Split Recap** — Best for presentations needing both recap and action
 ```
 |  SUMMARY            |  NEXT STEPS      |
-|  * Point one        |  Contact us at   |
-|  * Point two        |  email@co.com    |
-|  * Point three      |  [QR Code]       |
+|  [Bullet] Point one |  Contact us at   |
+|  [Bullet] Point two |  email@co.com    |
+|  [Bullet] Point three | [QR Code]       |
 ```
 
 ### Font Size Hierarchy
@@ -409,5 +480,24 @@ Use these across content slides for visual variety:
 - **Large stat callouts** (big numbers 60-72pt with small labels below)
 - **Comparison columns** (before/after, pros/cons)
 - **Timeline or process flow** (numbered steps, arrows)
+- **Roadmap cards** (phased progression with Now/Next/Later tags)
+- **Hierarchy stacks** (layered categories or concept breakdowns)
+- **Quadrant matrices** (2x2 prioritization or positioning frameworks)
 - **Icons in small colored circles** next to section headers
 - **Italic accent text** for key stats or taglines
+
+## Bullet Discipline
+
+- Never type fake bullets directly into text content: no `•`, `*`, `-`, or `✓`
+- Use proper PptxGenJS bullet formatting or icon-plus-text rows
+- One bullet should carry one idea
+- If source material contains multiple metrics in one sentence, split them into multiple bullets
+- If a statement needs a label and explanation, prefer:
+  - one short bullet, or
+  - a header row plus a body row
+
+For summary and CTA slides, prefer structured recap rows:
+
+- build `{ title, body }[]`
+- render with `scripts/pptx-summary-helpers.cjs`
+- reserve handwritten custom text placement for exceptional layouts only

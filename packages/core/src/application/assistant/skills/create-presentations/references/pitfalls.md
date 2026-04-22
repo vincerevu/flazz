@@ -14,6 +14,15 @@ python -m markitdown output.pptx
 
 Check for missing content, typos, wrong order.
 
+Check for language consistency. A Vietnamese deck must not contain accidental English or Chinese fragments in visible slide text. An English deck must not contain accidental Vietnamese or Chinese fragments. Mixed-language source material must be normalized into the deck language unless the user explicitly requested bilingual/multilingual slides.
+
+Common failure examples:
+
+- `Ôm /亲吻 chào tạm biệt`
+- `Vỗ vai / high-five`
+- `Chạm Touch Không An Toàn`
+- English labels such as `Best practices`, `Use cases`, or `Summary` inside an otherwise Vietnamese deck
+
 **Check for leftover placeholder text:**
 
 ```bash
@@ -51,6 +60,14 @@ Check for missing content, placeholder text, missing page number badge.
 - **Don't mix spacing randomly** — choose 0.3" or 0.5" gaps and use consistently
 - **Don't style one slide and leave the rest plain** — commit fully or keep it simple throughout
 - **Don't create text-only slides** — add images, icons, charts, or visual elements; avoid plain title + bullets
+- **Don't skip layout planning** — every content slide needs `slideSpec.layoutFamily` before drawing
+- **Don't hand-position standard layouts** — use helpers for comparison, timeline, roadmap, hierarchy, quadrant, data, stats, and media
+- **Don't generate monolithic deck scripts** — one file with many `pres.addSlide()` calls bypasses per-slide validation and usually regresses quality
+- **Don't define local bullet helpers** — `addBullets()` and `addTwoColBullets()` usually type fake bullets; use `addBulletList()` or structured layout helpers
+- **Don't mix languages** — lock the deck to one primary language and translate visible text into it
+- **Don't use slash glosses** — avoid visible text like `ôm / hug`, `an toàn / safe`, or `ôm /亲吻`; use one term in the deck language
+- **Don't cluster icons** — use at most one icon/emoji per row, card, title, or label; never write icon strings like `👶👧👦👨`
+- **Don't hand-space numbered rows** — use `addSummaryRows()` with `rowHeight` or a layout `h` so titles and descriptions cannot overlap
 - **Don't forget text box padding** — when aligning lines or shapes with text edges, set `margin: 0` on the text box or offset the shape to account for padding
 - **Don't use low-contrast elements** — icons AND text need strong contrast against the background
 - **NEVER use accent lines under titles** — these are a hallmark of AI-generated slides; use whitespace or background color instead
@@ -58,6 +75,10 @@ Check for missing content, placeholder text, missing page number badge.
 - **NEVER encode opacity in hex strings** — use the `opacity` property instead
 - **NEVER use async/await in createSlide()** — compile.js won't await
 - **NEVER reuse option objects across PptxGenJS calls** — PptxGenJS mutates objects in-place
+- **NEVER type fake bullets into text** — use real bullet formatting, not `•`, `*`, `-`, or `✓`
+- **NEVER pack multiple ideas into one bullet** — split dense source text into multiple bullets or rows
+- **NEVER draw a content slide without `slideSpec`** — the validator should fail content slides with missing layout metadata
+- **NEVER create slides in `index.js`** — use `slide-01.js`, `slide-02.js`, and `compile.js`
 
 ---
 
@@ -96,6 +117,55 @@ slide.addText("Long Title Here", {
   fontSize: 48, fit: "shrink"
 });
 ```
+
+### Keep bullets atomic
+
+```javascript
+// WRONG
+slide.addText("• 72% deployed AI. Spend hit $154B. 40% increased investment.", { ... });
+
+// CORRECT
+slide.addText([
+  { text: "72% of businesses deployed AI", options: { bullet: true, breakLine: true } },
+  { text: "AI spending reached $154B in 2023", options: { bullet: true, breakLine: true } },
+  { text: "40% increased AI investment in 2024", options: { bullet: true } }
+], { ... });
+```
+
+### Force bullets onto separate lines
+
+```javascript
+// WRONG: separate bullet entries but no breakLine
+slide.addText([
+  { text: "Point one", options: { bullet: true } },
+  { text: "Point two", options: { bullet: true } }
+], { ... });
+
+// CORRECT: each bullet breaks to its own line
+slide.addText([
+  { text: "Point one", options: { bullet: true, breakLine: true } },
+  { text: "Point two", options: { bullet: true, breakLine: true } },
+  { text: "Point three", options: { bullet: true } }
+], { ... });
+```
+
+### Validate bullet source before preview
+
+Run:
+
+```bash
+node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-XX.js
+```
+
+The validator fails when:
+
+- typed bullet characters are used inside `slide.addText(...)`
+- local bullet helpers such as `addBullets()` are defined
+- one file contains multiple `pres.addSlide()` calls
+- an `index.js` file creates slides directly
+- non-final bullet entries omit `breakLine: true`
+- a bullet list contains a single oversized bullet
+- a bullet item is too dense and should be split into multiple rows
 
 ### NEVER reuse option objects across calls
 

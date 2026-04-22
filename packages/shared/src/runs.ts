@@ -16,6 +16,22 @@ export const RunProcessingEndEvent = BaseRunEvent.extend({
     type: z.literal("run-processing-end"),
 });
 
+export const RunStatusEvent = BaseRunEvent.extend({
+    type: z.literal("run-status"),
+    phase: z.enum([
+        "checking",
+        "running-tool",
+        "preparing-context",
+        "checking-context",
+        "compacting-context",
+        "waiting-for-model",
+        "processing-response",
+        "finalizing",
+    ]),
+    message: z.string(),
+    toolName: z.string().optional(),
+});
+
 export const StartEvent = BaseRunEvent.extend({
     type: z.literal("start"),
     agentName: z.string(),
@@ -162,6 +178,7 @@ export const ContextPrunedEvent = BaseRunEvent.extend({
 export const RunEvent = z.union([
     RunProcessingStartEvent,
     RunProcessingEndEvent,
+    RunStatusEvent,
     StartEvent,
     SpawnSubFlowEvent,
     LlmStreamEvent,

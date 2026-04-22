@@ -16,6 +16,20 @@ slide.addText("Hello World!", { x: 0.5, y: 0.5, fontSize: 36, color: "363636" })
 pres.writeFile({ fileName: "Presentation.pptx" });
 ```
 
+## Theme Object Contract
+
+When compiling a multi-slide deck, use a shared theme object with these exact keys:
+
+| Key | Purpose | Example |
+|-----|---------|---------|
+| `theme.primary` | Darkest color, titles | `"22223b"` |
+| `theme.secondary` | Dark accent, body text | `"4a4e69"` |
+| `theme.accent` | Mid-tone accent | `"9a8c98"` |
+| `theme.light` | Light accent | `"c9ada7"` |
+| `theme.bg` | Background color | `"f2e9e4"` |
+
+Do not invent alternate key names such as `background`, `text`, `muted`, or `darkest`.
+
 ## Layout Dimensions
 
 Slide dimensions (coordinates in inches):
@@ -60,11 +74,61 @@ slide.addText("Title", {
 
 **Tip:** Text boxes have internal margin by default. Set `margin: 0` when you need text to align precisely with shapes, lines, or icons at the same x-position.
 
+## Slide Module Output Format
+
+Each generated slide file should be a complete, runnable module:
+
+```javascript
+const pptxgen = require("pptxgenjs");
+
+const slideConfig = {
+  type: "cover",
+  index: 1,
+  title: "Presentation Title",
+};
+
+function createSlide(pres, theme) {
+  const slide = pres.addSlide();
+  slide.background = { color: theme.bg };
+
+  slide.addText(slideConfig.title, {
+    x: 0.5, y: 2, w: 9, h: 1.2,
+    fontSize: 48, fontFace: "Arial",
+    color: theme.primary, bold: true, align: "center"
+  });
+
+  return slide;
+}
+
+if (require.main === module) {
+  const pres = new pptxgen();
+  pres.layout = "LAYOUT_16x9";
+  const theme = {
+    primary: "22223b",
+    secondary: "4a4e69",
+    accent: "9a8c98",
+    light: "c9ada7",
+    bg: "f2e9e4",
+  };
+  createSlide(pres, theme);
+  pres.writeFile({ fileName: "slide-01-preview.pptx" });
+}
+
+module.exports = { createSlide, slideConfig };
+```
+
 ---
 
 ## Lists & Bullets
 
 ```javascript
+const { addBulletList } = require("./pptx-bullet-helpers.cjs");
+
+const bulletItems = ["First item", "Second item", "Third item"];
+
+// PREFERRED: render bullets from plain string items
+addBulletList(slide, bulletItems, { x: 0.5, y: 0.5, w: 8, h: 3 }, { fontSize: 18 });
+
 // CORRECT: Multiple bullets
 slide.addText([
   { text: "First item", options: { bullet: true, breakLine: true } },
@@ -72,13 +136,183 @@ slide.addText([
   { text: "Third item", options: { bullet: true } }
 ], { x: 0.5, y: 0.5, w: 8, h: 3 });
 
-// WRONG: Never use unicode bullets
-slide.addText("* First item", { ... });  // Creates double bullets
+// WRONG: Never use typed bullet characters
+slide.addText("• First item", { ... });
+slide.addText("* First item", { ... });
+slide.addText("✓ First item", { ... });
 
 // Sub-items and numbered lists
 { text: "Sub-item", options: { bullet: true, indentLevel: 1 } }
 { text: "First", options: { bullet: { type: "number" }, breakLine: true } }
 ```
+
+### Bullet discipline
+
+- Prefer `string[] -> addBulletList()` over handwritten text runs
+- One bullet should communicate one idea
+- If source content contains multiple statistics or claims, split them into multiple bullets
+- Do not use one oversized bullet paragraph as a substitute for a list
+- Each bullet item should be a separate array element
+- Use `breakLine: true` for every bullet except the final one
+
+If bullets are collapsing into one line or paragraph, the usual cause is missing `breakLine: true`.
+
+## Process / Timeline Helpers
+
+```javascript
+const { addProcessTimeline } = require("./pptx-process-helpers.cjs");
+
+const steps = [
+  { label: "Discover", caption: "Collect inputs and constraints" },
+  { label: "Design", caption: "Choose layout and visual language" },
+  { label: "Build", caption: "Generate slide code and assets" },
+  { label: "Verify", caption: "Preview, validate, and fix" },
+];
+
+addProcessTimeline(slide, steps, {
+  x: 0.8,
+  y: 1.6,
+  w: 8.4,
+  labelFontFace: "Georgia",
+  captionFontFace: "Calibri",
+}, theme);
+```
+
+Use this helper for standard process/timeline slides so node spacing, numbering, and connectors stay consistent.
+
+## Comparison Card Helpers
+
+```javascript
+const { addComparisonCards } = require("./pptx-comparison-helpers.cjs");
+
+const columns = [
+  { title: "Before", items: ["Manual workflow", "Slow iteration", "Inconsistent output"] },
+  { title: "After", items: ["Structured helpers", "Fast iteration", "Consistent output"] },
+];
+
+addComparisonCards(slide, columns, {
+  x: 0.8,
+  y: 1.5,
+  w: 8.4,
+  h: 2.8,
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+```
+
+Use this helper for standard side-by-side comparisons so both cards share spacing, radius, and bullet treatment.
+
+## Data Visualization Helpers
+
+```javascript
+const { addBarChartWithTakeaways } = require("./pptx-data-helpers.cjs");
+
+const chartData = {
+  series: [
+    { label: "Q1", value: 42 },
+    { label: "Q2", value: 58 },
+    { label: "Q3", value: 64 },
+  ],
+  takeaways: [
+    "Growth accelerated after Q1",
+    "Q3 produced the strongest result",
+  ],
+  source: "Internal dashboard",
+};
+
+addBarChartWithTakeaways(slide, chartData, {
+  x: 0.8,
+  y: 1.5,
+  w: 8.4,
+  h: 2.9,
+  labelFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+```
+
+Use this helper for standard chart + takeaway slides so bars, labels, takeaways, and source text stay aligned.
+
+## Stat Grid Helpers
+
+```javascript
+const { addStatCardGrid } = require("./pptx-stat-helpers.cjs");
+
+const statCards = [
+  { value: "71%", label: "Earth's surface covered by water", detail: "Most of it is ocean water." },
+  { value: "60%", label: "Adult body water content", detail: "Hydration supports core body functions." },
+  { value: "3%", label: "Freshwater share", detail: "Accessible freshwater remains limited." },
+  { value: "1.5B", label: "People facing water stress", detail: "Water management stays a global issue." },
+];
+
+addStatCardGrid(slide, statCards, {
+  x: 0.8,
+  y: 1.55,
+  w: 8.4,
+  h: 3.0,
+  valueFontFace: "Georgia",
+  labelFontFace: "Calibri",
+  detailFontFace: "Calibri",
+}, theme);
+```
+
+Use this helper for standard KPI or metric-card slides so value hierarchy, label placement, and card spacing stay consistent.
+
+## Mixed Media Helpers
+
+```javascript
+const { addMixedMediaPanel } = require("./pptx-media-helpers.cjs");
+
+const mediaPanel = {
+  imagePath: "./imgs/water-cycle.png",
+  title: "Water moves through a continuous cycle",
+  bullets: [
+    "Evaporation lifts water vapor into the atmosphere",
+    "Condensation forms clouds and droplets",
+    "Precipitation returns water to land and oceans",
+  ],
+  caption: "Illustrative diagram of the water cycle",
+};
+
+addMixedMediaPanel(slide, mediaPanel, {
+  x: 0.8,
+  y: 1.45,
+  w: 8.4,
+  h: 3.15,
+  imageSide: "right",
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+```
+
+Use this helper for standard image + text slides so image placement, text hierarchy, bullets, and captions stay consistent.
+
+## Infographic Layout Helpers
+
+Use these helpers when `slideSpec.layoutFamily` is `hierarchy`, `quadrant`, or `roadmap`.
+
+```javascript
+const { addHierarchyStack } = require("./pptx-hierarchy-helpers.cjs");
+const { addQuadrantMatrix } = require("./pptx-quadrant-helpers.cjs");
+const { addRoadmap } = require("./pptx-roadmap-helpers.cjs");
+const {
+  addRelationMap,
+  addCycleDiagram,
+  addPyramid,
+  addStaircase,
+  addBoxGrid,
+} = require("./pptx-infographic-helpers.cjs");
+```
+
+- `addHierarchyStack(slide, nodes, layout, theme)` renders `{ title, detail? }[]` as layered cards.
+- `addQuadrantMatrix(slide, quadrants, layout, theme)` renders exactly four `{ title, body? }` or `{ title, items }` quadrants.
+- `addRoadmap(slide, stages, layout, theme)` renders `{ tag?, label, caption }[]` as phased roadmap cards.
+- `addRelationMap(slide, data, layout, theme)` renders hub-and-spoke relation maps.
+- `addCycleDiagram(slide, items, layout, theme)` renders circular sequence/flywheel layouts.
+- `addPyramid(slide, items, layout, theme)` renders layered priority or maturity stacks.
+- `addStaircase(slide, items, layout, theme)` renders progressive step-up layouts.
+- `addBoxGrid(slide, items, layout, theme)` renders general card-grid/list layouts.
+
+Use these instead of hand-positioning repeated boxes. The validator checks item counts and text density for these helpers.
 
 ---
 
@@ -131,6 +365,45 @@ Shadow options:
 To cast a shadow upward (e.g. on a footer bar), use `angle: 270` with a positive offset -- do **not** use a negative offset.
 
 **Note**: Gradient fills are not natively supported. Use a gradient image as a background instead.
+
+## Page Number Badge
+
+All slides except the cover should include a page number badge in the bottom-right corner.
+
+- Position: `x: 9.3`, `y: 5.1`
+- Show current slide number only
+- Keep the badge subtle and consistent with the palette
+
+Circle badge example:
+
+```javascript
+slide.addShape(pres.shapes.OVAL, {
+  x: 9.3, y: 5.1, w: 0.4, h: 0.4,
+  fill: { color: theme.accent }
+});
+slide.addText("3", {
+  x: 9.3, y: 5.1, w: 0.4, h: 0.4,
+  fontSize: 12, fontFace: "Arial",
+  color: "FFFFFF", bold: true,
+  align: "center", valign: "middle"
+});
+```
+
+Pill badge example:
+
+```javascript
+slide.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+  x: 9.1, y: 5.15, w: 0.6, h: 0.35,
+  fill: { color: theme.accent },
+  rectRadius: 0.15
+});
+slide.addText("03", {
+  x: 9.1, y: 5.15, w: 0.6, h: 0.35,
+  fontSize: 11, fontFace: "Arial",
+  color: "FFFFFF", bold: true,
+  align: "center", valign: "middle"
+});
+```
 
 ---
 
@@ -407,6 +680,18 @@ These issues cause file corruption, visual bugs, or broken output. Avoid them.
    // CORRECT: Use RECTANGLE for clean alignment
    slide.addShape(pres.shapes.RECTANGLE, { x: 1, y: 1, w: 3, h: 1.5, fill: { color: "FFFFFF" } });
    slide.addShape(pres.shapes.RECTANGLE, { x: 1, y: 1, w: 0.08, h: 1.5, fill: { color: "0891B2" } });
+   ```
+
+9. **`createSlide()` must stay synchronous** - compile scripts do not await async slide factories.
+   ```javascript
+   async function createSlide(pres, theme) { ... }   // WRONG
+   function createSlide(pres, theme) { ... }         // CORRECT
+   ```
+
+10. **Run slide-level QA before full compile** - preview each slide when needed and inspect extracted text.
+   ```bash
+   python -m markitdown slide-XX-preview.pptx
+   python -m markitdown slide-XX-preview.pptx | grep -iE "xxxx|lorem|ipsum|placeholder"
    ```
 
 ---
