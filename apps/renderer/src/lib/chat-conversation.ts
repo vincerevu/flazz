@@ -1,6 +1,6 @@
 import type { LanguageModelUsage, ToolUIPart } from 'ai'
 import z from 'zod'
-import { AskHumanRequestEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
+import { AskHumanRequestEvent, RunStatusEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
 
 export interface MessageAttachment {
   path: string
@@ -67,6 +67,7 @@ export type ChatTabViewState = {
   runId: string | null
   conversation: ConversationItem[]
   currentAssistantMessage: string
+  runStatus: z.infer<typeof RunStatusEvent> | null
   modelUsage: LanguageModelUsage | null
   modelUsageUpdatedAt: number | null
   pendingAskHumanRequests: Map<string, z.infer<typeof AskHumanRequestEvent>>
@@ -78,6 +79,7 @@ export const createEmptyChatTabViewState = (): ChatTabViewState => ({
   runId: null,
   conversation: [],
   currentAssistantMessage: '',
+  runStatus: null,
   modelUsage: null,
   modelUsageUpdatedAt: null,
   pendingAskHumanRequests: new Map(),
@@ -107,6 +109,35 @@ export const toToolState = (status: ToolCall['status']): ToolState => {
     default:
       return 'input-available'
   }
+}
+
+export const getProcessingStatusText = (state: ChatTabViewState): string => {
+  const hasPendingPermission = Array.from(state.allPermissionRequests.keys()).some(
+    (toolCallId) => !state.permissionResponses.has(toolCallId)
+  )
+  if (hasPendingPermission) return 'Waiting for permission...'
+
+  if (state.pendingAskHumanRequests.size > 0) return 'Waiting for your input...'
+
+  const runningCompaction = [...state.conversation].reverse().find(
+    (item) => isContextCompactionItem(item) && item.status === 'running'
+  )
+  if (runningCompaction) return 'Compacting context...'
+
+  const activeTool = [...state.conversation].reverse().find(
+    (item): item is ToolCall => isToolCall(item) && (item.status === 'pending' || item.status === 'running')
+  )
+  if (activeTool) {
+    return activeTool.status === 'pending'
+      ? `Preparing ${activeTool.name}...`
+      : `Running ${activeTool.name}...`
+  }
+
+  if (state.currentAssistantMessage.trim()) return 'Receiving response...'
+
+  if (state.runStatus?.message) return state.runStatus.message
+
+  return 'Thinking...'
 }
 
 export const normalizeToolInput = (

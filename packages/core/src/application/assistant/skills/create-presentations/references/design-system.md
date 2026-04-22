@@ -1,5 +1,18 @@
 # Design System
 
+## Design Selection Workflow
+
+Before generating any slide, decide these three things in order:
+
+1. **Color palette**
+   Pick one palette that matches the topic, audience, and tone. Use the palette consistently across the full deck.
+2. **Font pairing**
+   Pick one header/body pairing that fits the subject. Do not default everything to Arial unless the deck needs a deliberately neutral corporate tone.
+3. **Style recipe**
+   Pick one style family: `Sharp & Compact`, `Soft & Balanced`, `Rounded & Spacious`, or `Pill & Airy`.
+
+Do not improvise these decisions slide-by-slide. The deck should feel like one system, not a collection of unrelated slides.
+
 ## Color Palette Reference
 
 | # | Name | Colors | Style | Use Cases | Tips |
@@ -390,3 +403,36 @@ Based on 10" x 5.625" slide dimensions:
 | Launch events / Brand | Pill & Airy | Premium feel, visual impact |
 | Training / Education | Soft / Rounded | Clear, readable, friendly |
 | Tech sharing | Sharp / Soft | Professional, information-dense |
+
+## Practical Selection Heuristics
+
+### How to choose a palette
+
+- **Financial, legal, or enterprise topics**
+  Prefer restrained palettes with one strong accent.
+- **Product launches or creative pitches**
+  Prefer broader contrast and more expressive accents.
+- **Educational or analytical decks**
+  Prefer high-clarity palettes that work well for charts.
+- **Luxury or premium positioning**
+  Prefer muted high-contrast palettes with strong whitespace discipline.
+
+### How to choose fonts
+
+- **Dense information or operational decks**
+  Use cleaner pairings like Calibri, Arial, or Cambria.
+- **Narrative, branding, or thought-leadership decks**
+  Use a more expressive header font with a restrained body font.
+- **Mixed-language decks**
+  Keep Chinese in Microsoft YaHei and use system-safe English fonts.
+
+### How to choose a style recipe
+
+- **Need density and precision**
+  Use `Sharp & Compact`
+- **Need safe general-purpose business styling**
+  Use `Soft & Balanced`
+- **Need product or marketing polish**
+  Use `Rounded & Spacious`
+- **Need premium or launch-event feel**
+  Use `Pill & Airy`

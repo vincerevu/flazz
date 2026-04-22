@@ -6,6 +6,14 @@ import { LlmStepStreamEvent } from "@flazz/shared";
 import { IMonotonicallyIncreasingIdGenerator } from "../../application/lib/id-gen.js";
 import { LanguageModel, stepCountIs, streamText, ToolSet } from "ai";
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function normalizeToolCallInput(input: unknown): Record<string, unknown> {
+    return isPlainObject(input) ? input : {};
+}
+
 export class StreamStepMessageBuilder {
     private parts: z.infer<typeof AssistantContentPart>[] = [];
     private textBuffer: string = "";
@@ -69,7 +77,7 @@ export class StreamStepMessageBuilder {
                     type: "tool-call",
                     toolCallId: event.toolCallId,
                     toolName: event.toolName,
-                    arguments: event.input,
+                    arguments: normalizeToolCallInput(event.input),
                     providerOptions: event.providerOptions,
                 });
                 break;
@@ -262,7 +270,7 @@ export async function normalizeAssistantMessage({
             type: "tool-call",
             toolCallId: await idGenerator.next(),
             toolName: toolCall.toolName,
-            arguments: toolCall.input,
+            arguments: normalizeToolCallInput(toolCall.input),
         });
     }
 
@@ -371,7 +379,7 @@ export function convertFromMessages(messages: z.infer<typeof Message>[]): ModelM
                                         type: 'tool-call',
                                         toolCallId: part.toolCallId,
                                         toolName: part.toolName,
-                                        input: part.arguments,
+                                        input: normalizeToolCallInput(part.arguments),
                                         providerOptions: part.providerOptions,
                                     };
                             }

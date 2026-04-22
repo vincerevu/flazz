@@ -1,146 +1,723 @@
-export default String.raw`
-# PowerPoint (PPTX) Generation Skill
+export const skill = String.raw`
+# PowerPoint (PPTX) Creation And Editing Skill
 
-This skill allows you to generate professional PowerPoint presentations (.pptx) using the PptxGenJS library. Unlike PDF exports, these are native PowerPoint files that the user can open and edit.
+Use this skill when the user wants a native PowerPoint deck: create a new \`.pptx\`, revise an existing presentation, adapt a template, or inspect presentation content. The output must be an editable PowerPoint file, not a PDF export.
 
-## Overview
+## What This Skill Covers
 
-You will create presentations from scratch by writing a set of JavaScript files (one per slide) and a compiler script. You must follow a strict design system and use specialized sub-agents if the presentation is long.
+- Read and analyze \`.pptx\` content with \`markitdown\`
+- Create a deck from scratch with PptxGenJS
+- Edit an existing \`.pptx\` template via XML-safe workflows
+- Choose palette, font pairing, and style recipe before slide generation
+- Generate slide-specific JS modules and compile them into a final deck
+- Run a QA loop that checks content and catches leftover placeholders
 
-## Core Workflow
+## Files In This Skill
 
-1.  **Research**: Understand topic, audience, and tone. Use \`research-search\` and \`workspace-readFile\` to find relevant data in the user's memory (e.g., project details, contact info, recent commits).
-2.  **Design Selection**: Pick a Color Palette and Style Recipe (Sharp, Soft, Rounded, or Pill) from the Design System below.
-3.  **Content Planning**: Classify every slide as one of the 5 slide types (Cover, TOC, Divider, Content, Summary).
-4.  **Generation**: 
-    - Create a directory \`slides/\` in the current workspace.
-    - Generate JS modules for each slide (e.g., \`slide-01.js\`).
-    - **Concurrency**: If there are many slides, use sub-agents to generate slides 01-05, 06-10, etc., in parallel.
-5.  **Dependency Check (Just-In-Time)**: 
-    - Before compile, check if \`pptxgenjs\` is available in the current project environment.
-    - If missing, run \`npm install pptxgenjs --no-save\` (or equivalent) in a temporary \`slides/\` directory within the workspace to avoid bloating the core application.
-6.  **Compilation & Execution**: 
-    - Create a \`compile.js\` that imports all slides and uses \`pptxgenjs\`.
-    - Run \`node compile.js\` via \`executeCommand\`. Ensure the execution context can access the locally installed \`node_modules\`.
-7.  **Delivery**: Notify the user where the \`.pptx\` file is located.
+### References
 
----
+- \`references/slide-types.md\`
+  Slide taxonomy, layout options, and subtype rules
+- \`references/layout-taxonomy.md\`
+  Structured content-slide layout families, slideSpec rules, and helper mapping
+- \`references/infographic-template-catalog.md\`
+  Presentation-ai-inspired infographic template families mapped to Flazz helpers
+- \`references/design-system.md\`
+  Color palettes, font pairings, style recipes, typography, spacing, and palette constraints
+- \`references/editing.md\`
+  Template editing workflow and XML-specific safety rules
+- \`references/pitfalls.md\`
+  QA loop and PptxGenJS failure modes
+- \`references/pptxgenjs.md\`
+  Detailed PptxGenJS API reference
 
-## 1. Design System & Style Recipes
+### Generators
 
-### Style Selection
-| Style | Corner Radius | Spacing | Best For |
-|-------|--------------|---------|----------|
-| **Sharp & Compact** | 0 ~ 0.05" | Tight | Data-dense, tables, professional reports |
-| **Soft & Balanced** | 0.08" ~ 0.12" | Moderate | Corporate, business presentations, general use |
-| **Rounded & Spacious** | 0.15" ~ 0.25" | Relaxed | Product intros, marketing, creative showcases |
-| **Pill & Airy** | 0.3" ~ 0.5" | Open | Brand showcases, launch events, premium presentations |
+- \`generators/cover-page-generator.md\`
+- \`generators/table-of-contents-generator.md\`
+- \`generators/section-divider-generator.md\`
+- \`generators/content-page-generator.md\`
+- \`generators/summary-page-generator.md\`
 
-### Color Palette (Examples)
-- **Business**: #2b2d42 (Navy), #8d99ae (Gray), #ef233c (Red)
-- **Tech Night**: #000814 (Black), #003566 (Dark Blue), #ffd60a (Yellow)
-- **Luxury**: #22223b (Deep Purple), #4a4e69 (Slate), #f2e9e4 (Cream)
-
-### Font Rules
-- **English**: Arial (Default), Georgia (Serif), Calibri (Clean).
-- **Chinese**: Microsoft YaHei.
-- **Strict Rule**: Body text must NOT be bold. Bold is for titles only.
+Use the generator files when writing a specific slide. Use the reference files before making design decisions.
 
 ---
 
-## 2. Slide Layout Types
+## Quick Routing
 
-### Type 1: Cover Page
-- Dynamic opening. Use large titles (72-120px) and a clear focal point.
+### If the user wants to inspect or summarize an existing presentation
 
-### Type 2: Table of Contents (TOC)
-- Navigation for 3-5 sections. Use clear numbering and consistent spacing.
+Use:
 
-### Type 3: Section Divider
-- Used for transitions. Feature a dramatic section number (72-120px) and a bold title (36-48px).
-
-### Type 4: Content Page
-- **Text Subtype**: Bullets + Icons (never plain text only).
-- **Data Subtype**: Charts (Bar, Line, Donut) + Key takeaways.
-- **Comparison Subtype**: Side-by-side cards or columns.
-- **Process Subtype**: Timelines or flow diagrams with arrows.
-
-### Type 5: Summary / Closing
-- Wrap-up items or "Thank You" with contact info.
-
----
-
-## 3. Technical Implementation (PptxGenJS)
-
-### Slide Module Format (e.g., slide-01.js)
-\`\`\`javascript
-const pptxgen = require("pptxgenjs");
-
-function createSlide(pres, theme) {
-  const slide = pres.addSlide();
-  slide.background = { color: theme.bg };
-  
-  // Title
-  slide.addText("Slide Title", {
-    x: 0.5, y: 0.4, w: 9, h: 0.8,
-    fontSize: 36, fontFace: "Arial",
-    color: theme.primary, bold: true
-  });
-
-  // Example Shape with Style Recipe (Soft)
-  slide.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-    x: 0.5, y: 1.5, w: 4, h: 2,
-    fill: { color: theme.secondary },
-    rectRadius: 0.1
-  });
-
-  // MUST include page number (except on Cover)
-  addPageBadge(slide, theme, "01");
-}
-
-function addPageBadge(slide, theme, num) {
-  slide.addShape("oval", { x: 9.3, y: 5.1, w: 0.4, h: 0.4, fill: { color: theme.accent } });
-  slide.addText(num, { x: 9.3, y: 5.1, w: 0.4, h: 0.4, color: "FFFFFF", align: "center", valign: "middle", fontSize: 10 });
-}
-
-module.exports = { createSlide };
+\`\`\`bash
+python -m markitdown presentation.pptx
 \`\`\`
 
-### Compiler Format (compile.js)
+### If the user wants to create a new deck from scratch
+
+Use the from-scratch workflow below.
+
+### If the user wants to edit a template or existing deck
+
+Use the workflow in \`references/editing.md\`.
+
+---
+
+## Non-Negotiable Rules
+
+### Native output only
+
+The final artifact must be a valid \`.pptx\` file readable by Microsoft PowerPoint and Google Slides.
+
+### Design decisions are required up front
+
+Before generating slides, explicitly decide:
+
+1. Audience and presentation goal
+2. Color palette
+3. Font pairing
+4. Style recipe
+5. Deck language
+6. Slide outline, slide types, and content-slide layout families
+
+Do not let the model improvise visual direction slide-by-slide.
+
+### Use one deck language
+
+Lock the deck to one primary language before writing slide text. If the user writes in Vietnamese, the deck language is Vietnamese unless they explicitly ask otherwise.
+
+Do not mix Vietnamese, English, Chinese, or other languages in visible slide text. Translate headings, bullets, labels, callouts, captions, sources, and notes into the deck language. Keep foreign text only when it is a proper noun, acronym, product name, legal quote, or the user explicitly asks for bilingual/multilingual teaching material.
+
+Do not write slash glosses like "ôm / hug", "ôm /亲吻", "an toàn / safe", or "high-five" in a Vietnamese deck. Choose the deck-language term and, if needed, explain the foreign term in speaker notes instead of visible slide text.
+
+For Vietnamese decks, use natural Vietnamese copy. Avoid English section labels such as "Design", "Best practices", "Use cases", "Summary", "Option A", "Takeaway", unless the user explicitly requested English.
+
+### Use only approved palette colors
+
+Colors must come from the chosen palette. Do not invent extra colors. Do not use gradients. Do not encode opacity in hex strings.
+
+### Body text is not bold
+
+Bold is reserved for titles, section headers, and emphasis labels. Body copy, captions, legends, and footnotes stay regular weight.
+
+### Avoid generic deck structure
+
+Do not produce a deck that is just repeated \`title + bullets\` slides. Content slides must vary in layout and include non-text visual structure.
+
+### One slide per module
+
+Never generate a monolithic \`index.js\` that creates the whole deck. Every slide must live in its own \`slide-XX.js\` module and the deck must be assembled by \`compile.js\`.
+
+### No local presentation helpers
+
+Do not define local helpers such as \`addBullets()\`, \`addTwoColBullets()\`, \`addTitleSlide()\`, or local chart/card renderers when an approved helper exists. Use the skill's bundled helper scripts so layout, bullets, and validation stay consistent.
+
+### QA is mandatory
+
+Do not stop after first render. Run at least one fix-and-verify cycle.
+
+---
+
+## From-Scratch Workflow
+
+### Step 1: Understand requirements
+
+Determine:
+
+- Topic
+- Audience
+- Goal
+- Tone
+- Expected slide count
+- Primary deck language
+- Whether the deck is data-heavy, narrative-heavy, or template-driven
+
+Search workspace context when the deck depends on project details, company context, contacts, metrics, or prior notes.
+
+If the user does not specify language, infer it from the user's request. Vietnamese prompt -> Vietnamese deck. English prompt -> English deck. If source material contains multiple languages, normalize all visible copy into the primary deck language unless the user explicitly asks to preserve bilingual source text.
+
+### Step 2: Choose palette and fonts
+
+Before generating any slide, read:
+
+- \`references/design-system.md\`
+
+Then select:
+
+- One color palette that matches the subject and audience
+- One header/body font pairing
+- One style recipe: \`Sharp & Compact\`, \`Soft & Balanced\`, \`Rounded & Spacious\`, or \`Pill & Airy\`
+
+State the selection clearly in your internal plan and keep it consistent across the deck.
+
+### Step 3: Plan the deck
+
+Read:
+
+- \`references/slide-types.md\`
+- \`references/layout-taxonomy.md\`
+- \`references/infographic-template-catalog.md\`
+
+Classify every slide as exactly one of:
+
+1. Cover
+2. Table of Contents
+3. Section Divider
+4. Content
+5. Summary / Closing
+
+For content slides, choose both:
+
+- a subtype such as text, comparison, timeline, data visualization, mixed media, or image showcase
+- a \`layoutFamily\` from \`references/layout-taxonomy.md\`
+
+Every content slide must have a concise \`slideSpec\` with \`type\`, \`index\`, \`title\`, \`layoutFamily\`, \`layoutVariant\`, and \`density\` before any drawing code.
+
+### Step 4: Set up output structure
+
+Create a working directory like:
+
+\`\`\`text
+slides/
+|- slide-01.js
+|- slide-02.js
+|- ...
+|- imgs/
+\- output/
+   \- presentation.pptx
+\`\`\`
+
+Do not create \`slides/index.js\` as the deck generator. \`index.js\` monoliths are invalid for this skill because they bypass per-slide validation and usually regress into fake bullets and hand-positioned layouts.
+
+### Step 5: Generate slide modules
+
+Each slide must be a synchronous JS module exporting \`createSlide(pres, theme)\`.
+
+Each slide module creates exactly one slide. If a file contains more than one \`pres.addSlide()\`, it is invalid and must be split.
+
+Use the relevant generator file for the slide you are writing:
+
+- Cover -> \`generators/cover-page-generator.md\`
+- TOC -> \`generators/table-of-contents-generator.md\`
+- Section Divider -> \`generators/section-divider-generator.md\`
+- Content -> \`generators/content-page-generator.md\`
+- Summary -> \`generators/summary-page-generator.md\`
+
+If the deck is large, split slide generation into batches. Keep each worker responsible for a disjoint slide range. Every slide must still follow the same palette, typography, and style recipe.
+
+For bullet-heavy slides, do not let the model handcraft bullet text runs directly. Use the shared helper in:
+
+- \`scripts/pptx-bullet-helpers.cjs\`
+- \`scripts/pptx-summary-helpers.cjs\`
+- \`scripts/pptx-process-helpers.cjs\`
+- \`scripts/pptx-comparison-helpers.cjs\`
+- \`scripts/pptx-data-helpers.cjs\`
+- \`scripts/pptx-stat-helpers.cjs\`
+- \`scripts/pptx-media-helpers.cjs\`
+- \`scripts/pptx-hierarchy-helpers.cjs\`
+- \`scripts/pptx-quadrant-helpers.cjs\`
+- \`scripts/pptx-roadmap-helpers.cjs\`
+- \`scripts/pptx-infographic-helpers.cjs\`
+
+The model should first decide the content as plain arrays or objects, then render with the helper.
+
+Before preview or deck compile, validate every content-bearing slide module:
+
+\`\`\`bash
+node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-02.js
+\`\`\`
+
+For whole-deck validation, validate all slide modules before compiling:
+
+\`\`\`bash
+node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-*.js
+\`\`\`
+
+If the validator reports monolithic files, local bullet helpers, dense bullets, fake bullets, missing \`slideSpec\`, or missing \`breakLine: true\`, rewrite the slide code before compiling.
+
+Preferred bullet pattern:
+
+\`\`\`javascript
+const { addBulletList } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-bullet-helpers.cjs");
+
+const bulletItems = [
+  "Water exists in three common states",
+  "Solid, liquid, and gas change through phase transitions",
+  "Water covers about 71% of Earth's surface",
+];
+
+addBulletList(slide, bulletItems, { x: 0.9, y: 1.8, w: 8.1, h: 2.3 }, {
+  fontSize: 18,
+  fontFace: "Georgia",
+  color: theme.secondary,
+  paraSpaceAfterPt: 10,
+});
+\`\`\`
+
+Preferred summary/takeaway row pattern:
+
+\`\`\`javascript
+const { addSummaryRows } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-summary-helpers.cjs");
+
+const takeawayItems = [
+  { title: "Water is foundational", body: "It supports life and appears in solid, liquid, and gas form." },
+  { title: "State changes matter", body: "Phase transitions explain evaporation, melting, and condensation." },
+  { title: "Its reach is global", body: "Water covers most of Earth's surface and shapes climate systems." },
+];
+
+addSummaryRows(slide, takeawayItems, {
+  x: 0.9,
+  y: 1.6,
+  w: 7.8,
+  h: 3.6,
+  rowGap: 0.18,
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+For vertical numbered guidance, do not hand-position "1", "2", "3" rows with fixed "y += 0.4" spacing. Use addSummaryRows() with "h" or "rowHeight" so wrapped titles and body text cannot collide.
+
+Preferred process/timeline pattern:
+
+\`\`\`javascript
+const { addProcessTimeline } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-process-helpers.cjs");
+
+const steps = [
+  { label: "Evaporation", caption: "Liquid water becomes vapor" },
+  { label: "Condensation", caption: "Vapor cools into droplets" },
+  { label: "Precipitation", caption: "Water returns as rain or snow" },
+  { label: "Collection", caption: "Water gathers in oceans and lakes" },
+];
+
+addProcessTimeline(slide, steps, {
+  x: 0.8,
+  y: 1.7,
+  w: 8.4,
+  labelFontFace: "Georgia",
+  captionFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Preferred comparison pattern:
+
+\`\`\`javascript
+const { addComparisonCards } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-comparison-helpers.cjs");
+
+const columns = [
+  { title: "Liquid Water", items: ["Flows freely", "Takes container shape", "Supports most daily use cases"] },
+  { title: "Ice", items: ["Keeps fixed shape", "Expands when frozen", "Floats on liquid water"] },
+];
+
+addComparisonCards(slide, columns, {
+  x: 0.8,
+  y: 1.5,
+  w: 8.4,
+  h: 2.8,
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Preferred data-visualization pattern:
+
+\`\`\`javascript
+const { addBarChartWithTakeaways } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-data-helpers.cjs");
+
+const chartData = {
+  series: [
+    { label: "Ice", value: 25 },
+    { label: "Liquid", value: 60 },
+    { label: "Vapor", value: 15 },
+  ],
+  takeaways: [
+    "Liquid water dominates daily use",
+    "Solid and gas forms matter in climate systems",
+  ],
+  source: "Classroom summary dataset",
+};
+
+addBarChartWithTakeaways(slide, chartData, {
+  x: 0.8,
+  y: 1.5,
+  w: 8.4,
+  h: 2.9,
+  labelFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Preferred stat-grid pattern:
+
+\`\`\`javascript
+const { addStatCardGrid } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-stat-helpers.cjs");
+
+const statCards = [
+  { value: "71%", label: "Earth's surface covered by water", detail: "Most of it is ocean water." },
+  { value: "60%", label: "Adult body water content", detail: "Hydration supports core body functions." },
+  { value: "3%", label: "Freshwater share", detail: "Accessible freshwater remains limited." },
+  { value: "1.5B", label: "People facing water stress", detail: "Water management stays a global issue." },
+];
+
+addStatCardGrid(slide, statCards, {
+  x: 0.8,
+  y: 1.55,
+  w: 8.4,
+  h: 3.0,
+  valueFontFace: "Georgia",
+  labelFontFace: "Calibri",
+  detailFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Preferred mixed-media pattern:
+
+\`\`\`javascript
+const { addMixedMediaPanel } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-media-helpers.cjs");
+
+const mediaPanel = {
+  imagePath: "./imgs/water-cycle.png",
+  title: "Water moves through a continuous cycle",
+  bullets: [
+    "Evaporation lifts water vapor into the atmosphere",
+    "Condensation forms clouds and droplets",
+    "Precipitation returns water to land and oceans",
+  ],
+  caption: "Illustrative diagram of the water cycle",
+};
+
+addMixedMediaPanel(slide, mediaPanel, {
+  x: 0.8,
+  y: 1.45,
+  w: 8.4,
+  h: 3.15,
+  imageSide: "right",
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Preferred hierarchy pattern:
+
+\`\`\`javascript
+const { addHierarchyStack } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-hierarchy-helpers.cjs");
+
+const hierarchyNodes = [
+  { title: "Water systems", detail: "The broad system that connects climate, ecosystems, and daily use." },
+  { title: "Natural cycle", detail: "Evaporation, condensation, precipitation, and collection." },
+  { title: "Human usage", detail: "Agriculture, industry, energy, sanitation, and household needs." },
+  { title: "Risk layer", detail: "Pollution, scarcity, flooding, and infrastructure pressure." },
+];
+
+addHierarchyStack(slide, hierarchyNodes, {
+  x: 0.8,
+  y: 1.35,
+  w: 8.4,
+  h: 3.35,
+  titleFontFace: "Georgia",
+  detailFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Preferred quadrant pattern:
+
+\`\`\`javascript
+const { addQuadrantMatrix } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-quadrant-helpers.cjs");
+
+const quadrants = [
+  { title: "High impact / Low effort", items: ["Quick education campaigns", "Leak detection basics"] },
+  { title: "High impact / High effort", items: ["Infrastructure renewal", "Large-scale treatment"] },
+  { title: "Low impact / Low effort", items: ["Simple reminders", "Usage nudges"] },
+  { title: "Low impact / High effort", items: ["Low-priority custom systems"] },
+];
+
+addQuadrantMatrix(slide, quadrants, {
+  x: 0.9,
+  y: 1.35,
+  w: 8.0,
+  h: 3.25,
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+  xAxisLabel: "Effort",
+  yAxisLabel: "Impact",
+}, theme);
+\`\`\`
+
+Preferred roadmap pattern:
+
+\`\`\`javascript
+const { addRoadmap } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-roadmap-helpers.cjs");
+
+const roadmapStages = [
+  { tag: "Now", label: "Understand", caption: "Map core facts and current constraints." },
+  { tag: "Next", label: "Prioritize", caption: "Focus on the most important risks and opportunities." },
+  { tag: "Later", label: "Act", caption: "Turn decisions into measurable interventions." },
+];
+
+addRoadmap(slide, roadmapStages, {
+  x: 0.75,
+  y: 1.65,
+  w: 8.5,
+  h: 2.55,
+  tagFontFace: "Calibri",
+  labelFontFace: "Georgia",
+  captionFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Preferred infographic pattern:
+
+\`\`\`javascript
+const {
+  addRelationMap,
+  addCycleDiagram,
+  addPyramid,
+  addStaircase,
+  addBoxGrid,
+} = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs");
+
+const relationData = {
+  center: { title: "Water security", detail: "Shared system pressure" },
+  nodes: [
+    { title: "Climate", detail: "Drought and flood volatility" },
+    { title: "Agriculture", detail: "Irrigation demand" },
+    { title: "Cities", detail: "Infrastructure and sanitation" },
+    { title: "Industry", detail: "Energy and production needs" },
+  ],
+};
+
+addRelationMap(slide, relationData, {
+  cx: 5,
+  cy: 3,
+  radius: 1.65,
+  titleFontFace: "Georgia",
+  detailFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+### Step 6: Use the theme contract
+
+The compile script must pass a theme object with these exact keys:
+
+- \`theme.primary\`
+- \`theme.secondary\`
+- \`theme.accent\`
+- \`theme.light\`
+- \`theme.bg\`
+
+Do not rename these keys.
+
+### Step 7: Add page number badges
+
+All slides except the cover must include a page number badge in the bottom-right corner.
+
+- Position: \`x: 9.3\`, \`y: 5.1\`
+- Show current slide number only, not total count
+
+### Step 8: Compile
+
+Create \`slides/compile.js\` and compile the modules into a single \`.pptx\`.
+
+Example:
+
 \`\`\`javascript
 const pptxgen = require("pptxgenjs");
 const pres = new pptxgen();
 pres.layout = "LAYOUT_16x9";
 
 const theme = {
-  primary: "22223b", secondary: "4a4e69", accent: "9a8c98", bg: "f2e9e4"
+  primary: "22223b",
+  secondary: "4a4e69",
+  accent: "9a8c98",
+  light: "c9ada7",
+  bg: "f2e9e4",
 };
 
-require("./slide-01.js").createSlide(pres, theme);
-require("./slide-02.js").createSlide(pres, theme);
-// ... more slides
+for (let i = 1; i <= 12; i++) {
+  const num = String(i).padStart(2, "0");
+  const slideModule = require(\`./slide-\${num}.js\`);
+  slideModule.createSlide(pres, theme);
+}
 
-pres.writeFile({ fileName: "presentation.pptx" });
+pres.writeFile({ fileName: "./output/presentation.pptx" });
 \`\`\`
 
-## 4. Specialized Generators (Sub-agents)
-For complex slides, refer to the following specialized guides in the \`generators/\` directory of this skill:
-- **Cover Page**: \`cover-page-generator.md\`
-- **Table of Contents**: \`table-of-contents-generator.md\`
-- **Section Divider**: \`section-divider-generator.md\`
-- **Content & Data Page**: \`content-page-generator.md\`
-- **Final Summary**: \`summary-page-generator.md\`
+### Step 9: QA
 
-If you need to delegate, ensure the sub-agent receives the relevant specialist instruction via its system prompt.
+Read:
 
-## 5. Sub-Agent Coordination
-If the user requests more than 5 slides, you **must delegate** groups of slides to specialized sub-agents.
-- Agent A: Slides 01-05 (Introduction & Context)
-- Agent B: Slides 06-10 (Data & Analysis)
-- Agent C: Slides 11-15 (Summary & Closing)
+- \`references/pitfalls.md\`
 
-## Critical Constraints
-- **NO placeholders**: Find real data or use relevant analogies based on the user's workspace memory.
-- **NO external images**: Use PptxGenJS shapes (RECTANGLE, OVAL, LINE) and icons to build visuals.
-- **Native File**: The final output must be a valid .pptx file readable by Microsoft PowerPoint and Google Slides.
-`
+Run content QA:
+
+\`\`\`bash
+python -m markitdown output/presentation.pptx
+\`\`\`
+
+Run bullet-structure QA on the source files before or alongside preview QA:
+
+\`\`\`bash
+node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-*.js
+\`\`\`
+
+Check for:
+
+- Missing content
+- Wrong order
+- Placeholder text
+- Page badge omissions
+- Broken hierarchy or repeated layouts
+
+Check placeholder residue:
+
+\`\`\`bash
+python -m markitdown output/presentation.pptx | grep -iE "xxxx|lorem|ipsum|placeholder|this.*(page|slide).*layout"
+\`\`\`
+
+If anything is wrong, fix the affected slides and verify again.
+
+---
+
+## Template Editing Workflow
+
+When the user provides an existing \`.pptx\` and wants edits, do not rebuild it from scratch unless that is clearly the better option. Use the template workflow in \`references/editing.md\`.
+
+High-level sequence:
+
+1. Copy the original deck to a working file such as \`template.pptx\`
+2. Extract text with \`markitdown\`
+3. Inspect the slide structure
+4. Complete structural operations first: delete, duplicate, reorder
+5. Edit slide XML content
+6. Clean orphaned artifacts
+7. Repack and validate
+8. Run QA on the edited result
+
+Critical editing rules:
+
+- Never manually clone slide files without updating relationships and content types
+- Remove excess visual groups when source content has fewer items than the template
+- Use separate XML paragraphs for separate items
+- Preserve formatting and spacing attributes when editing XML
+
+---
+
+## Technical Constraints
+
+### Slide module format
+
+Each slide module should follow this shape:
+
+\`\`\`javascript
+const pptxgen = require("pptxgenjs");
+
+const slideConfig = {
+  type: "cover",
+  index: 1,
+  title: "Presentation Title",
+};
+\`\`\`
+
+Content slides must use \`slideSpec\` instead:
+
+\`\`\`javascript
+const slideSpec = {
+  type: "content",
+  index: 4,
+  title: "Presentation Title",
+  layoutFamily: "hierarchy",
+  layoutVariant: "stacked-layered-cards",
+  density: "medium",
+};
+\`\`\`
+
+Example module skeleton:
+
+\`\`\`javascript
+const pptxgen = require("pptxgenjs");
+
+const slideConfig = {
+  type: "cover",
+  index: 1,
+  title: "Presentation Title",
+};
+
+function createSlide(pres, theme) {
+  const slide = pres.addSlide();
+  slide.background = { color: theme.bg };
+
+  slide.addText(slideConfig.title, {
+    x: 0.5,
+    y: 2,
+    w: 9,
+    h: 1.2,
+    fontSize: 48,
+    fontFace: "Arial",
+    color: theme.primary,
+    bold: true,
+    align: "center",
+  });
+
+  return slide;
+}
+
+if (require.main === module) {
+  const pres = new pptxgen();
+  pres.layout = "LAYOUT_16x9";
+  const theme = {
+    primary: "22223b",
+    secondary: "4a4e69",
+    accent: "9a8c98",
+    light: "c9ada7",
+    bg: "f2e9e4",
+  };
+  createSlide(pres, theme);
+  pres.writeFile({ fileName: "slide-01-preview.pptx" });
+}
+
+module.exports = { createSlide, slideConfig };
+\`\`\`
+
+### Important implementation constraints
+
+- \`createSlide()\` must be synchronous
+- Hex colors must not include \`#\`
+- Do not reuse mutable options objects across multiple PptxGenJS calls
+- Use \`fit: "shrink"\` when long titles risk overflow
+- Avoid external image dependencies unless the user explicitly provides assets or the workflow requires them
+
+---
+
+## Visual Quality Standard
+
+The deck should show intentional design choices, not generic automation artifacts.
+
+Required qualities:
+
+- Consistent palette and typography
+- Clear hierarchy
+- High contrast
+- Layout variety across content slides
+- Appropriate whitespace
+- Clean closing slide
+
+Avoid:
+
+- Repeating the same layout across the deck
+- Centered body text
+- Low-contrast text or icons
+- Decorative accent lines under titles
+- Text-only content slides
+- Defaulting every deck to blue palettes
+
+---
+
+## Recommended Dependencies
+
+- \`markitdown[pptx]\` for extraction and QA
+- \`pptxgenjs\` for generation
+
+Use local project dependencies when possible. If a temporary working directory is needed, keep it isolated from the main app source tree.
+`;
+
+export default skill;

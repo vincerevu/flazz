@@ -32,7 +32,7 @@ export const builtInSkillDefinitions: SkillDefinition[] = [
   {
     id: "create-presentations",
     title: "Create Presentations",
-    summary: "Create PDF presentations and slide decks from natural language requests using workspace memory context.",
+    summary: "Create and edit native PowerPoint slide decks from natural language requests using workspace context, template editing workflows, and PptxGenJS generation.",
     content: createPresentationsSkill,
   },
   {

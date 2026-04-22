@@ -1,7 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LanguageModelUsage, ToolUIPart } from 'ai'
 import z from 'zod'
-import { AskHumanRequestEvent, ListRunsResponse, RunEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
+import { AskHumanRequestEvent, ListRunsResponse, RunEvent, RunStatusEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
 import type { PromptInputMessage, FileMention } from '@/components/ai-elements/prompt-input'
 import type { StagedAttachment } from '@/components/chat-input-with-mentions'
 import {
@@ -40,6 +40,7 @@ type ChatRuntimeSnapshot = {
   runId: string | null
   conversation: ConversationItem[]
   currentAssistantMessage: string
+  runStatus: z.infer<typeof RunStatusEvent> | null
   modelUsage: LanguageModelUsage | null
   modelUsageUpdatedAt: number | null
   pendingAskHumanRequests: Map<string, z.infer<typeof AskHumanRequestEvent>>
@@ -368,6 +369,7 @@ export function useChatRuntime({
   const runIdRef = useRef<string | null>(null)
   const loadRunRequestIdRef = useRef(0)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [runStatus, setRunStatus] = useState<z.infer<typeof RunStatusEvent> | null>(null)
   const [processingRunIds, setProcessingRunIds] = useState<Set<string>>(new Set())
   const processingRunIdsRef = useRef<Set<string>>(new Set())
   const streamingBuffersRef = useRef<Map<string, { assistant: string }>>(new Map())
@@ -500,6 +502,7 @@ export function useChatRuntime({
     setMessage('')
     setModelUsage(null)
     setModelUsageUpdatedAt(null)
+    setRunStatus(null)
     setIsProcessing(false)
     setPendingPermissionRequests(new Map())
     setPendingAskHumanRequests(new Map())
@@ -621,6 +624,7 @@ export function useChatRuntime({
         })
         if (!isActiveRun) return
         setIsProcessing(true)
+        setRunStatus(null)
         setModelUsage(null)
         break
 
@@ -639,6 +643,7 @@ export function useChatRuntime({
         clearStreamingBuffer(event.runId)
         if (!isActiveRun) return
         setIsProcessing(false)
+        setRunStatus(null)
         setIsStopping(false)
         setStopClickedAt(null)
         setCurrentAssistantMessage('')
@@ -653,6 +658,7 @@ export function useChatRuntime({
         })
         if (!isActiveRun) return
         setIsProcessing(true)
+        setRunStatus(null)
         removeStreamingAssistant(event.runId)
         setCurrentAssistantMessage('')
         setModelUsage(null)
@@ -673,6 +679,9 @@ export function useChatRuntime({
           return
         }
         setIsProcessing(true)
+        if (llmEvent.type === 'text-delta' && llmEvent.delta) {
+          setRunStatus(null)
+        }
         if (llmEvent.type === 'text-delta' && llmEvent.delta) {
           appendStreamingBuffer(event.runId, llmEvent.delta)
           scheduleStreamingAssistantFlush(event.runId)
@@ -697,8 +706,15 @@ export function useChatRuntime({
         break
       }
 
+      case 'run-status':
+        if (!isActiveRun) return
+        setIsProcessing(true)
+        setRunStatus(event)
+        break
+
       case 'context-compaction-start':
         if (!isActiveRun) return
+        setRunStatus(null)
         setConversation((prev) => [
           ...prev,
           {
@@ -970,6 +986,7 @@ export function useChatRuntime({
         if (!isActiveRun) return
         cancelStreamingAssistantFlush()
         setIsProcessing(false)
+        setRunStatus(null)
         setIsStopping(false)
         setStopClickedAt(null)
         setPendingPermissionRequests(new Map())
@@ -988,6 +1005,7 @@ export function useChatRuntime({
         cancelStreamingAssistantFlush()
         commitAssistantDraft(undefined, event.runId)
         setIsProcessing(false)
+        setRunStatus(null)
         setIsStopping(false)
         setStopClickedAt(null)
         setConversation((prev) => [...prev, {
@@ -1023,6 +1041,7 @@ export function useChatRuntime({
   useEffect(() => {
     if (!runId) {
       setIsProcessing(false)
+      setRunStatus(null)
       setIsStopping(false)
       setStopClickedAt(null)
       cancelStreamingAssistantFlush()
@@ -1036,6 +1055,7 @@ export function useChatRuntime({
       syncStreamingAssistant(runId, buffer?.assistant ?? '')
     } else {
       setIsStopping(false)
+      setRunStatus(null)
       setStopClickedAt(null)
       cancelStreamingAssistantFlush()
       setCurrentAssistantMessage('')
@@ -1233,6 +1253,7 @@ export function useChatRuntime({
     setRunId(fallbackRunId)
     setConversation(snapshot.conversation)
     setCurrentAssistantMessage(snapshot.currentAssistantMessage)
+    setRunStatus(snapshot.runStatus)
     setModelUsage(snapshot.modelUsage)
     setModelUsageUpdatedAt(snapshot.modelUsageUpdatedAt)
 
@@ -1255,6 +1276,7 @@ export function useChatRuntime({
     runId,
     conversation,
     currentAssistantMessage,
+    runStatus,
     modelUsage,
     modelUsageUpdatedAt,
     pendingAskHumanRequests: new Map(pendingAskHumanRequests),
@@ -1264,6 +1286,7 @@ export function useChatRuntime({
     runId,
     conversation,
     currentAssistantMessage,
+    runStatus,
     modelUsage,
     modelUsageUpdatedAt,
     pendingAskHumanRequests,

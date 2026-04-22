@@ -61,6 +61,17 @@ cp /path/to/user-provided.pptx template.pptx
 
 Minimum expected deliverable: `edited.pptx`.
 
+## Supporting Scripts
+
+Use supporting scripts when available instead of manually reconstructing PPTX internals.
+
+| Script | Purpose |
+|--------|---------|
+| `unpack.py` | Extract and pretty-print PPTX XML into an editable tree |
+| `add_slide.py` | Duplicate a slide or add one from a layout while preserving relationships |
+| `clean.py` | Remove orphaned slides, relationships, and media |
+| `pack.py` | Repack the tree into a validated PPTX |
+
 ## Slide Operations
 
 Slide order is in `ppt/presentation.xml` -> `<p:sldIdLst>`.
@@ -69,7 +80,9 @@ Slide order is in `ppt/presentation.xml` -> `<p:sldIdLst>`.
 
 **Delete**: Remove `<p:sldId>`, then clean orphaned files.
 
-**Add**: Copy the source slide's XML file, its `.rels` file, and update `Content_Types.xml` and `presentation.xml`. Never manually copy slide files without updating all references — this causes broken notes references and missing relationship IDs.
+**Add**: Prefer `add_slide.py`. Never manually copy slide files unless you also update notes references, relationship IDs, `Content_Types.xml`, and `presentation.xml`.
+
+If `add_slide.py` exists in the workflow, treat it as the source of truth for duplication. Manual copying is a last resort and is easy to corrupt.
 
 ## Editing Content
 
@@ -84,6 +97,17 @@ For each slide:
 3. Replace each placeholder with final content
 
 **Use the Edit tool, not sed or Python scripts.** The Edit tool forces specificity about what to replace and where, yielding better reliability.
+
+## Recommended Execution Order
+
+1. Copy source deck to `template.pptx`
+2. Extract text with `markitdown`
+3. Unpack XML tree
+4. Perform structural operations first
+5. Edit slide XML content
+6. Clean orphaned files
+7. Pack to `edited.pptx`
+8. Run QA on `edited.pptx`
 
 ## Formatting Rules
 

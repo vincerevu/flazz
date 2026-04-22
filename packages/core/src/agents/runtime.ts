@@ -46,6 +46,7 @@ import { estimatePromptTokens, resolveModelContextBudget } from "./runtime/model
 import { checkOverflow } from "./runtime/overflow-detector.js";
 import { pruneToolOutputs } from "./runtime/context-pruner.js";
 import { buildAutoContinueMessage } from "./runtime/auto-continue.js";
+import { EMPTY_ASSISTANT_FALLBACK_TEXT, sanitizeMessagesForPrompt } from "./runtime/prompt-sanitizer.js";
 import { isToolCallFinishReason } from "../llm/stream-normalizers/index.js";
 
 export interface IAgentRuntime {
@@ -134,8 +135,10 @@ export class AgentRuntime implements IAgentRuntime {
                         abortRegistry: this.abortRegistry,
                         correlationId,
                     })) {
-                        eventCount++;
-                        if (event.type !== "llm-stream-event") {
+                        if (event.type !== "run-status") {
+                            eventCount++;
+                        }
+                        if (event.type !== "llm-stream-event" && event.type !== "run-status") {
                             await this.runsRepo.appendEvents(runId, [event]);
                         }
                         await this.bus.publish(event);
@@ -319,7 +322,7 @@ function buildEmptyAssistantFallback(): z.infer<typeof AssistantMessage> {
         content: [
             {
                 type: "text",
-                text: "The selected model returned no visible output for the last step. Please retry or switch to a different model/provider."
+                text: EMPTY_ASSISTANT_FALLBACK_TEXT
             }
         ],
     };
@@ -365,6 +368,29 @@ export async function* streamAgent({
         yield event;
     }
 
+    async function* emitStatus(
+        phase: "checking"
+            | "running-tool"
+            | "preparing-context"
+            | "checking-context"
+            | "compacting-context"
+            | "waiting-for-model"
+            | "processing-response"
+            | "finalizing",
+        message: string,
+        toolName?: string,
+    ): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
+        yield* processEvent(RunEvent.parse({
+            runId,
+            type: "run-status",
+            phase,
+            message,
+            toolName,
+            subflow: [],
+            ts: new Date().toISOString(),
+        }));
+    }
+
     const modelConfig = await modelConfigRepo.getConfig();
     if (!modelConfig) {
         throw new Error("Model config not found");
@@ -404,6 +430,7 @@ export async function* streamAgent({
         loopCounter++;
         const loopLogger = logger.child(`iter-${loopCounter}`);
         loopLogger.log('starting loop iteration');
+        yield* emitStatus("checking", "Checking next action...");
 
         // execute any pending tool calls
         for (const toolCallId of Object.keys(state.pendingToolCalls)) {
@@ -448,6 +475,7 @@ export async function* streamAgent({
                 break;
             }
             _logger.log('executing tool');
+            yield* emitStatus("running-tool", `Running ${toolCall.toolName}...`, toolCall.toolName);
 
             if (agent.tools![toolCall.toolName].type === "agent") {
                 const subflowState = state.subflowStates[toolCallId];
@@ -522,6 +550,7 @@ export async function* streamAgent({
 
         // run one LLM turn.
         loopLogger.log('running llm turn');
+        yield* emitStatus("preparing-context", "Preparing context...");
         // stream agent response and build message
         const now = new Date();
         const currentDateTime = now.toLocaleString('en-US', {
@@ -566,12 +595,18 @@ export async function* streamAgent({
         // Budget prompt per model/provider rather than trimming by fixed message count.
         const MINIMUM_RECENT_MESSAGES = 20;
         const budget = resolveModelContextBudget(modelConfig.provider, modelId);
-        const trimmedPrompt = trimMessagesForPrompt(state.messages, MINIMUM_RECENT_MESSAGES);
+        const sanitizedPromptSource = sanitizeMessagesForPrompt(state.messages);
+        if (sanitizedPromptSource.length !== state.messages.length) {
+            loopLogger.log(
+                `sanitized prompt history: messages=${state.messages.length}->${sanitizedPromptSource.length}`
+            );
+        }
+        const trimmedPrompt = trimMessagesForPrompt(sanitizedPromptSource, MINIMUM_RECENT_MESSAGES);
         if (trimmedPrompt.droppedMessages > 0 || trimmedPrompt.downgradedMessages > 0) {
             loopLogger.log(
                 `trimmed prompt before compaction: dropped=${trimmedPrompt.droppedMessages} ` +
                 `downgraded=${trimmedPrompt.downgradedMessages} ` +
-                `messages=${state.messages.length}->${trimmedPrompt.messages.length}`
+                `messages=${sanitizedPromptSource.length}->${trimmedPrompt.messages.length}`
             );
         }
         const promptMessages = trimmedPrompt.messages;
@@ -589,6 +624,7 @@ export async function* streamAgent({
         });
         const estimatedPromptTokens = overflowCheck.usedTokens;
         loopLogger.log(`context check: tokens=${estimatedPromptTokens} source=${overflowCheck.source} threshold=${budget.compactionThreshold}`);
+        yield* emitStatus("checking-context", "Checking context window...");
 
         const safeRecentMessages = buildSafeRecentMessages(promptMessages, MINIMUM_RECENT_MESSAGES);
         let modelMessages = overflowCheck.isOverflow
@@ -620,8 +656,9 @@ export async function* streamAgent({
                 });
                 modelMessages = safeRecentMessages;
             } else {
-            const compactionId = await idGenerator.next();
-            const estimatedTokensBefore = estimatePromptTokens({
+                yield* emitStatus("compacting-context", "Compacting context...");
+                const compactionId = await idGenerator.next();
+                const estimatedTokensBefore = estimatePromptTokens({
                 messages: promptMessages,
                 instructions: instructionsWithDateTime,
                 tools,
@@ -819,6 +856,7 @@ export async function* streamAgent({
                 }
             }
         } // end if (shouldCompact)
+        yield* emitStatus("waiting-for-model", "Waiting for model response...");
         for await (const event of streamLlm(
             model,
             modelMessages,
@@ -880,6 +918,7 @@ export async function* streamAgent({
             }
         }
 
+        yield* emitStatus("processing-response", "Processing model response...");
         let message = await normalizeAssistantMessage({
             message: messageBuilder.get(),
             agent,

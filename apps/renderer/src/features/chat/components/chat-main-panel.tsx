@@ -22,6 +22,7 @@ import {
   type ChatTabViewState,
   type ConversationItem,
   type PermissionResponse,
+  getProcessingStatusText,
   getWebSearchCardData,
   isChatMessage,
   isContextCompactionItem,
@@ -202,9 +203,7 @@ export function ChatMainPanel({
             const isActive = tab.id === activeChatTabId
             const tabState = getChatTabStateForRender(tab.id)
             const tabHasConversation = tabState.conversation.length > 0 || tabState.currentAssistantMessage
-            const hasStreamingAssistant = tabState.conversation.some((item) => (
-              isChatMessage(item) && item.role === 'assistant' && item.streaming
-            ))
+            const processingStatusText = getProcessingStatusText(tabState)
             const tabConversationContentClassName = tabHasConversation
               ? 'mx-auto w-full max-w-4xl pb-28'
               : 'mx-auto w-full max-w-4xl min-h-full items-center justify-center pb-0'
@@ -273,10 +272,10 @@ export function ChatMainPanel({
                           />
                         ))}
 
-                        {isActive && isProcessing && !hasStreamingAssistant && (
+                        {isActive && isProcessing && (
                           <Message from="assistant">
                             <MessageContent>
-                              <Shimmer duration={1}>Thinking...</Shimmer>
+                              <Shimmer duration={1}>{processingStatusText}</Shimmer>
                             </MessageContent>
                           </Message>
                         )}
