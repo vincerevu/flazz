@@ -3,12 +3,14 @@ name: Release Build
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger when you push tags like v1.0.0, v1.2.3
-  workflow_dispatch:  # Allow manual trigger from GitHub UI
+      - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,37 +41,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build dependencies (shared, core, preload)
-        run: pnpm run deps
-
-      - name: Build renderer
-        run: cd apps/renderer && pnpm run build
-
-      - name: Build main
-        run: cd apps/main && pnpm run build
-
-      - name: Package Windows app (Electron Forge)
-        run: cd apps/main && pnpm run make
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package Windows app
+        run: cd apps/main && pnpm run make:windows
 
       - name: List output files
         run: |
-          echo "Contents of apps/main/out/make:"
-          dir apps\main\out\make /s
+          echo "Contents of release:"
+          dir release /s
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flazz-windows
           path: |
-            apps/main/out/make/squirrel.windows/**/*.exe
-            apps/main/out/make/squirrel.windows/**/*.nupkg
-            apps/main/out/make/zip/**/*.zip
+            release/installer/FlazzSetup.exe
+            release/Flazz-win32-x64/**
           retention-days: 7
 
   build-macos:
     runs-on: macos-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -100,40 +92,32 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build dependencies (shared, core, preload)
-        run: pnpm run deps
-
-      - name: Build renderer
-        run: cd apps/renderer && pnpm run build
-
-      - name: Build main
-        run: cd apps/main && pnpm run build
-
-      - name: Package macOS app (Electron Forge)
-        run: cd apps/main && pnpm run make
+      - name: Package macOS app
+        run: cd apps/main && pnpm run make:desktop
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Uncomment these if you have Apple Developer account for code signing
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: List output files
         run: |
-          echo "Contents of apps/main/out/make:"
-          ls -R apps/main/out/make
+          echo "Contents of release:"
+          ls -R release
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flazz-macos
           path: |
-            apps/main/out/make/dmg/**/*.dmg
-            apps/main/out/make/zip/**/*.zip
+            release/make/**/*.dmg
+            release/make/**/*.zip
           retention-days: 7
 
   build-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -164,33 +148,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build dependencies (shared, core, preload)
-        run: pnpm run deps
+      - name: Install Linux packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm fakeroot
 
-      - name: Build renderer
-        run: cd apps/renderer && pnpm run build
-
-      - name: Build main
-        run: cd apps/main && pnpm run build
-
-      - name: Package Linux app (Electron Forge)
-        run: cd apps/main && pnpm run make
+      - name: Package Linux app
+        run: cd apps/main && pnpm run make:desktop
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List output files
         run: |
-          echo "Contents of apps/main/out/make:"
-          ls -R apps/main/out/make
+          echo "Contents of release:"
+          ls -R release
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flazz-linux
           path: |
-            apps/main/out/make/deb/**/*.deb
-            apps/main/out/make/rpm/**/*.rpm
-            apps/main/out/make/zip/**/*.zip
+            release/make/**/*.deb
+            release/make/**/*.rpm
+            release/make/**/*.zip
           retention-days: 7
 
   create-release:
@@ -239,22 +219,18 @@ jobs:
           name: Release ${{ github.ref_name }}
           body: |
             ## Downloads
-            
+
             ### Windows
-            - `Flazz-Setup-*.exe` - Windows installer (recommended)
-            - `Flazz-*.zip` - Portable version
-            
+            - `FlazzSetup.exe` - Windows installer
+            - `Flazz-win32-x64/` - unpacked portable app
+
             ### macOS
-            - `Flazz-*.dmg` - macOS installer (recommended)
-            - `Flazz-*.zip` - Portable version
-            
+            - `*.dmg` - macOS installer
+            - `*.zip` - macOS portable build
+
             ### Linux
-            - `flazz_*.deb` - Debian/Ubuntu package
-            - `flazz-*.rpm` - Fedora/RHEL package
-            - `Flazz-*.zip` - Portable version
-            
-            ## Installation
-            
-            See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) for installation instructions.
+            - `*.deb` - Debian/Ubuntu package
+            - `*.rpm` - Fedora/RHEL package
+            - `*.zip` - portable build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
