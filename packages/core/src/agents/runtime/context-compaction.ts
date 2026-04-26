@@ -5,6 +5,7 @@ import { z } from "zod";
 import { hasCompleteToolReferences } from "./history-window.js";
 import type { AutoContinueReason } from "./auto-continue.js";
 import { pruneToolOutputs } from "./context-pruner.js";
+import { isAutoContinueMessage } from "./auto-continue.js";
 
 type Message = z.infer<typeof MessageList>[number];
 
@@ -39,6 +40,10 @@ export interface CompactionSnapshot {
   tokensSaved: number;
   reductionPercent: number;
   reused: boolean;
+  recentWindowStart: number;
+  protectedWindowReasons: string[];
+  operationalMessageCountAfter: number;
+  baselineMode: "full-history" | "summary-recent-window";
 }
 
 export interface PreparedCompactedContext {
@@ -150,6 +155,19 @@ function compactHash(messages: z.infer<typeof MessageList>): string {
   return crypto.createHash("sha1").update(serialized).digest("hex");
 }
 
+type AdaptiveRecentWindowOptions = {
+  budgetTokens: number;
+  pendingToolCallIds?: string[];
+  referenceHints?: string[];
+  preserveLatestUserTurns?: number;
+};
+
+type AdaptiveRecentWindowSelection = {
+  messages: z.infer<typeof MessageList>;
+  startIndex: number;
+  protectedWindowReasons: string[];
+};
+
 function buildSnapshot(args: {
   summary: string;
   carryover: StructuredCarryover;
@@ -161,6 +179,10 @@ function buildSnapshot(args: {
   estimatedTokensBefore: number;
   estimatedTokensAfter: number;
   reused: boolean;
+  recentWindowStart: number;
+  protectedWindowReasons: string[];
+  operationalMessageCountAfter: number;
+  baselineMode: "full-history" | "summary-recent-window";
 }): CompactionSnapshot {
   const tokensSaved = Math.max(0, args.estimatedTokensBefore - args.estimatedTokensAfter);
   const reductionPercent = args.estimatedTokensBefore > 0
@@ -180,6 +202,10 @@ function buildSnapshot(args: {
     tokensSaved,
     reductionPercent,
     reused: args.reused,
+    recentWindowStart: args.recentWindowStart,
+    protectedWindowReasons: args.protectedWindowReasons,
+    operationalMessageCountAfter: args.operationalMessageCountAfter,
+    baselineMode: args.baselineMode,
   };
 }
 
@@ -275,6 +301,122 @@ export function parseCarryover(summary: string): StructuredCarryover {
   }
 
   return output;
+}
+
+function previousMeaningfulUserIndex(
+  messages: z.infer<typeof MessageList>,
+  fromIndex: number,
+): number | null {
+  for (let index = Math.min(fromIndex, messages.length - 1); index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "user") continue;
+    if (isAutoContinueMessage(message)) continue;
+    return index;
+  }
+  return null;
+}
+
+function findToolCallContextStart(
+  messages: z.infer<typeof MessageList>,
+  toolCallId: string,
+): number | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      const hasToolCall = message.content.some((part) => (
+        part.type === "tool-call" && part.toolCallId === toolCallId
+      ));
+      if (!hasToolCall) continue;
+      return previousMeaningfulUserIndex(messages, index) ?? index;
+    }
+    if (message.role === "tool" && message.toolCallId === toolCallId) {
+      return previousMeaningfulUserIndex(messages, index) ?? index;
+    }
+  }
+  return null;
+}
+
+function findLatestReferencedContextStart(
+  messages: z.infer<typeof MessageList>,
+  referenceHints: string[],
+): number | null {
+  if (referenceHints.length === 0) return null;
+  const normalizedHints = referenceHints
+    .map((hint) => hint.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  if (normalizedHints.length === 0) return null;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const content = typeof message.content === "string"
+      ? message.content
+      : JSON.stringify(message.content);
+    if (!normalizedHints.some((hint) => content.includes(hint))) continue;
+    return previousMeaningfulUserIndex(messages, index) ?? index;
+  }
+
+  return null;
+}
+
+function findLatestActiveToolChainStart(messages: z.infer<typeof MessageList>): number | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "tool") {
+      return previousMeaningfulUserIndex(messages, index) ?? index;
+    }
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      const hasToolCall = message.content.some((part) => part.type === "tool-call");
+      if (hasToolCall) {
+        return previousMeaningfulUserIndex(messages, index) ?? index;
+      }
+    }
+  }
+  return null;
+}
+
+function selectAdaptiveRecentMessages(
+  messages: z.infer<typeof MessageList>,
+  options: AdaptiveRecentWindowOptions,
+): AdaptiveRecentWindowSelection {
+  const baseRecentMessages = selectRecentMessagesWithinBudget(messages, options.budgetTokens);
+  let startIndex = Math.max(0, messages.length - baseRecentMessages.length);
+  const protectedWindowReasons: string[] = [];
+  const preserveLatestUserTurns = Math.max(1, options.preserveLatestUserTurns ?? 2);
+
+  const protectFromIndex = (candidate: number | null, reason: string) => {
+    if (candidate == null || candidate >= startIndex) return;
+    startIndex = candidate;
+    protectedWindowReasons.push(reason);
+  };
+
+  let searchFrom = messages.length - 1;
+  for (let count = 0; count < preserveLatestUserTurns; count += 1) {
+    const userIndex = previousMeaningfulUserIndex(messages, searchFrom);
+    if (userIndex == null) break;
+    protectFromIndex(userIndex, count === 0 ? "latest-user-turn" : `latest-user-turn-${count + 1}`);
+    searchFrom = userIndex - 1;
+  }
+
+  for (const toolCallId of options.pendingToolCallIds ?? []) {
+    protectFromIndex(findToolCallContextStart(messages, toolCallId), `pending-tool:${toolCallId}`);
+  }
+
+  protectFromIndex(findLatestActiveToolChainStart(messages), "active-tool-chain");
+  protectFromIndex(findLatestReferencedContextStart(messages, options.referenceHints ?? []), "task-reference");
+
+  while (startIndex > 0 && !hasCompleteToolReferences(messages.slice(startIndex))) {
+    startIndex -= 1;
+    if (!protectedWindowReasons.includes("complete-tool-references")) {
+      protectedWindowReasons.push("complete-tool-references");
+    }
+  }
+
+  return {
+    messages: messages.slice(startIndex),
+    startIndex,
+    protectedWindowReasons,
+  };
 }
 
 function pruneMessageForTranscript(message: Message): Message {
@@ -461,6 +603,8 @@ export async function prepareCompactedContext(args: {
   previousTaskState?: ActiveTaskState | null;
   /** Reason surfaced to the caller for auto-continue injection */
   reason?: AutoContinueReason;
+  pendingToolCallIds?: string[];
+  referenceHints?: string[];
   /**
    * Skip the pre-compaction prune step.
    * Set to true if pruneToolOutputs() was already called by the caller.
@@ -474,10 +618,13 @@ export async function prepareCompactedContext(args: {
     ? args.messages
     : pruneToolOutputs(args.messages).messages;
 
-  const recentMessages = args.recentBudgetTokens
-    ? selectRecentMessagesWithinBudget(workingMessages, args.recentBudgetTokens)
-    : selectRecentMessagesWithinBudget(workingMessages, 32_000); // 32k tokens as ultimate fallback instead of maxHistory
-  const startIndex = workingMessages.length - recentMessages.length;
+  const recentWindow = selectAdaptiveRecentMessages(workingMessages, {
+    budgetTokens: args.recentBudgetTokens ?? 32_000,
+    pendingToolCallIds: args.pendingToolCallIds,
+    referenceHints: args.referenceHints,
+  });
+  const recentMessages = recentWindow.messages;
+  const startIndex = recentWindow.startIndex;
   const omitted = workingMessages.slice(0, startIndex);
 
   if (omitted.length === 0) {
@@ -506,6 +653,10 @@ export async function prepareCompactedContext(args: {
         estimatedTokensBefore,
         estimatedTokensAfter: estimateMessagesTokens(compactedMessages),
         reused: true,
+        recentWindowStart: startIndex,
+        protectedWindowReasons: recentWindow.protectedWindowReasons,
+        operationalMessageCountAfter: compactedMessages.length,
+        baselineMode: "summary-recent-window",
       }),
     };
   }
@@ -546,6 +697,10 @@ export async function prepareCompactedContext(args: {
       estimatedTokensBefore,
       estimatedTokensAfter: estimateMessagesTokens(compactedMessages),
       reused: false,
+      recentWindowStart: startIndex,
+      protectedWindowReasons: recentWindow.protectedWindowReasons,
+      operationalMessageCountAfter: compactedMessages.length,
+      baselineMode: "summary-recent-window",
     }),
   };
 }

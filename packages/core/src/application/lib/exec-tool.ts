@@ -22,6 +22,10 @@ export async function execTool(agentTool: z.infer<typeof ToolAttachment>, input:
     // Check abort before starting any tool
     ctx?.signal.throwIfAborted();
 
+    if (!agentTool) {
+        throw new Error("Tool attachment is missing or unresolved");
+    }
+
     switch (agentTool.type) {
         case "mcp":
             // MCP tools: let complete on graceful stop (most are fast)
@@ -33,5 +37,7 @@ export async function execTool(agentTool: z.infer<typeof ToolAttachment>, input:
             }
             return builtinTool.execute(input, ctx);
         }
+        case "agent":
+            throw new Error(`Agent tools are not executable via execTool: ${agentTool.name}`);
     }
 }

@@ -16,6 +16,8 @@ export const RunProcessingEndEvent = BaseRunEvent.extend({
     type: z.literal("run-processing-end"),
 });
 
+const ContextBudgetSource = z.enum(["config", "registry", "fallback", "unknown"]);
+
 export const RunStatusEvent = BaseRunEvent.extend({
     type: z.literal("run-status"),
     phase: z.enum([
@@ -30,6 +32,18 @@ export const RunStatusEvent = BaseRunEvent.extend({
     ]),
     message: z.string(),
     toolName: z.string().optional(),
+    contextDebug: z.object({
+        providerFlavor: z.string(),
+        modelId: z.string(),
+        contextLimit: z.number().int().positive(),
+        usableInputBudget: z.number().int().positive(),
+        outputReserve: z.number().int().nonnegative(),
+        compactionThreshold: z.number().int().positive(),
+        targetThreshold: z.number().int().positive(),
+        estimatedPromptTokens: z.number().int().nonnegative(),
+        overflowSource: z.enum(["estimated", "actual", "none"]),
+        budgetSource: ContextBudgetSource,
+    }).optional(),
 });
 
 export const StartEvent = BaseRunEvent.extend({
@@ -119,12 +133,18 @@ export const ContextCompactionStartEvent = BaseRunEvent.extend({
     compactionId: z.string(),
     strategy: z.literal("summary-window"),
     escalated: z.boolean().optional(),
+    baselineMode: z.enum(["full-history", "summary-recent-window"]).optional(),
     messageCountBefore: z.number().int().nonnegative(),
+    operationalMessageCountBefore: z.number().int().nonnegative().optional(),
     estimatedTokensBefore: z.number().int().nonnegative(),
+    messagesSinceLastCompaction: z.number().int().nonnegative().optional(),
+    estimatedTokenGrowthSinceLastCompaction: z.number().int().nonnegative().optional(),
+    actualTokenGrowthSinceLastCompaction: z.number().int().nonnegative().optional(),
     contextLimit: z.number().int().positive(),
     usableInputBudget: z.number().int().positive(),
     compactionThreshold: z.number().int().positive(),
     targetThreshold: z.number().int().positive(),
+    contextBudgetSource: ContextBudgetSource.optional(),
 });
 
 export const ContextCompactionCompleteEvent = BaseRunEvent.extend({
@@ -142,10 +162,15 @@ export const ContextCompactionCompleteEvent = BaseRunEvent.extend({
     estimatedTokensAfter: z.number().int().nonnegative(),
     tokensSaved: z.number().int().nonnegative(),
     reductionPercent: z.number().int().min(0).max(100),
+    recentWindowStart: z.number().int().nonnegative().optional(),
+    protectedWindowReasons: z.array(z.string()).optional(),
+    operationalMessageCountAfter: z.number().int().nonnegative().optional(),
+    baselineMode: z.enum(["full-history", "summary-recent-window"]).optional(),
     contextLimit: z.number().int().positive(),
     usableInputBudget: z.number().int().positive(),
     compactionThreshold: z.number().int().positive(),
     targetThreshold: z.number().int().positive(),
+    contextBudgetSource: ContextBudgetSource.optional(),
     provenanceRefs: z.array(z.string()).optional(),
     reused: z.boolean().optional(),
 });
@@ -156,12 +181,19 @@ export const ContextCompactionFailedEvent = BaseRunEvent.extend({
     strategy: z.literal("summary-window"),
     escalated: z.boolean().optional(),
     error: z.string(),
+    failureCategory: z.enum(["abort", "provider", "invalid-response", "parse", "other"]).optional(),
+    baselineMode: z.enum(["full-history", "summary-recent-window"]).optional(),
     messageCountBefore: z.number().int().nonnegative(),
+    operationalMessageCountBefore: z.number().int().nonnegative().optional(),
     estimatedTokensBefore: z.number().int().nonnegative(),
+    messagesSinceLastCompaction: z.number().int().nonnegative().optional(),
+    estimatedTokenGrowthSinceLastCompaction: z.number().int().nonnegative().optional(),
+    actualTokenGrowthSinceLastCompaction: z.number().int().nonnegative().optional(),
     contextLimit: z.number().int().positive(),
     usableInputBudget: z.number().int().positive(),
     compactionThreshold: z.number().int().positive(),
     targetThreshold: z.number().int().positive(),
+    contextBudgetSource: ContextBudgetSource.optional(),
 });
 
 /** Emitted when tool outputs are pruned before (or instead of) full compaction. */

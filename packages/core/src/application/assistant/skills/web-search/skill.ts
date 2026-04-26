@@ -5,7 +5,7 @@ You have access to two search tools for finding information on the internet. Cho
 
 ## Tools
 
-### web-search (Brave Search)
+### web-search (DuckDuckGo by default, Brave when configured)
 Quick, general-purpose web search. Returns titles, URLs, and short descriptions.
 
 **Best for:**
@@ -14,6 +14,12 @@ Quick, general-purpose web search. Returns titles, URLs, and short descriptions.
 - Finding a specific website or page
 - Simple questions with direct answers
 - Checking a fact or date
+
+**Provider behavior:**
+- By default, \`web-search\` uses DuckDuckGo without needing an API key
+- If the user selects Brave Search as the default provider and a Brave API key is configured, \`web-search\` uses Brave Search instead
+- If Brave is selected but missing a key, \`web-search\` falls back to DuckDuckGo automatically
+- Do not treat browser automation, Playwright, or generic page navigation as a substitute for \`web-search\`
 
 ### research-search (Exa Search)
 Deep, research-oriented search. Returns full article text, highlights, and metadata (author, published date).
@@ -46,7 +52,7 @@ If both tools are attached, prefer:
 - \`web-search\` when the user wants a quick answer or specific link
 - \`research-search\` when the user wants to learn, explore, or gather sources
 
-If only one is attached, use whichever is available.
+If only one is attached, use whichever is available. In normal Flazz setups, \`web-search\` should be considered available because DuckDuckGo is the built-in default fallback.
 
 If you are checking MCP-backed search servers, do not treat \`state: "disconnected"\` with \`error: null\` as unavailable. That usually means the server is configured but not connected yet, so you should still try \`listMcpTools\`.
 `;

@@ -13,7 +13,12 @@ const options = {
 
 const apiKey = import.meta.env.VITE_PUBLIC_POSTHOG_KEY
 
-createRoot(document.getElementById('root')!).render(
+const rootElement = document.getElementById('root')
+if (!rootElement) {
+  throw new Error('Root element not found')
+}
+
+createRoot(rootElement).render(
   <StrictMode>
     {apiKey ? (
       <PostHogProvider apiKey={apiKey} options={options}>
@@ -28,3 +33,12 @@ createRoot(document.getElementById('root')!).render(
     )}
   </StrictMode>,
 )
+
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    document.body.classList.add('app-ready')
+    window.setTimeout(() => {
+      document.getElementById('app-preload')?.remove()
+    }, 460)
+  })
+})

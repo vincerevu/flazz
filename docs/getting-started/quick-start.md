@@ -156,7 +156,7 @@ Now that you're set up, explore more:
 
 - [FAQ](../faq.md) - Common questions
 - [Troubleshooting](../troubleshooting.md) - Fix issues
-- [GitHub Discussions](https://github.com/yourusername/flazz/discussions) - Community help
-- [GitHub Issues](https://github.com/yourusername/flazz/issues) - Report bugs
+- [GitHub Discussions](https://github.com/vincerevu/flazz/discussions) - Community help
+- [GitHub Issues](https://github.com/vincerevu/flazz/issues) - Report bugs
 
 Happy chatting! 🚀

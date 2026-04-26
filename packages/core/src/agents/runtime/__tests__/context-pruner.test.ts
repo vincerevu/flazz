@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   pruneToolOutputs,
-  PRUNE_MIN_SAVINGS,
   PRUNE_PROTECT_BUDGET,
 } from "../context-pruner.js";
 import type { z } from "zod";

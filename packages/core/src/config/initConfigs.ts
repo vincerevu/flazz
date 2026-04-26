@@ -3,6 +3,8 @@ import type { IModelConfigRepo } from "../models/repo.js";
 import type { IMcpConfigRepo } from "../mcp/repo.js";
 import type { IAgentScheduleRepo } from "../agent-schedule/repo.js";
 import type { IAgentScheduleStateRepo } from "../agent-schedule/state-repo.js";
+import { ensureCompactionConfig } from "./compaction-config.js";
+import { ensureSearchConfigs } from "./search-config.js";
 import { ensureSecurityConfig } from "./system-policy.js";
 
 /**
@@ -21,6 +23,8 @@ export async function initConfigs(): Promise<void> {
         mcpConfigRepo.ensureConfig(),
         agentScheduleRepo.ensureConfig(),
         agentScheduleStateRepo.ensureState(),
+        ensureSearchConfigs(),
         ensureSecurityConfig(),
     ]);
+    ensureCompactionConfig();
 }

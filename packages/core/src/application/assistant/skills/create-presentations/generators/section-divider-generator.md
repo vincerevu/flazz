@@ -105,4 +105,4 @@ Brief intro here   → 18px (light, muted)
 1. **Analyze**: Understand the section number, title, and optional intro text
 2. **Choose Layout**: Select the most appropriate layout based on content and tone
 3. **Write Slide**: Use slide-making-skill. Use shapes for decorative elements. **MUST include page number badge.**
-4. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.
+4. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.

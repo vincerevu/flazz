@@ -481,4 +481,4 @@ flazz --show-config
 Need help? Check:
 - [FAQ](../faq.md)
 - [Troubleshooting](../troubleshooting.md)
-- [GitHub Issues](https://github.com/yourusername/flazz/issues)
+- [GitHub Issues](https://github.com/vincerevu/flazz/issues)

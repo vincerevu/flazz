@@ -59,13 +59,17 @@ function getUnlabeledEmails(state: LabelingState): string[] {
 }
 
 async function waitForRunCompletion(runId: string): Promise<void> {
-    return new Promise(async (resolve) => {
-        const unsubscribe = await bus.subscribe('*', async (event) => {
+    return new Promise((resolve, reject) => {
+        let unsubscribe: (() => void) | null = null;
+
+        void bus.subscribe('*', async (event) => {
             if (event.type === 'run-processing-end' && event.runId === runId) {
-                unsubscribe();
+                unsubscribe?.();
                 resolve();
             }
-        });
+        }).then((nextUnsubscribe) => {
+            unsubscribe = nextUnsubscribe;
+        }).catch(reject);
     });
 }
 

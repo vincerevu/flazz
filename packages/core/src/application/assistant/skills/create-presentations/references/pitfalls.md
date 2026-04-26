@@ -9,7 +9,7 @@ Your first render is almost never correct. Approach QA as a bug hunt, not a conf
 ### Content QA
 
 ```bash
-python -m markitdown output.pptx
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output.pptx
 ```
 
 Check for missing content, typos, wrong order.
@@ -26,25 +26,55 @@ Common failure examples:
 **Check for leftover placeholder text:**
 
 ```bash
-python -m markitdown output.pptx | grep -iE "xxxx|lorem|ipsum|placeholder|this.*(page|slide).*layout"
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output.pptx --json
 ```
 
-If grep returns results, fix them before declaring success.
+Review the JSON payload for:
+
+- `placeholderMatches`
+- `slides[].layoutIssues`
+- top-level `layoutIssues`
+
+Typical layout issue types:
+
+- `out-of-bounds`
+- `overlap`
+- `dense-text`
+
+If any placeholder residue or layout issue appears, fix the source slide module before declaring success.
+
+### Overflow Recovery Rules
+
+Treat `out-of-bounds`, `overlap`, and `dense-text` as structural layout failures, not as minor styling defects.
+
+Fix them in this order:
+
+1. Shorten copy so each bullet, row, or card carries only one idea
+2. Reduce the number of columns or switch to a more suitable layout family
+3. Split the content into two slides if the frame is still crowded
+4. Use `fit: "shrink"` only for titles or very short labels
+
+Do not "solve" a crowded comparison table by shrinking all body text. If a slide has 4 text-heavy columns, examples in the right-most column, or rows wrapping in multiple places, the correct fix is usually to:
+
+- convert the table into cards or a box grid
+- move examples into a separate row or follow-up slide
+- or split the comparison into two slides
 
 ### Verification Loop
 
-1. Generate slides -> Extract text with `python -m markitdown output.pptx` -> Review content
+1. Generate slides -> Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output.pptx` -> Review content and `placeholderMatches`
 2. **List issues found** (if none found, look again more critically)
-3. Fix issues
-4. **Re-verify affected slides** — one fix often creates another problem
-5. Repeat until a full pass reveals no new issues
+3. Inspect `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output.pptx --json` for `layoutIssues`
+4. Fix issues
+5. **Re-verify affected slides** — one fix often creates another problem
+6. Repeat until a full pass reveals no new issues
 
 **Do not declare success until you've completed at least one fix-and-verify cycle.**
 
 ### Per-Slide QA (for from-scratch creation)
 
 ```bash
-python -m markitdown slide-XX-preview.pptx
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx
 ```
 
 Check for missing content, placeholder text, missing page number badge.
@@ -62,6 +92,7 @@ Check for missing content, placeholder text, missing page number badge.
 - **Don't create text-only slides** — add images, icons, charts, or visual elements; avoid plain title + bullets
 - **Don't skip layout planning** — every content slide needs `slideSpec.layoutFamily` before drawing
 - **Don't hand-position standard layouts** — use helpers for comparison, timeline, roadmap, hierarchy, quadrant, data, stats, and media
+- **Don't force 4 text-heavy columns into one slide** — wide tables with narrow text columns almost always overflow; switch layouts or split the slide
 - **Don't generate monolithic deck scripts** — one file with many `pres.addSlide()` calls bypasses per-slide validation and usually regresses quality
 - **Don't define local bullet helpers** — `addBullets()` and `addTwoColBullets()` usually type fake bullets; use `addBulletList()` or structured layout helpers
 - **Don't mix languages** — lock the deck to one primary language and translate visible text into it
@@ -118,6 +149,8 @@ slide.addText("Long Title Here", {
 });
 ```
 
+Use this only for titles and short labels. Do not rely on `fit: "shrink"` to rescue dense body paragraphs, packed comparison tables, or a full slide that simply contains too much content.
+
 ### Keep bullets atomic
 
 ```javascript
@@ -154,7 +187,7 @@ slide.addText([
 Run:
 
 ```bash
-node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-XX.js
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs" slides/slide-XX.js
 ```
 
 The validator fails when:

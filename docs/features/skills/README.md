@@ -619,4 +619,4 @@ Skills tab → Select skill → "Test"
 
 - [FAQ](../../faq.md) - Common questions
 - [Skill Examples](./examples.md) - Sample skills
-- [GitHub Issues](https://github.com/yourusername/flazz/issues) - Report bugs
+- [GitHub Issues](https://github.com/vincerevu/flazz/issues) - Report bugs

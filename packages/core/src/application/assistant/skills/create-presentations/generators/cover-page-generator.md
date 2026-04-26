@@ -87,4 +87,4 @@ When analyzing the user's requirements, consider:
 1. **Analyze**: Understand the presentation topic, audience, and purpose
 2. **Choose Layout**: Select the most appropriate layout based on content
 3. **Write Slide**: Use slide-making-skill to create the slide. Use shapes and SVG elements for visual interest.
-4. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index like 01). Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content is present and no placeholder text remains.
+4. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index like 01). Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx`, verify all content is present and no placeholder text remains.

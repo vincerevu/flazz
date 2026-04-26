@@ -7,7 +7,8 @@ export default {
     icon: '../../assets/icon', // Electron Forge will add the right extension
     asar: true,
     extraResource: [
-      '../../assets'
+      '../../assets',
+      '../../packages/core/src/application/assistant/skills'
     ],
     // macOS specific
     ...(process.platform === 'darwin' && {
@@ -36,7 +37,7 @@ export default {
         description: 'AI coworker with memory',
         setupIcon: '../../assets/icon.ico',
         loadingGif: '../../assets/loading.gif', // optional
-        iconUrl: 'https://raw.githubusercontent.com/yourusername/flazz/main/assets/icon.ico'
+        iconUrl: 'https://raw.githubusercontent.com/vincerevu/flazz/main/assets/icon.ico'
       },
       platforms: ['win32']
     },
@@ -61,7 +62,7 @@ export default {
           description: 'Local-first AI coworker with memory',
           categories: ['Office', 'Utility'],
           maintainer: 'Flazz Team',
-          homepage: 'https://github.com/yourusername/flazz',
+          homepage: 'https://github.com/vincerevu/flazz',
           icon: '../../assets/icon.png',
           section: 'utils',
           priority: 'optional'
@@ -79,7 +80,7 @@ export default {
           genericName: 'AI Assistant',
           description: 'Local-first AI coworker with memory',
           categories: ['Office', 'Utility'],
-          homepage: 'https://github.com/yourusername/flazz',
+          homepage: 'https://github.com/vincerevu/flazz',
           icon: '../../assets/icon.png',
           license: 'Apache-2.0'
         }
@@ -97,7 +98,7 @@ export default {
       name: '@electron-forge/publisher-github',
       config: {
         repository: {
-          owner: 'yourusername',
+          owner: 'vincerevu',
           name: 'flazz'
         },
         prerelease: false,

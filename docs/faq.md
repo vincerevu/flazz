@@ -217,7 +217,7 @@ Yes! Flazz is open source. See our [Contributing Guide](../CONTRIBUTING.md) for:
 ### How do I build Flazz from source?
 
 ```bash
-git clone https://github.com/yourusername/flazz.git
+git clone https://github.com/vincerevu/flazz.git
 cd flazz
 pnpm install
 pnpm run build
@@ -334,11 +334,11 @@ Yes! Use:
 
 ### When will feature X be available?
 
-Check our [GitHub Issues](https://github.com/yourusername/flazz/issues) and [Roadmap](../README.md#roadmap) for planned features and timelines.
+Check our [GitHub Issues](https://github.com/vincerevu/flazz/issues) and [Roadmap](../README.md#roadmap) for planned features and timelines.
 
 ### Can I request a feature?
 
-Yes! Create a [feature request](https://github.com/yourusername/flazz/issues/new?template=feature_request.md) on GitHub.
+Yes! Create a [feature request](https://github.com/vincerevu/flazz/issues/new?template=feature_request.md) on GitHub.
 
 ## Getting Help
 
@@ -346,12 +346,12 @@ Yes! Create a [feature request](https://github.com/yourusername/flazz/issues/new
 
 - **Documentation**: [docs/](README.md)
 - **Troubleshooting**: [troubleshooting.md](troubleshooting.md)
-- **GitHub Issues**: https://github.com/yourusername/flazz/issues
-- **Discussions**: https://github.com/yourusername/flazz/discussions
+- **GitHub Issues**: https://github.com/vincerevu/flazz/issues
+- **Discussions**: https://github.com/vincerevu/flazz/discussions
 
 ### How do I report a bug?
 
-Create a [bug report](https://github.com/yourusername/flazz/issues/new?template=bug_report.md) with:
+Create a [bug report](https://github.com/vincerevu/flazz/issues/new?template=bug_report.md) with:
 - Steps to reproduce
 - Expected vs actual behavior
 - Screenshots
@@ -368,7 +368,7 @@ Yes! Join us:
 ## Still Have Questions?
 
 If your question isn't answered here:
-1. Search [existing issues](https://github.com/yourusername/flazz/issues)
+1. Search [existing issues](https://github.com/vincerevu/flazz/issues)
 2. Check [documentation](README.md)
-3. Ask in [discussions](https://github.com/yourusername/flazz/discussions)
+3. Ask in [discussions](https://github.com/vincerevu/flazz/discussions)
 4. Create a new issue with the `question` label

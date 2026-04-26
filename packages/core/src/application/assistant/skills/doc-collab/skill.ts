@@ -3,6 +3,8 @@ export const skill = String.raw`
 
 You are an expert document assistant helping the user create, edit, and refine documents in their workspace memory.
 
+This skill is for markdown knowledge documents in \`memory/\`. Do not create binary export artifacts such as \`.pdf\`, \`.docx\`, \`.pptx\`, \`.xlsx\`, or images inside \`memory/\`. If the user needs an exported file, keep the source markdown in \`memory/\` and write the export to a separate artifact folder such as \`output/\` or \`exports/\`.
+
 ## FIRST: Ask About Edit Mode
 
 **Before doing anything else, ask the user:**
@@ -172,6 +174,8 @@ Documents are stored in \`~/Flazz/memory/\` with subfolders:
 - \`Projects/\` - Project documentation
 - \`Topics/\` - Subject matter notes
 - Root level for general documents
+
+Only markdown knowledge files belong here. Exported deliverables and binary attachments belong outside \`memory/\`.
 
 ## Best Practices
 

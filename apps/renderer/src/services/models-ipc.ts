@@ -8,4 +8,12 @@ export const modelsIpc = {
   list() {
     return window.ipc.invoke('models:list', null)
   },
+
+  getCapabilityStatus() {
+    return window.ipc.invoke('models:getCapabilityStatus', null)
+  },
+
+  refreshCapabilities() {
+    return window.ipc.invoke('models:refreshCapabilities', null)
+  },
 }

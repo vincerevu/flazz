@@ -2,20 +2,8 @@
 
 import * as React from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, CheckCircle2, ChevronLeft, Image as ImageIcon, Loader2, Plus, Plug, Search } from "lucide-react"
-import { FaLinkedinIn, FaMicrosoft } from "react-icons/fa6"
-import {
-  SiDropbox,
-  SiGithub,
-  SiGoogle,
-  SiHubspot,
-  SiJira,
-  SiLinear,
-  SiNotion,
-  SiSalesforce,
-  SiSlack,
-  SiTrello,
-} from "react-icons/si"
+import { AlertTriangle, CheckCircle2, ChevronLeft, Loader2, Plus, Plug, Search } from "lucide-react"
+import * as SimpleIcons from "simple-icons"
 import { toast } from "sonner"
 import { COMPOSIO_SECTION_BY_SLUG } from "@flazz/shared"
 
@@ -30,7 +18,8 @@ type IntegrationMeta = {
   name: string
   description: string
   group: "popular" | "other"
-  icon: React.ElementType
+  icon?: React.ElementType
+  iconDef?: any
   supportsManagedOauth: boolean
 }
 
@@ -59,55 +48,79 @@ function IntegrationStatusBadge({
 }
 
 function BrandIconBadge({
+  slug,
   icon: Icon,
+  iconDef,
   iconClassName,
 }: {
-  icon: React.ElementType
+  slug?: string
+  icon?: React.ElementType
+  iconDef?: any
   iconClassName?: string
 }) {
+  const needsInverse = slug === "notion" || slug === "github"
   return (
     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background shadow-sm">
-      <Icon className={cn("size-5", iconClassName)} aria-hidden="true" />
+      {iconDef ? (
+        <svg
+          role="img"
+          viewBox="0 0 24 24"
+          fill={needsInverse ? "currentColor" : `#${iconDef.hex}`}
+          xmlns="http://www.w3.org/2000/svg"
+          className={cn("size-[18px]", needsInverse && "text-black dark:text-white", iconClassName)}
+        >
+          <path d={iconDef.path} />
+        </svg>
+      ) : Icon ? (
+        <Icon className={cn("size-[18px]", iconClassName)} aria-hidden="true" />
+      ) : null}
     </div>
   )
 }
 
 const integrationBrandClassName: Record<string, string> = {
-  gmail: "text-[#EA4335]",
-  googlecalendar: "text-[#4285F4]",
-  googlemeet: "text-[#0F9D58]",
-  googledrive: "text-[#34A853]",
-  slack: "text-[#611F69]",
   notion: "text-black dark:text-white",
   github: "text-zinc-950 dark:text-white",
-  linear: "text-[#5E6AD2]",
-  linkedin: "text-[#0A66C2]",
-  jira: "text-[#1868DB]",
-  trello: "text-[#026AA7]",
-  hubspot: "text-[#FF7A59]",
-  salesforce: "text-[#00A1E0]",
-  dropbox: "text-[#0061FF]",
   onedrive: "text-[#0A64AD]",
   pexels: "text-[#05A081]",
 }
 
-const integrationIconBySlug: Record<string, React.ElementType> = {
-  gmail: SiGoogle,
-  googlecalendar: SiGoogle,
-  googlemeet: SiGoogle,
-  googledrive: SiGoogle,
-  slack: SiSlack,
-  notion: SiNotion,
-  github: SiGithub,
-  linear: SiLinear,
-  linkedin: FaLinkedinIn,
-  jira: SiJira,
-  trello: SiTrello,
-  hubspot: SiHubspot,
-  salesforce: SiSalesforce,
-  dropbox: SiDropbox,
-  onedrive: FaMicrosoft,
-  pexels: ImageIcon,
+const simpleIconBySlug: Record<string, string> = {
+  gmail: "siGmail",
+  googlecalendar: "siGooglecalendar",
+  googlemeet: "siGooglemeet",
+  googledrive: "siGoogledrive",
+  slack: "siSlack",
+  notion: "siNotion",
+  github: "siGithub",
+  linear: "siLinear",
+  linkedin: "siLinkedin",
+  jira: "siJira",
+  trello: "siTrello",
+  hubspot: "siHubspot",
+  salesforce: "siSalesforce",
+  dropbox: "siDropbox",
+  onedrive: "siMicrosoftonedrive",
+  pexels: "siPexels",
+  outlook: "siMicrosoftoutlook",
+  zoom: "siZoom",
+  zendesk: "siZendesk",
+  intercom: "siIntercom",
+  googledocs: "siGoogledocs",
+  confluence: "siConfluence",
+  coda: "siCoda",
+  miro: "siMiro",
+  asana: "siAsana",
+  clickup: "siClickup",
+  monday: "siMondaydotcom",
+  shortcut: "siShortcut",
+  wrike: "siWrike",
+  freshdesk: "siFreshdesk",
+  sentry: "siSentry",
+  box: "siBox",
+  pipedrive: "siPipedrive",
+  googlesheets: "siGooglesheets",
+  airtable: "siAirtable",
 }
 
 export function AccountsSettingsPanel() {
@@ -158,14 +171,20 @@ export function AccountsSettingsPanel() {
 
       const result = await composioActionsIpc.listToolkits()
       const fetchedCatalog: IntegrationMeta[] = result.items
-        .map((item) => ({
-          slug: item.slug,
-          name: item.name || item.slug,
-          description: item.meta.description || "Connect this integration through Composio.",
-          group: COMPOSIO_SECTION_BY_SLUG[item.slug] || "other",
-          icon: integrationIconBySlug[item.slug] || Plug,
-          supportsManagedOauth: (item.composio_managed_auth_schemes || []).includes("OAUTH2"),
-        }))
+        .map((item) => {
+          const iconName = simpleIconBySlug[item.slug];
+          const iconDef = iconName ? (SimpleIcons as any)[iconName] : undefined;
+          
+          return {
+            slug: item.slug,
+            name: item.name || item.slug,
+            description: item.meta.description || "Connect this integration through Composio.",
+            group: COMPOSIO_SECTION_BY_SLUG[item.slug] || "other",
+            iconDef: iconDef,
+            icon: iconDef ? undefined : Plug,
+            supportsManagedOauth: (item.composio_managed_auth_schemes || []).includes("OAUTH2"),
+          };
+        })
         .sort((a, b) => {
           if (a.group !== b.group) {
             return a.group === "popular" ? -1 : 1
@@ -387,7 +406,9 @@ export function AccountsSettingsPanel() {
           onClick={() => openIntegrationDetail(integration.slug, returnView)}
         >
           <BrandIconBadge
+            slug={integration.slug}
             icon={IntegrationIcon}
+            iconDef={integration.iconDef}
             iconClassName={cn("size-[18px]", integrationBrandClassName[integration.slug])}
           />
           <div className="min-w-0">
@@ -505,7 +526,9 @@ export function AccountsSettingsPanel() {
           </Button>
           <div className="flex min-w-0 items-center gap-3">
             <BrandIconBadge
+              slug={detailIntegration.slug}
               icon={DetailIcon}
+              iconDef={detailIntegration.iconDef}
               iconClassName={cn("size-[18px]", integrationBrandClassName[detailIntegration.slug])}
             />
             <div className="min-w-0">

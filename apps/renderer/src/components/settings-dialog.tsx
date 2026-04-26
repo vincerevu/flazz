@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect, useCallback } from "react"
-import { Server, Key, Shield, Palette, Loader2, CheckCircle2, Plug, X } from "lucide-react"
+import { Server, Key, Shield, Palette, Loader2, CheckCircle2, Plug, Search, X } from "lucide-react"
 
 import {
   Dialog,
@@ -24,12 +24,13 @@ import { cn } from "@/lib/utils"
 import { useTheme } from "@/contexts/theme-context"
 import { ProviderSettingsPanel } from "@/components/provider-settings-panel"
 import { AccountsSettingsPanel } from "@/components/settings/accounts-settings-panel"
+import { SearchSettingsPanel } from "@/components/settings/search-settings-panel"
 import { toast } from "sonner"
 import { workspaceIpc } from "@/services/workspace-ipc"
 import { modelsIpc } from "@/services/models-ipc"
 import { modelsActionsIpc } from "@/services/models-actions-ipc"
 
-type ConfigTab = "accounts" | "models" | "mcp" | "security" | "appearance"
+type ConfigTab = "accounts" | "models" | "search" | "mcp" | "security" | "appearance"
 const CHAT_NOTIFICATIONS_STORAGE_KEY = 'flazz:chat-notifications-enabled'
 
 interface TabConfig {
@@ -53,6 +54,12 @@ const tabs: TabConfig[] = [
     icon: Key,
     path: "config/models.json",
     description: "Connect and manage model providers",
+  },
+  {
+    id: "search",
+    label: "Search",
+    icon: Search,
+    description: "Choose the default quick-search provider and manage Brave or Exa API keys",
   },
   {
     id: "mcp",
@@ -544,7 +551,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
   }
 
   const loadConfig = useCallback(async (tab: ConfigTab) => {
-    if (tab === "appearance" || tab === "models" || tab === "accounts") return
+    if (tab === "appearance" || tab === "models" || tab === "search" || tab === "accounts") return
     const tabConfig = tabs.find((t) => t.id === tab)!
     if (!tabConfig.path) return
     setLoading(true)
@@ -674,6 +681,8 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
             <div className={cn("flex-1 p-4 min-h-0 overflow-y-auto", activeTab === "models" || activeTab === "accounts" ? "pr-3" : "")}>
               {activeTab === "models" ? (
                 <ProviderSettingsPanel dialogOpen={open} />
+              ) : activeTab === "search" ? (
+                <SearchSettingsPanel dialogOpen={open} />
               ) : activeTab === "accounts" ? (
                 <div className="h-full min-h-0 overflow-y-auto">
                   <AccountsSettings />

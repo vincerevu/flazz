@@ -58,6 +58,14 @@ const getCompactionItemId = (compactionId: string) => `context-compaction-${comp
 const getAskHumanRequestMessageId = (toolCallId: string) => `ask-human-request-${toolCallId}`
 const getAskHumanResponseMessageId = (toolCallId: string) => `ask-human-response-${toolCallId}`
 
+const replaceCompactionItems = (
+  items: ConversationItem[],
+  nextItem: ContextCompactionItem
+): ConversationItem[] => {
+  const withoutCompaction = items.filter((item) => !isContextCompactionItem(item))
+  return [...withoutCompaction, nextItem]
+}
+
 const buildAskHumanRequestMessage = (
   request: z.infer<typeof AskHumanRequestEvent>
 ): ChatMessage => ({
@@ -218,11 +226,10 @@ const hydrateRunConversation = (run: RunRecord) => {
           timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
         }
         compactionMap.set(event.compactionId, item)
-        items.push(item)
+        items.splice(0, items.length, ...replaceCompactionItems(items, item))
         break
       }
       case 'context-compaction-complete': {
-        const existing = compactionMap.get(event.compactionId)
         const next: ContextCompactionItem = {
           id: getCompactionItemId(event.compactionId),
           kind: 'context-compaction',
@@ -247,16 +254,10 @@ const hydrateRunConversation = (run: RunRecord) => {
           timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
         }
         compactionMap.set(event.compactionId, next)
-        if (existing) {
-          const index = items.findIndex((item) => item.id === existing.id)
-          if (index !== -1) items[index] = next
-        } else {
-          items.push(next)
-        }
+        items.splice(0, items.length, ...replaceCompactionItems(items, next))
         break
       }
       case 'context-compaction-failed': {
-        const existing = compactionMap.get(event.compactionId)
         const next: ContextCompactionItem = {
           id: getCompactionItemId(event.compactionId),
           kind: 'context-compaction',
@@ -273,12 +274,7 @@ const hydrateRunConversation = (run: RunRecord) => {
           timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
         }
         compactionMap.set(event.compactionId, next)
-        if (existing) {
-          const index = items.findIndex((item) => item.id === existing.id)
-          if (index !== -1) items[index] = next
-        } else {
-          items.push(next)
-        }
+        items.splice(0, items.length, ...replaceCompactionItems(items, next))
         break
       }
       case 'llm-stream-event':
@@ -715,113 +711,66 @@ export function useChatRuntime({
       case 'context-compaction-start':
         if (!isActiveRun) return
         setRunStatus(null)
-        setConversation((prev) => [
-          ...prev,
-          {
-            id: getCompactionItemId(event.compactionId),
-            kind: 'context-compaction',
-            status: 'running',
-            strategy: event.strategy,
-            escalated: event.escalated,
-            messageCountBefore: event.messageCountBefore,
-            estimatedTokensBefore: event.estimatedTokensBefore,
-            contextLimit: event.contextLimit,
-            usableInputBudget: event.usableInputBudget,
-            compactionThreshold: event.compactionThreshold,
-            targetThreshold: event.targetThreshold,
-            timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
-          },
-        ])
+        setConversation((prev) => replaceCompactionItems(prev, {
+          id: getCompactionItemId(event.compactionId),
+          kind: 'context-compaction',
+          status: 'running',
+          strategy: event.strategy,
+          escalated: event.escalated,
+          messageCountBefore: event.messageCountBefore,
+          estimatedTokensBefore: event.estimatedTokensBefore,
+          contextLimit: event.contextLimit,
+          usableInputBudget: event.usableInputBudget,
+          compactionThreshold: event.compactionThreshold,
+          targetThreshold: event.targetThreshold,
+          timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
+        }))
         break
 
       case 'context-compaction-complete':
         if (!isActiveRun) return
-        setConversation((prev) => {
-          const next = prev.map((item) => (
-            isContextCompactionItem(item) && item.id === getCompactionItemId(event.compactionId)
-              ? {
-                  ...item,
-                  status: 'completed' as const,
-                  escalated: event.escalated,
-                  provenanceRefs: event.provenanceRefs,
-                  omittedMessages: event.omittedMessages,
-                  recentMessages: event.recentMessages,
-                  messageCountAfter: event.messageCountAfter,
-                  estimatedTokensAfter: event.estimatedTokensAfter,
-                  tokensSaved: event.tokensSaved,
-                  reductionPercent: event.reductionPercent,
-                  contextLimit: event.contextLimit,
-                  usableInputBudget: event.usableInputBudget,
-                  compactionThreshold: event.compactionThreshold,
-                  targetThreshold: event.targetThreshold,
-                  summary: event.summary,
-                  reused: event.reused,
-                }
-              : item
-          ))
-          const exists = next.some((item) => isContextCompactionItem(item) && item.id === getCompactionItemId(event.compactionId))
-          if (exists) return next
-          return [...next, {
-            id: getCompactionItemId(event.compactionId),
-            kind: 'context-compaction',
-            status: 'completed',
-            strategy: event.strategy,
-            escalated: event.escalated,
-            provenanceRefs: event.provenanceRefs,
-            omittedMessages: event.omittedMessages,
-            recentMessages: event.recentMessages,
-            messageCountBefore: event.messageCountBefore,
-            messageCountAfter: event.messageCountAfter,
-            estimatedTokensBefore: event.estimatedTokensBefore,
-            estimatedTokensAfter: event.estimatedTokensAfter,
-            tokensSaved: event.tokensSaved,
-            reductionPercent: event.reductionPercent,
-            contextLimit: event.contextLimit,
-            usableInputBudget: event.usableInputBudget,
-            compactionThreshold: event.compactionThreshold,
-            targetThreshold: event.targetThreshold,
-            summary: event.summary,
-            reused: event.reused,
-            timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
-          }]
-        })
+        setConversation((prev) => replaceCompactionItems(prev, {
+          id: getCompactionItemId(event.compactionId),
+          kind: 'context-compaction',
+          status: 'completed',
+          strategy: event.strategy,
+          escalated: event.escalated,
+          provenanceRefs: event.provenanceRefs,
+          omittedMessages: event.omittedMessages,
+          recentMessages: event.recentMessages,
+          messageCountBefore: event.messageCountBefore,
+          messageCountAfter: event.messageCountAfter,
+          estimatedTokensBefore: event.estimatedTokensBefore,
+          estimatedTokensAfter: event.estimatedTokensAfter,
+          tokensSaved: event.tokensSaved,
+          reductionPercent: event.reductionPercent,
+          contextLimit: event.contextLimit,
+          usableInputBudget: event.usableInputBudget,
+          compactionThreshold: event.compactionThreshold,
+          targetThreshold: event.targetThreshold,
+          summary: event.summary,
+          reused: event.reused,
+          timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
+        }))
         break
 
       case 'context-compaction-failed':
         if (!isActiveRun) return
-        setConversation((prev) => {
-          const next = prev.map((item) => (
-            isContextCompactionItem(item) && item.id === getCompactionItemId(event.compactionId)
-              ? {
-                  ...item,
-                  status: 'failed' as const,
-                  escalated: event.escalated,
-                  contextLimit: event.contextLimit,
-                  usableInputBudget: event.usableInputBudget,
-                  compactionThreshold: event.compactionThreshold,
-                  targetThreshold: event.targetThreshold,
-                  error: event.error,
-                }
-              : item
-          ))
-          const exists = next.some((item) => isContextCompactionItem(item) && item.id === getCompactionItemId(event.compactionId))
-          if (exists) return next
-          return [...next, {
-            id: getCompactionItemId(event.compactionId),
-            kind: 'context-compaction',
-            status: 'failed',
-            strategy: event.strategy,
-            escalated: event.escalated,
-            messageCountBefore: event.messageCountBefore,
-            estimatedTokensBefore: event.estimatedTokensBefore,
-            contextLimit: event.contextLimit,
-            usableInputBudget: event.usableInputBudget,
-            compactionThreshold: event.compactionThreshold,
-            targetThreshold: event.targetThreshold,
-            error: event.error,
-            timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
-          }]
-        })
+        setConversation((prev) => replaceCompactionItems(prev, {
+          id: getCompactionItemId(event.compactionId),
+          kind: 'context-compaction',
+          status: 'failed',
+          strategy: event.strategy,
+          escalated: event.escalated,
+          messageCountBefore: event.messageCountBefore,
+          estimatedTokensBefore: event.estimatedTokensBefore,
+          contextLimit: event.contextLimit,
+          usableInputBudget: event.usableInputBudget,
+          compactionThreshold: event.compactionThreshold,
+          targetThreshold: event.targetThreshold,
+          error: event.error,
+          timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
+        }))
         break
 
       case 'usage-update':

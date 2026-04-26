@@ -1,17 +1,15 @@
 import { ToolSet } from "ai";
-import { MessageList } from "@flazz/shared";
+import { LlmModelLimits, MessageList } from "@flazz/shared";
 import { z } from "zod";
 import { estimateMessagesTokens } from "./context-compaction.js";
 import type { LlmProvider } from "@flazz/shared";
 
-const DEFAULT_CONTEXT_LIMIT = 128_000;
-const DEFAULT_OUTPUT_RESERVE = 8_192;
-const DEFAULT_SAFETY_BUFFER = 4_096;
-const DEFAULT_COMPACTION_THRESHOLD_RATIO = 0.82;
+const DEFAULT_UNKNOWN_CONTEXT_LIMIT = 64_000;
+const DEFAULT_UNKNOWN_OUTPUT_RESERVE = 8_192;
+const DEFAULT_COMPACTION_RESERVED = 20_000;
 const DEFAULT_TARGET_THRESHOLD_RATIO = 0.55;
 const MIN_RECENT_BUDGET = 32_000;
-const ABSOLUTE_MAX_COMPACTION_THRESHOLD = 150_000;
-const DEFAULT_RECOMPACTION_COOLDOWN_MESSAGES = 4;
+const DEFAULT_RECOMPACTION_COOLDOWN_MESSAGES = 12;
 const MINIMUM_COMPACTION_SAVINGS_RATIO = 0.12;
 
 export type ModelContextBudget = {
@@ -24,8 +22,9 @@ export type ModelContextBudget = {
   recentMessagesBudget: number;
   summaryReserve: number;
   recompactCooldownMessages: number;
+  recompactCooldownTokens: number;
   minimumSavingsTokens: number;
-  source: "registry" | "fallback";
+  source: "config" | "registry" | "unknown";
 };
 
 /**
@@ -34,6 +33,12 @@ export type ModelContextBudget = {
  * the rest fall back to the model-derived defaults.
  */
 export type CompactionConfig = {
+  /** Enable or disable automatic compaction. */
+  auto?: boolean;
+  /** Enable or disable prune-before-compact. */
+  prune?: boolean;
+  /** Override the reserved output buffer before compaction triggers. */
+  reservedTokens?: number;
   /** Override the token count at which compaction is triggered. */
   compactionThreshold?: number;
   /** Override the target token count after compaction. */
@@ -45,39 +50,7 @@ export type CompactionConfig = {
 };
 
 type Provider = z.infer<typeof LlmProvider>;
-
-type BudgetPreset = {
-  contextLimit: number;
-  outputReserve: number;
-  safetyBuffer: number;
-};
-
-const PRESETS: Array<{ match: (provider: Provider, modelId: string) => boolean; budget: BudgetPreset }> = [
-  {
-    match: (_provider, modelId) => /claude/i.test(modelId),
-    budget: { contextLimit: 200_000, outputReserve: 16_000, safetyBuffer: 8_000 },
-  },
-  {
-    match: (_provider, modelId) => /gemini/i.test(modelId),
-    budget: { contextLimit: 1_000_000, outputReserve: 32_000, safetyBuffer: 16_000 },
-  },
-  {
-    match: (_provider, modelId) => /(gpt-5|gpt-4\.1|gpt-4o|o3|o4-mini)/i.test(modelId),
-    budget: { contextLimit: 128_000, outputReserve: 16_000, safetyBuffer: 8_000 },
-  },
-  {
-    match: (provider, modelId) => /minimax/i.test(modelId) || provider.flavor === "openai-compatible",
-    budget: { contextLimit: 128_000, outputReserve: 8_192, safetyBuffer: 4_096 },
-  },
-  {
-    match: (provider) => provider.flavor === "anthropic",
-    budget: { contextLimit: 200_000, outputReserve: 16_000, safetyBuffer: 8_000 },
-  },
-  {
-    match: (provider) => provider.flavor === "google" || provider.flavor === "google-vertex",
-    budget: { contextLimit: 1_000_000, outputReserve: 32_000, safetyBuffer: 16_000 },
-  },
-];
+type ExplicitModelLimits = z.infer<typeof LlmModelLimits>;
 
 function safeStringify(value: unknown): string {
   const seen = new WeakSet<object>();
@@ -94,27 +67,29 @@ export function resolveModelContextBudget(
   provider: Provider,
   modelId: string,
   config?: CompactionConfig,
+  explicitLimits?: ExplicitModelLimits,
+  limitSource?: "config" | "registry",
 ): ModelContextBudget {
-  const preset = PRESETS.find((item) => item.match(provider, modelId))?.budget;
-  const budget = preset ?? {
-    contextLimit: DEFAULT_CONTEXT_LIMIT,
-    outputReserve: DEFAULT_OUTPUT_RESERVE,
-    safetyBuffer: DEFAULT_SAFETY_BUFFER,
-  };
+  void provider;
+  void modelId;
+  const contextLimit = explicitLimits?.context ?? DEFAULT_UNKNOWN_CONTEXT_LIMIT;
+  const outputReserve = explicitLimits?.output ?? DEFAULT_UNKNOWN_OUTPUT_RESERVE;
+  const reserved = Math.min(
+    config?.reservedTokens ?? DEFAULT_COMPACTION_RESERVED,
+    outputReserve || DEFAULT_UNKNOWN_OUTPUT_RESERVE,
+  );
+  const safetyBuffer = 0;
+  const maxOutputTokens = outputReserve || DEFAULT_UNKNOWN_OUTPUT_RESERVE;
 
   const usableInputBudget = Math.max(
     8_000,
-    budget.contextLimit - budget.outputReserve - budget.safetyBuffer,
+    explicitLimits?.input
+      ? explicitLimits.input - reserved
+      : contextLimit - maxOutputTokens,
   );
 
-  const defaultCompactionThreshold = Math.min(
-    Math.floor(usableInputBudget * DEFAULT_COMPACTION_THRESHOLD_RATIO),
-    ABSOLUTE_MAX_COMPACTION_THRESHOLD
-  );
-  const defaultTargetPromptTokens = Math.min(
-    Math.floor(usableInputBudget * DEFAULT_TARGET_THRESHOLD_RATIO),
-    Math.floor(ABSOLUTE_MAX_COMPACTION_THRESHOLD * (DEFAULT_TARGET_THRESHOLD_RATIO / DEFAULT_COMPACTION_THRESHOLD_RATIO))
-  );
+  const defaultCompactionThreshold = usableInputBudget;
+  const defaultTargetPromptTokens = Math.floor(usableInputBudget * DEFAULT_TARGET_THRESHOLD_RATIO);
 
   const compactionThreshold = config?.compactionThreshold ?? defaultCompactionThreshold;
   const targetPromptTokens = config?.targetPromptTokens ?? defaultTargetPromptTokens;
@@ -124,19 +99,21 @@ export function resolveModelContextBudget(
     targetPromptTokens - summaryReserve,
   );
   const defaultMinimumSavings = Math.max(2_000, Math.floor(usableInputBudget * MINIMUM_COMPACTION_SAVINGS_RATIO));
+  const defaultRecompactCooldownTokens = Math.max(6_000, Math.floor(defaultMinimumSavings * 0.75));
 
   return {
-    contextLimit: budget.contextLimit,
-    outputReserve: budget.outputReserve,
-    safetyBuffer: budget.safetyBuffer,
+    contextLimit,
+    outputReserve,
+    safetyBuffer,
     usableInputBudget,
     compactionThreshold,
     targetPromptTokens,
     recentMessagesBudget,
     summaryReserve,
     recompactCooldownMessages: config?.recompactCooldownMessages ?? DEFAULT_RECOMPACTION_COOLDOWN_MESSAGES,
+    recompactCooldownTokens: defaultRecompactCooldownTokens,
     minimumSavingsTokens: config?.minimumSavingsTokens ?? defaultMinimumSavings,
-    source: preset ? "registry" : "fallback",
+    source: limitSource ?? "unknown",
   };
 }
 

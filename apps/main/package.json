@@ -12,17 +12,21 @@
         "build:tsc": "tsc",
         "build:bundle": "node bundle.mjs",
         "build": "run-s clean build:tsc build:bundle",
-        "package": "electron-forge package",
-        "make": "electron-forge make"
+        "forge:package": "electron-forge package",
+        "forge:make": "electron-forge make",
+        "package": "node scripts/package-win.cjs",
+        "make": "node scripts/package-win.cjs"
     },
     "dependencies": {
         "@flazz/core": "workspace:*",
         "@flazz/shared": "workspace:*",
         "chokidar": "^4.0.3",
         "electron-squirrel-startup": "^1.0.1",
+        "jszip": "^3.10.1",
         "mammoth": "^1.11.0",
         "papaparse": "^5.5.3",
         "pdf-parse": "^2.4.5",
+        "pptxgenjs": "^4.0.1",
         "update-electron-app": "^3.1.2",
         "xlsx": "^0.18.5",
         "zod": "^4.2.1"

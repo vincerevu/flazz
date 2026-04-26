@@ -18,7 +18,9 @@ import { agentRunnerService } from "@flazz/core/dist/agent-schedule/runner.js";
 import { workspaceWatcherService, runsWatcherService, servicesWatcherService } from "./ipc.js";
 import { runNotificationService } from "./run-notifications.js";
 import { initConfigs } from "@flazz/core/dist/config/initConfigs.js";
+import { setPdfExportService } from "@flazz/core/dist/application/lib/tools/pdf-tools.js";
 import started from "electron-squirrel-startup";
+import { ElectronPdfExportService } from "./pdf-export/pdf-export-service.js";
 
 const rendererDevUrl = "http://localhost:4318";
 
@@ -177,6 +179,8 @@ serviceRegistry.register(agentRunnerService);
 console.time('app-startup');
 
 app.whenReady().then(async () => {
+  setPdfExportService(new ElectronPdfExportService());
+
   // Register custom protocol before creating window (for production builds)
   if (app.isPackaged) {
     registerAppProtocol();

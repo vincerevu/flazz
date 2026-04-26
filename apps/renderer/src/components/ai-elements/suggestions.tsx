@@ -36,7 +36,7 @@ const defaultSuggestions: Suggestion[] = [
   {
     id: 'create-presentation',
     label: 'Create a presentation',
-    prompt: 'Create a pdf presentation on [topic]',
+    prompt: 'Create an editable PowerPoint presentation on [topic]',
     icon: <Presentation className="h-4 w-4" />,
   },
 ]

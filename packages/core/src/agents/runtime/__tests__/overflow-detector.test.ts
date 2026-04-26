@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkOverflow, type OverflowCheckInput } from "../overflow-detector.js";
+import { checkOverflow } from "../overflow-detector.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -14,7 +14,8 @@ function makeBudget(compactionThreshold = 80_000, usableInputBudget = 100_000) {
     targetPromptTokens: 55_000,
     recentMessagesBudget: 48_000,
     summaryReserve: 6_000,
-    recompactCooldownMessages: 4,
+    recompactCooldownMessages: 12,
+    recompactCooldownTokens: 6_000,
     minimumSavingsTokens: 5_000,
     source: "registry" as const,
   };
@@ -24,11 +25,12 @@ function makeBudget(compactionThreshold = 80_000, usableInputBudget = 100_000) {
 
 test("checkOverflow uses actual tokens when available", () => {
   const result = checkOverflow({
+    actualTokens: 95_000,
     actualInputTokens: 90_000,
     estimatedTokens: 40_000,   // lower estimate — actual wins
     budget: makeBudget(),
   });
-  assert.equal(result.usedTokens, 90_000);
+  assert.equal(result.usedTokens, 95_000);
   assert.equal(result.source, "actual");
 });
 
@@ -88,6 +90,18 @@ test("isOverflow uses estimated when actual is absent", () => {
     budget: makeBudget(80_000),
   });
   assert.equal(belowThreshold.isOverflow, false);
+});
+
+test("checkOverflow uses total-like actual tokens when provided", () => {
+  const result = checkOverflow({
+    actualTokens: 120_000,
+    estimatedTokens: 60_000,
+    budget: makeBudget(80_000),
+  });
+
+  assert.equal(result.source, "actual");
+  assert.equal(result.usedTokens, 120_000);
+  assert.equal(result.isOverflow, true);
 });
 
 test("isOverflow is true when actual tokens exactly equal threshold", () => {

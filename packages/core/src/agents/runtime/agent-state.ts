@@ -4,8 +4,26 @@ import { AssistantMessage, MessageList, ToolCallPart, ToolMessage } from "@flazz
 import { AskHumanRequestEvent, ToolPermissionRequestEvent } from "@flazz/shared";
 import { RunEvent } from "@flazz/shared/dist/runs.js";
 import { extractCommandNames } from "../../application/lib/command-executor.js";
-import { deriveActiveTaskState, parseCarryover } from "./context-compaction.js";
+import {
+    buildCompactionReferenceMessage,
+    deriveActiveTaskState,
+    parseCarryover,
+} from "./context-compaction.js";
 import type { ActiveTaskState, StructuredCarryover } from "./context-compaction.js";
+
+type CompactedOperationalBaseline = {
+    summary: string;
+    carryover: StructuredCarryover;
+    taskState: ActiveTaskState;
+    anchorHash: string;
+    recentWindowStart: number;
+    messageCountAtCompaction: number;
+    estimatedTokensAfter: number;
+    actualInputTokensAfter: number | null;
+    protectedWindowReasons: string[];
+    operationalMessageCountAfter: number;
+    baselineMode: "full-history" | "summary-recent-window";
+};
 
 export class AgentState {
     runId: string | null = null;
@@ -17,7 +35,13 @@ export class AgentState {
     compactedContextCarryover: StructuredCarryover | null = null;
     compactedTaskState: ActiveTaskState | null = null;
     compactedContextAnchorHash: string | null = null;
+    compactedRecentWindowStart: number | null = null;
     lastCompactionMessageCount: number | null = null;
+    lastCompactionEstimatedTokensAfter: number | null = null;
+    lastCompactionActualInputTokensAfter: number | null = null;
+    lastObservedInputTokens: number | null = null;
+    awaitingCompactionActualUsage: boolean = false;
+    compactedOperationalBaseline: CompactedOperationalBaseline | null = null;
     /**
      * Number of consecutive compaction failures. Reset to 0 on any successful
      * compaction. Used by the runtime circuit breaker to stop retrying when
@@ -119,6 +143,39 @@ export class AgentState {
         }, "");
     }
 
+    getPendingToolCallIds(): string[] {
+        const ids = new Set<string>();
+
+        for (const id of Object.keys(this.pendingToolCalls)) {
+            ids.add(id);
+        }
+        for (const permission of this.getPendingPermissions()) {
+            ids.add(permission.toolCall.toolCallId);
+        }
+        for (const ask of this.getPendingAskHumans()) {
+            ids.add(ask.toolCallId);
+        }
+
+        return Array.from(ids);
+    }
+
+    getOperationalMessages(): z.infer<typeof MessageList> {
+        const baseline = this.compactedOperationalBaseline;
+        if (!baseline) {
+            return this.messages;
+        }
+
+        const carryover = baseline.carryover ?? parseCarryover(baseline.summary);
+        const taskState = baseline.taskState ?? deriveActiveTaskState(carryover);
+        const summaryMessage = buildCompactionReferenceMessage(
+            baseline.summary,
+            carryover,
+            taskState,
+        );
+        const recentWindowStart = Math.max(0, baseline.recentWindowStart ?? this.messages.length);
+        return [summaryMessage, ...this.messages.slice(recentWindowStart)];
+    }
+
     ingest(event: z.infer<typeof RunEvent>) {
         if (event.subflow.length > 0) {
             const { subflow, ...rest } = event;
@@ -208,12 +265,62 @@ export class AgentState {
                 break;
             }
             case "context-compaction-complete":
+                {
+                const compactionEvent = event as typeof event & {
+                    recentWindowStart?: number;
+                    protectedWindowReasons?: string[];
+                    operationalMessageCountAfter?: number;
+                    baselineMode?: "full-history" | "summary-recent-window";
+                };
                 this.compactedContextSummary = event.summary;
                 this.compactedContextCarryover = parseCarryover(event.summary);
                 this.compactedTaskState = deriveActiveTaskState(this.compactedContextCarryover);
                 this.compactedContextAnchorHash = event.anchorHash;
-                this.lastCompactionMessageCount = event.messageCountBefore;
+                this.compactedRecentWindowStart = compactionEvent.recentWindowStart ?? Math.max(0, this.messages.length - event.recentMessages);
+                this.lastCompactionMessageCount = this.messages.length;
+                this.lastCompactionEstimatedTokensAfter = event.estimatedTokensAfter;
+                this.lastCompactionActualInputTokensAfter = null;
+                this.awaitingCompactionActualUsage = true;
+                this.compactedOperationalBaseline = {
+                    summary: event.summary,
+                    carryover: this.compactedContextCarryover,
+                    taskState: this.compactedTaskState,
+                    anchorHash: event.anchorHash,
+                    recentWindowStart: this.compactedRecentWindowStart ?? 0,
+                    messageCountAtCompaction: this.messages.length,
+                    estimatedTokensAfter: event.estimatedTokensAfter,
+                    actualInputTokensAfter: null,
+                    protectedWindowReasons: compactionEvent.protectedWindowReasons ?? [],
+                    operationalMessageCountAfter: compactionEvent.operationalMessageCountAfter ?? event.messageCountAfter,
+                    baselineMode: compactionEvent.baselineMode ?? "summary-recent-window",
+                };
+                this.consecutiveCompactionFailures = 0;
                 break;
+                }
+            case "context-compaction-failed":
+                this.consecutiveCompactionFailures += 1;
+                break;
+            case "usage-update": {
+                const hasPartialUsage = event.usage.inputTokens != null
+                    || event.usage.outputTokens != null
+                    || event.usage.cachedInputTokens != null;
+                const observedInputTokens = event.usage.totalTokens != null
+                    ? event.usage.totalTokens
+                    : hasPartialUsage
+                        ? (event.usage.inputTokens ?? 0)
+                            + (event.usage.outputTokens ?? 0)
+                            + (event.usage.cachedInputTokens ?? 0)
+                        : null;
+                this.lastObservedInputTokens = observedInputTokens;
+                if (this.awaitingCompactionActualUsage && observedInputTokens != null) {
+                    this.lastCompactionActualInputTokensAfter = observedInputTokens;
+                    if (this.compactedOperationalBaseline) {
+                        this.compactedOperationalBaseline.actualInputTokensAfter = observedInputTokens;
+                    }
+                    this.awaitingCompactionActualUsage = false;
+                }
+                break;
+            }
         }
     }
 }

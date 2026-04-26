@@ -470,51 +470,36 @@ slide.addImage({ path: "image.png", x: centerX, y: 1.2, w: calcWidth, h: maxHeig
 
 ## Icons
 
-Use react-icons to generate SVG icons, then rasterize to PNG for universal compatibility.
+Prefer built-in vector shapes, Unicode-free single-symbol labels, or small inline SVG assets. Do not install icon packages in the user's workspace.
 
 ### Setup
 
 ```javascript
-const React = require("react");
-const ReactDOMServer = require("react-dom/server");
-const sharp = require("sharp");
-const { FaCheckCircle, FaChartLine } = require("react-icons/fa");
-
-function renderIconSvg(IconComponent, color = "#000000", size = 256) {
-  return ReactDOMServer.renderToStaticMarkup(
-    React.createElement(IconComponent, { color, size: String(size) })
-  );
+function svgDataUri(svg) {
+  return "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64");
 }
 
-async function iconToBase64Png(IconComponent, color, size = 256) {
-  const svg = renderIconSvg(IconComponent, color, size);
-  const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
-  return "image/png;base64," + pngBuffer.toString("base64");
-}
+const checkIcon = svgDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="28" fill="#4472C4"/>
+  <path d="M18 33l9 9 19-22" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`);
 ```
 
 ### Add Icon to Slide
 
 ```javascript
-const iconData = await iconToBase64Png(FaCheckCircle, "#4472C4", 256);
-
 slide.addImage({
-  data: iconData,
+  data: checkIcon,
   x: 1, y: 1, w: 0.5, h: 0.5  // Size in inches
 });
 ```
 
-**Note**: Use size 256 or higher for crisp icons. The size parameter controls the rasterization resolution, not the display size on the slide (which is set by `w` and `h` in inches).
+**Note**: Use one icon per semantic item. Do not stack repeated icons or rely on external npm icon packages.
 
 ### Icon Libraries
 
-Install: `npm install -g react-icons react react-dom sharp`
-
-Popular icon sets in react-icons:
-- `react-icons/fa` - Font Awesome
-- `react-icons/md` - Material Design
-- `react-icons/hi` - Heroicons
-- `react-icons/bi` - Bootstrap Icons
+Do not run `npm install`, `npm install -g`, `pnpm add`, or `yarn add` for icon libraries during slide generation. If a new app-level icon dependency is needed, it must be added to the Flazz package manifest by a developer, not installed into the user's workspace by the agent.
 
 ---
 
@@ -690,8 +675,8 @@ These issues cause file corruption, visual bugs, or broken output. Avoid them.
 
 10. **Run slide-level QA before full compile** - preview each slide when needed and inspect extracted text.
    ```bash
-   python -m markitdown slide-XX-preview.pptx
-   python -m markitdown slide-XX-preview.pptx | grep -iE "xxxx|lorem|ipsum|placeholder"
+   node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx --json
    ```
 
 ---

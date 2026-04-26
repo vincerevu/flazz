@@ -1,5 +1,6 @@
 import { asClass, createContainer, InjectionMode } from "awilix";
 import { FSModelConfigRepo, IModelConfigRepo } from "../models/repo.js";
+import { FSModelCapabilityRepo, IModelCapabilityRepo } from "../models/capability-repo.js";
 import { FSMcpConfigRepo, IMcpConfigRepo } from "../mcp/repo.js";
 import { FSAgentsRepo, IAgentsRepo } from "../agents/repo.js";
 import { FSRunsRepo, IRunsRepo } from "../runs/repo.js";
@@ -22,6 +23,7 @@ import { SkillRepo } from "../skills/skill-repo.js";
 import { SkillManager } from "../skills/skill-manager.js";
 import { setRunLearningService, setSkillManager } from "../application/lib/tools/skill-tools.js";
 import { setAgentsRepo, setSkillRegistry } from "../application/lib/tools/agent-tools.js";
+import { setPdfExportService } from "../application/lib/tools/pdf-tools.js";
 import { ContextBuilder } from "../agents/runtime/context-builder.js";
 import { MemorySearchProvider } from "../search/memory_search.js";
 import { WorkDir } from "../config/config.js";
@@ -62,6 +64,7 @@ container.register({
 
     mcpConfigRepo: asClass<IMcpConfigRepo>(FSMcpConfigRepo).singleton(),
     modelConfigRepo: asClass<IModelConfigRepo>(FSModelConfigRepo).singleton(),
+    modelCapabilityRepo: asClass<IModelCapabilityRepo>(FSModelCapabilityRepo).singleton(),
     agentsRepo: asClass<IAgentsRepo>(FSAgentsRepo).singleton(),
     runsRepo: asClass<IRunsRepo>(FSRunsRepo).singleton(),
     oauthRepo: asClass<IOAuthRepo>(FSOAuthRepo).singleton(),
@@ -97,6 +100,14 @@ const workspaceSkillSource = new WorkspaceSkillSource(skillManager);
 const sourceSkillSource = new SourceSkillSource();
 const skillRegistry = new SkillRegistry([workspaceSkillSource, sourceSkillSource]);
 setSkillRegistry(skillRegistry);
+setPdfExportService({
+    async renderHtmlToPdf() {
+        return {
+            success: false,
+            error: 'PDF export service is not initialized',
+        };
+    },
+});
 const learningStateRepo = new LearningStateRepo(WorkDir);
 const runMemoryRepo = new RunMemoryRepo(WorkDir);
 const runMemoryGraphPromoter = new RunMemoryGraphPromoter(WorkDir);

@@ -5,7 +5,7 @@ Use this skill when the user wants a native PowerPoint deck: create a new \`.ppt
 
 ## What This Skill Covers
 
-- Read and analyze \`.pptx\` content with \`markitdown\`
+- Read and analyze \`.pptx\` content with \`audit-pptx\`
 - Create a deck from scratch with PptxGenJS
 - Edit an existing \`.pptx\` template via XML-safe workflows
 - Choose palette, font pairing, and style recipe before slide generation
@@ -45,12 +45,26 @@ Use the generator files when writing a specific slide. Use the reference files b
 
 ## Quick Routing
 
+## Dependency Preflight
+
+PptxGenJS and JSZip are app Node dependencies. Do not run \`npm install\`, \`pnpm add\`, \`yarn add\`, \`npx\`, or global npm installs in the user's workspace for built-in PPTX generation or QA helpers.
+
+This PPTX skill is Node-only. Do not use Python, \`markitdown\`, \`pip install\`, or any Python fallback for presentation generation, preview QA, or PPTX text extraction.
+
+Check that the app-provided Node dependency path can resolve the required libraries:
+
+\`\`\`cmd
+node -e "require('pptxgenjs'); require('jszip'); console.log('pptx stack ok')"
+\`\`\`
+
+If this fails with \`Cannot find module\`, stop and report an app packaging/runtime dependency issue. Do not install npm packages into the user's workspace as a workaround.
+
 ### If the user wants to inspect or summarize an existing presentation
 
 Use:
 
-\`\`\`bash
-python -m markitdown presentation.pptx
+\`\`\`cmd
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" presentation.pptx
 \`\`\`
 
 ### If the user wants to create a new deck from scratch
@@ -82,6 +96,20 @@ Before generating slides, explicitly decide:
 
 Do not let the model improvise visual direction slide-by-slide.
 
+### Phase order is mandatory
+
+Follow this sequence in order:
+
+1. Planning: audience, goal, language, palette, font pairing, style recipe, outline
+2. Specification: write \`slideSpec\` for every content slide
+3. Content modeling: define \`contentModel\` for each slide as plain arrays/objects
+4. Rendering: call the approved layout helper for that slide's \`layoutFamily\`
+5. Validation: run \`validate-slide-bullets.cjs\` on the source slide modules
+6. Compile: build the final \`.pptx\`
+7. Audit: run \`audit-pptx.cjs\` on the compiled deck
+
+Do not skip directly from prompt to drawing code.
+
 ### Use one deck language
 
 Lock the deck to one primary language before writing slide text. If the user writes in Vietnamese, the deck language is Vietnamese unless they explicitly ask otherwise.
@@ -112,9 +140,30 @@ Never generate a monolithic \`index.js\` that creates the whole deck. Every slid
 
 Do not define local helpers such as \`addBullets()\`, \`addTwoColBullets()\`, \`addTitleSlide()\`, or local chart/card renderers when an approved helper exists. Use the skill's bundled helper scripts so layout, bullets, and validation stay consistent.
 
+### Icon layout must be normalized
+
+Use at most one visible icon per item, card, or heading label.
+
+When a slide shows icons next to text, reserve a fixed icon slot and a fixed text start position. Do not position text relative to each icon's natural bounding box, because different SVGs and glyphs have different padding and will look misaligned.
+
+Do not stack multiple icons tightly before one label. If a concept needs multiple signals, pick one primary icon and express the rest with text or color.
+
 ### QA is mandatory
 
 Do not stop after first render. Run at least one fix-and-verify cycle.
+
+### Overflow must be fixed structurally
+
+If a slide is out of bounds, overlaps, or becomes dense enough that text crowds edges or spills past its frame, do not treat font shrinking as the primary fix.
+
+Use this remediation order:
+
+1. Shorten copy so each row, card, or bullet contains only one idea
+2. Increase available width by reducing the number of columns or switching layout family
+3. Split the content across two slides if the structure is still crowded
+4. Use \`fit: "shrink"\` only for titles or very short labels, never as the main rescue plan for full tables or dense body text
+
+For comparison slides with many text-heavy columns, do not force a wide table. Prefer cards, box grids, or a two-slide sequence.
 
 ---
 
@@ -173,6 +222,8 @@ For content slides, choose both:
 
 Every content slide must have a concise \`slideSpec\` with \`type\`, \`index\`, \`title\`, \`layoutFamily\`, \`layoutVariant\`, and \`density\` before any drawing code.
 
+Every content slide must also lock \`language\` in \`slideSpec\`.
+
 ### Step 4: Set up output structure
 
 Create a working directory like:
@@ -194,6 +245,13 @@ Do not create \`slides/index.js\` as the deck generator. \`index.js\` monoliths 
 Each slide must be a synchronous JS module exporting \`createSlide(pres, theme)\`.
 
 Each slide module creates exactly one slide. If a file contains more than one \`pres.addSlide()\`, it is invalid and must be split.
+
+For every content slide, define:
+
+- \`const slideSpec = { ... }\`
+- \`const contentModel = { ... }\`
+
+\`contentModel\` must contain the plain content arrays/objects that are passed into the approved helper. Do not mix content discovery with drawing coordinates.
 
 Use the relevant generator file for the slide you are writing:
 
@@ -219,18 +277,18 @@ For bullet-heavy slides, do not let the model handcraft bullet text runs directl
 - \`scripts/pptx-roadmap-helpers.cjs\`
 - \`scripts/pptx-infographic-helpers.cjs\`
 
-The model should first decide the content as plain arrays or objects, then render with the helper.
+The model should first decide the content as plain arrays or objects inside \`contentModel\`, then render with the helper.
 
 Before preview or deck compile, validate every content-bearing slide module:
 
-\`\`\`bash
-node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-02.js
+\`\`\`cmd
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs" slides/slide-02.js
 \`\`\`
 
 For whole-deck validation, validate all slide modules before compiling:
 
-\`\`\`bash
-node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-*.js
+\`\`\`cmd
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs" slides/slide-*.js
 \`\`\`
 
 If the validator reports monolithic files, local bullet helpers, dense bullets, fake bullets, missing \`slideSpec\`, or missing \`breakLine: true\`, rewrite the slide code before compiling.
@@ -238,15 +296,27 @@ If the validator reports monolithic files, local bullet helpers, dense bullets, 
 Preferred bullet pattern:
 
 \`\`\`javascript
-const { addBulletList } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-bullet-helpers.cjs");
+const { addBulletList } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-bullet-helpers.cjs");
 
-const bulletItems = [
-  "Water exists in three common states",
-  "Solid, liquid, and gas change through phase transitions",
-  "Water covers about 71% of Earth's surface",
-];
+const slideSpec = {
+  type: "content",
+  index: 2,
+  title: "Water overview",
+  layoutFamily: "text-visual",
+  layoutVariant: "single-column-bullets",
+  density: "medium",
+  language: "vi",
+};
 
-addBulletList(slide, bulletItems, { x: 0.9, y: 1.8, w: 8.1, h: 2.3 }, {
+const contentModel = {
+  bulletItems: [
+    "Water exists in three common states",
+    "Solid, liquid, and gas change through phase transitions",
+    "Water covers about 71% of Earth's surface",
+  ],
+};
+
+addBulletList(slide, contentModel.bulletItems, { x: 0.9, y: 1.8, w: 8.1, h: 2.3 }, {
   fontSize: 18,
   fontFace: "Georgia",
   color: theme.secondary,
@@ -257,15 +327,17 @@ addBulletList(slide, bulletItems, { x: 0.9, y: 1.8, w: 8.1, h: 2.3 }, {
 Preferred summary/takeaway row pattern:
 
 \`\`\`javascript
-const { addSummaryRows } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-summary-helpers.cjs");
+const { addSummaryRows } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-summary-helpers.cjs");
 
-const takeawayItems = [
-  { title: "Water is foundational", body: "It supports life and appears in solid, liquid, and gas form." },
-  { title: "State changes matter", body: "Phase transitions explain evaporation, melting, and condensation." },
-  { title: "Its reach is global", body: "Water covers most of Earth's surface and shapes climate systems." },
-];
+const contentModel = {
+  takeawayItems: [
+    { title: "Water is foundational", body: "It supports life and appears in solid, liquid, and gas form." },
+    { title: "State changes matter", body: "Phase transitions explain evaporation, melting, and condensation." },
+    { title: "Its reach is global", body: "Water covers most of Earth's surface and shapes climate systems." },
+  ],
+};
 
-addSummaryRows(slide, takeawayItems, {
+addSummaryRows(slide, contentModel.takeawayItems, {
   x: 0.9,
   y: 1.6,
   w: 7.8,
@@ -281,16 +353,18 @@ For vertical numbered guidance, do not hand-position "1", "2", "3" rows with fix
 Preferred process/timeline pattern:
 
 \`\`\`javascript
-const { addProcessTimeline } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-process-helpers.cjs");
+const { addProcessTimeline } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-process-helpers.cjs");
 
-const steps = [
-  { label: "Evaporation", caption: "Liquid water becomes vapor" },
-  { label: "Condensation", caption: "Vapor cools into droplets" },
-  { label: "Precipitation", caption: "Water returns as rain or snow" },
-  { label: "Collection", caption: "Water gathers in oceans and lakes" },
-];
+const contentModel = {
+  steps: [
+    { label: "Evaporation", caption: "Liquid water becomes vapor" },
+    { label: "Condensation", caption: "Vapor cools into droplets" },
+    { label: "Precipitation", caption: "Water returns as rain or snow" },
+    { label: "Collection", caption: "Water gathers in oceans and lakes" },
+  ],
+};
 
-addProcessTimeline(slide, steps, {
+addProcessTimeline(slide, contentModel.steps, {
   x: 0.8,
   y: 1.7,
   w: 8.4,
@@ -302,14 +376,16 @@ addProcessTimeline(slide, steps, {
 Preferred comparison pattern:
 
 \`\`\`javascript
-const { addComparisonCards } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-comparison-helpers.cjs");
+const { addComparisonCards } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-comparison-helpers.cjs");
 
-const columns = [
-  { title: "Liquid Water", items: ["Flows freely", "Takes container shape", "Supports most daily use cases"] },
-  { title: "Ice", items: ["Keeps fixed shape", "Expands when frozen", "Floats on liquid water"] },
-];
+const contentModel = {
+  columns: [
+    { title: "Liquid Water", items: ["Flows freely", "Takes container shape", "Supports most daily use cases"] },
+    { title: "Ice", items: ["Keeps fixed shape", "Expands when frozen", "Floats on liquid water"] },
+  ],
+};
 
-addComparisonCards(slide, columns, {
+addComparisonCards(slide, contentModel.columns, {
   x: 0.8,
   y: 1.5,
   w: 8.4,
@@ -322,22 +398,24 @@ addComparisonCards(slide, columns, {
 Preferred data-visualization pattern:
 
 \`\`\`javascript
-const { addBarChartWithTakeaways } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-data-helpers.cjs");
+const { addBarChartWithTakeaways } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-data-helpers.cjs");
 
-const chartData = {
-  series: [
-    { label: "Ice", value: 25 },
-    { label: "Liquid", value: 60 },
-    { label: "Vapor", value: 15 },
-  ],
-  takeaways: [
-    "Liquid water dominates daily use",
-    "Solid and gas forms matter in climate systems",
-  ],
-  source: "Classroom summary dataset",
+const contentModel = {
+  chartData: {
+    series: [
+      { label: "Ice", value: 25 },
+      { label: "Liquid", value: 60 },
+      { label: "Vapor", value: 15 },
+    ],
+    takeaways: [
+      "Liquid water dominates daily use",
+      "Solid and gas forms matter in climate systems",
+    ],
+    source: "Classroom summary dataset",
+  },
 };
 
-addBarChartWithTakeaways(slide, chartData, {
+addBarChartWithTakeaways(slide, contentModel.chartData, {
   x: 0.8,
   y: 1.5,
   w: 8.4,
@@ -350,16 +428,18 @@ addBarChartWithTakeaways(slide, chartData, {
 Preferred stat-grid pattern:
 
 \`\`\`javascript
-const { addStatCardGrid } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-stat-helpers.cjs");
+const { addStatCardGrid } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-stat-helpers.cjs");
 
-const statCards = [
-  { value: "71%", label: "Earth's surface covered by water", detail: "Most of it is ocean water." },
-  { value: "60%", label: "Adult body water content", detail: "Hydration supports core body functions." },
-  { value: "3%", label: "Freshwater share", detail: "Accessible freshwater remains limited." },
-  { value: "1.5B", label: "People facing water stress", detail: "Water management stays a global issue." },
-];
+const contentModel = {
+  statCards: [
+    { value: "71%", label: "Earth's surface covered by water", detail: "Most of it is ocean water." },
+    { value: "60%", label: "Adult body water content", detail: "Hydration supports core body functions." },
+    { value: "3%", label: "Freshwater share", detail: "Accessible freshwater remains limited." },
+    { value: "1.5B", label: "People facing water stress", detail: "Water management stays a global issue." },
+  ],
+};
 
-addStatCardGrid(slide, statCards, {
+addStatCardGrid(slide, contentModel.statCards, {
   x: 0.8,
   y: 1.55,
   w: 8.4,
@@ -373,20 +453,22 @@ addStatCardGrid(slide, statCards, {
 Preferred mixed-media pattern:
 
 \`\`\`javascript
-const { addMixedMediaPanel } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-media-helpers.cjs");
+const { addMixedMediaPanel } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-media-helpers.cjs");
 
-const mediaPanel = {
-  imagePath: "./imgs/water-cycle.png",
-  title: "Water moves through a continuous cycle",
-  bullets: [
-    "Evaporation lifts water vapor into the atmosphere",
-    "Condensation forms clouds and droplets",
-    "Precipitation returns water to land and oceans",
-  ],
-  caption: "Illustrative diagram of the water cycle",
+const contentModel = {
+  mediaPanel: {
+    imagePath: "./imgs/water-cycle.png",
+    title: "Water moves through a continuous cycle",
+    bullets: [
+      "Evaporation lifts water vapor into the atmosphere",
+      "Condensation forms clouds and droplets",
+      "Precipitation returns water to land and oceans",
+    ],
+    caption: "Illustrative diagram of the water cycle",
+  },
 };
 
-addMixedMediaPanel(slide, mediaPanel, {
+addMixedMediaPanel(slide, contentModel.mediaPanel, {
   x: 0.8,
   y: 1.45,
   w: 8.4,
@@ -400,16 +482,18 @@ addMixedMediaPanel(slide, mediaPanel, {
 Preferred hierarchy pattern:
 
 \`\`\`javascript
-const { addHierarchyStack } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-hierarchy-helpers.cjs");
+const { addHierarchyStack } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-hierarchy-helpers.cjs");
 
-const hierarchyNodes = [
-  { title: "Water systems", detail: "The broad system that connects climate, ecosystems, and daily use." },
-  { title: "Natural cycle", detail: "Evaporation, condensation, precipitation, and collection." },
-  { title: "Human usage", detail: "Agriculture, industry, energy, sanitation, and household needs." },
-  { title: "Risk layer", detail: "Pollution, scarcity, flooding, and infrastructure pressure." },
-];
+const contentModel = {
+  hierarchyNodes: [
+    { title: "Water systems", detail: "The broad system that connects climate, ecosystems, and daily use." },
+    { title: "Natural cycle", detail: "Evaporation, condensation, precipitation, and collection." },
+    { title: "Human usage", detail: "Agriculture, industry, energy, sanitation, and household needs." },
+    { title: "Risk layer", detail: "Pollution, scarcity, flooding, and infrastructure pressure." },
+  ],
+};
 
-addHierarchyStack(slide, hierarchyNodes, {
+addHierarchyStack(slide, contentModel.hierarchyNodes, {
   x: 0.8,
   y: 1.35,
   w: 8.4,
@@ -422,16 +506,18 @@ addHierarchyStack(slide, hierarchyNodes, {
 Preferred quadrant pattern:
 
 \`\`\`javascript
-const { addQuadrantMatrix } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-quadrant-helpers.cjs");
+const { addQuadrantMatrix } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-quadrant-helpers.cjs");
 
-const quadrants = [
-  { title: "High impact / Low effort", items: ["Quick education campaigns", "Leak detection basics"] },
-  { title: "High impact / High effort", items: ["Infrastructure renewal", "Large-scale treatment"] },
-  { title: "Low impact / Low effort", items: ["Simple reminders", "Usage nudges"] },
-  { title: "Low impact / High effort", items: ["Low-priority custom systems"] },
-];
+const contentModel = {
+  quadrants: [
+    { title: "High impact / Low effort", items: ["Quick education campaigns", "Leak detection basics"] },
+    { title: "High impact / High effort", items: ["Infrastructure renewal", "Large-scale treatment"] },
+    { title: "Low impact / Low effort", items: ["Simple reminders", "Usage nudges"] },
+    { title: "Low impact / High effort", items: ["Low-priority custom systems"] },
+  ],
+};
 
-addQuadrantMatrix(slide, quadrants, {
+addQuadrantMatrix(slide, contentModel.quadrants, {
   x: 0.9,
   y: 1.35,
   w: 8.0,
@@ -446,15 +532,17 @@ addQuadrantMatrix(slide, quadrants, {
 Preferred roadmap pattern:
 
 \`\`\`javascript
-const { addRoadmap } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-roadmap-helpers.cjs");
+const { addRoadmap } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-roadmap-helpers.cjs");
 
-const roadmapStages = [
-  { tag: "Now", label: "Understand", caption: "Map core facts and current constraints." },
-  { tag: "Next", label: "Prioritize", caption: "Focus on the most important risks and opportunities." },
-  { tag: "Later", label: "Act", caption: "Turn decisions into measurable interventions." },
-];
+const contentModel = {
+  roadmapStages: [
+    { tag: "Now", label: "Understand", caption: "Map core facts and current constraints." },
+    { tag: "Next", label: "Prioritize", caption: "Focus on the most important risks and opportunities." },
+    { tag: "Later", label: "Act", caption: "Turn decisions into measurable interventions." },
+  ],
+};
 
-addRoadmap(slide, roadmapStages, {
+addRoadmap(slide, contentModel.roadmapStages, {
   x: 0.75,
   y: 1.65,
   w: 8.5,
@@ -474,19 +562,21 @@ const {
   addPyramid,
   addStaircase,
   addBoxGrid,
-} = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs");
+} = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-infographic-helpers.cjs");
 
-const relationData = {
-  center: { title: "Water security", detail: "Shared system pressure" },
-  nodes: [
-    { title: "Climate", detail: "Drought and flood volatility" },
-    { title: "Agriculture", detail: "Irrigation demand" },
-    { title: "Cities", detail: "Infrastructure and sanitation" },
-    { title: "Industry", detail: "Energy and production needs" },
-  ],
+const contentModel = {
+  relationData: {
+    center: { title: "Water security", detail: "Shared system pressure" },
+    nodes: [
+      { title: "Climate", detail: "Drought and flood volatility" },
+      { title: "Agriculture", detail: "Irrigation demand" },
+      { title: "Cities", detail: "Infrastructure and sanitation" },
+      { title: "Industry", detail: "Energy and production needs" },
+    ],
+  },
 };
 
-addRelationMap(slide, relationData, {
+addRelationMap(slide, contentModel.relationData, {
   cx: 5,
   cy: 3,
   radius: 1.65,
@@ -550,14 +640,20 @@ Read:
 
 Run content QA:
 
-\`\`\`bash
-python -m markitdown output/presentation.pptx
+\`\`\`cmd
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output/presentation.pptx
+\`\`\`
+
+For structured post-render QA:
+
+\`\`\`cmd
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output/presentation.pptx --json
 \`\`\`
 
 Run bullet-structure QA on the source files before or alongside preview QA:
 
-\`\`\`bash
-node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-*.js
+\`\`\`cmd
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs" slides/slide-*.js
 \`\`\`
 
 Check for:
@@ -567,11 +663,17 @@ Check for:
 - Placeholder text
 - Page badge omissions
 - Broken hierarchy or repeated layouts
+- Mixed visible languages
+- More than one icon in the same visible label
+- Icon/text misalignment caused by variable icon widths
+- Out-of-bounds shapes or text boxes
+- Text box overlap after render
+- Text boxes that are too dense even if they do not overlap yet
 
 Check placeholder residue:
 
-\`\`\`bash
-python -m markitdown output/presentation.pptx | grep -iE "xxxx|lorem|ipsum|placeholder|this.*(page|slide).*layout"
+\`\`\`cmd
+node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output/presentation.pptx
 \`\`\`
 
 If anything is wrong, fix the affected slides and verify again.
@@ -585,7 +687,7 @@ When the user provides an existing \`.pptx\` and wants edits, do not rebuild it 
 High-level sequence:
 
 1. Copy the original deck to a working file such as \`template.pptx\`
-2. Extract text with \`markitdown\`
+2. Extract text with \`audit-pptx.cjs\`
 3. Inspect the slide structure
 4. Complete structural operations first: delete, duplicate, reorder
 5. Edit slide XML content
@@ -628,6 +730,18 @@ const slideSpec = {
   layoutFamily: "hierarchy",
   layoutVariant: "stacked-layered-cards",
   density: "medium",
+  language: "vi",
+};
+\`\`\`
+
+The same file must also define \`contentModel\` as the structured payload passed into the layout helper:
+
+\`\`\`javascript
+const contentModel = {
+  hierarchyNodes: [
+    { title: "Topic A", detail: "Short supporting line." },
+    { title: "Topic B", detail: "Another short supporting line." },
+  ],
 };
 \`\`\`
 
@@ -714,10 +828,10 @@ Avoid:
 
 ## Recommended Dependencies
 
-- \`markitdown[pptx]\` for extraction and QA
 - \`pptxgenjs\` for generation
+- \`jszip\` for Node-based PPTX extraction and QA
 
-Use local project dependencies when possible. If a temporary working directory is needed, keep it isolated from the main app source tree.
+Use the app-provided Node dependencies. Do not install PPTX dependencies into the user's workspace as a workaround. If a temporary working directory is needed, keep it isolated from the main app source tree.
 `;
 
 export default skill;

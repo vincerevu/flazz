@@ -2,6 +2,7 @@ import { exec, execSync, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { getSecurityAllowList } from '../../config/system-policy.js';
 import { getExecutionShell } from '../assistant/runtime-context.js';
+import { getExternalRuntimeEnv } from '../runtime/external-runtimes.js';
 
 const execPromise = promisify(exec);
 const COMMAND_SPLIT_REGEX = /(?:\|\||&&|;|\||\n|`|\$\(|\(|\))/;
@@ -88,6 +89,7 @@ export async function executeCommand(
       timeout: options?.timeout,
       maxBuffer: options?.maxBuffer || 1024 * 1024, // default 1MB
       shell: EXECUTION_SHELL,
+      env: getExternalRuntimeEnv(),
     });
 
     return {
@@ -163,6 +165,7 @@ export function executeCommandAbortable(
   const proc = spawn(command, [], {
     shell: EXECUTION_SHELL,
     cwd: options?.cwd,
+    env: getExternalRuntimeEnv(),
     detached: process.platform !== 'win32', // Create process group on Unix
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -276,6 +279,7 @@ export function executeCommandSync(
       timeout: options?.timeout,
       encoding: 'utf-8',
       shell: EXECUTION_SHELL,
+      env: getExternalRuntimeEnv(),
     });
 
     return {

@@ -4,7 +4,7 @@ import { app, BrowserWindow, Notification, nativeImage, nativeTheme } from 'elec
 import { RunEvent } from '@flazz/shared'
 import z from 'zod'
 import path from 'node:path'
-import { getAttentionState, shouldNotifyForRun } from './attention-state.js'
+import { shouldNotifyForRun } from './attention-state.js'
 import { emitNotificationActivated } from './ipc.js'
 
 type RunEventType = z.infer<typeof RunEvent>

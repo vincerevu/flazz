@@ -77,7 +77,8 @@ export function useWorkspaceTree() {
   const loadDirectory = useCallback(async () => {
     try {
       const result = await workspaceIpc.readdir('memory', { recursive: true, includeHidden: false })
-      return buildTree(result)
+      const filtered = result.filter((entry) => entry.kind === 'dir' || entry.path.endsWith('.md'))
+      return buildTree(filtered)
     } catch (err) {
       console.error('Failed to load directory:', err)
       return []

@@ -16,17 +16,17 @@ This guide will help you install Flazz on your system.
 Download the latest release for your platform:
 
 **Windows**
-- [FlazzSetup.exe](https://github.com/yourusername/flazz/releases/latest) - Installer
-- [Flazz-win32-x64.zip](https://github.com/yourusername/flazz/releases/latest) - Portable
+- [FlazzSetup.exe](https://github.com/vincerevu/flazz/releases/latest) - Installer
+- [Flazz-win32-x64.zip](https://github.com/vincerevu/flazz/releases/latest) - Portable
 
 **macOS**
-- [Flazz.dmg](https://github.com/yourusername/flazz/releases/latest) - Disk image
-- [Flazz-darwin-x64.zip](https://github.com/yourusername/flazz/releases/latest) - Portable
+- [Flazz.dmg](https://github.com/vincerevu/flazz/releases/latest) - Disk image
+- [Flazz-darwin-x64.zip](https://github.com/vincerevu/flazz/releases/latest) - Portable
 
 **Linux**
-- [flazz.deb](https://github.com/yourusername/flazz/releases/latest) - Debian/Ubuntu
-- [flazz.rpm](https://github.com/yourusername/flazz/releases/latest) - Fedora/RHEL
-- [Flazz-linux-x64.zip](https://github.com/yourusername/flazz/releases/latest) - Portable
+- [flazz.deb](https://github.com/vincerevu/flazz/releases/latest) - Debian/Ubuntu
+- [flazz.rpm](https://github.com/vincerevu/flazz/releases/latest) - Fedora/RHEL
+- [Flazz-linux-x64.zip](https://github.com/vincerevu/flazz/releases/latest) - Portable
 
 ## Installation Steps
 
@@ -90,7 +90,7 @@ If you prefer to build from source:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/flazz.git
+git clone https://github.com/vincerevu/flazz.git
 cd flazz
 
 # Install dependencies
@@ -129,4 +129,4 @@ After installation, verify Flazz is working:
 - Free up disk space
 - Try portable version instead
 
-For more help, see [Troubleshooting Guide](../troubleshooting.md) or [open an issue](https://github.com/yourusername/flazz/issues).
+For more help, see [Troubleshooting Guide](../troubleshooting.md) or [open an issue](https://github.com/vincerevu/flazz/issues).

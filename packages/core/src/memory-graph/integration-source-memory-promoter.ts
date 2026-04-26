@@ -40,15 +40,6 @@ export type IntegrationSummaryItem = {
   raw?: unknown;
 };
 
-function sanitizePathSegment(value: string): string {
-  return value
-    .replace(/[\\/:*?"<>|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[. ]+$/g, "")
-    .slice(0, 96) || "item";
-}
-
 function cleanFilename(value: string) {
   return value.replace(/[\\/*?:"<>|]/g, "").trim().slice(0, 100) || "item";
 }

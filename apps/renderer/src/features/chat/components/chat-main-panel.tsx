@@ -1,3 +1,4 @@
+import React from 'react'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   Conversation,
@@ -15,6 +16,7 @@ import { WebSearchResult } from '@/components/ai-elements/web-search-result'
 import { ChatInputWithMentions, type StagedAttachment } from '@/components/chat-input-with-mentions'
 import { ChatMessageAttachments } from '@/components/chat-message-attachments'
 import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
+import { ChatTurnGroup } from '@/components/chat-turn-group'
 import { FileCardProvider } from '@/contexts/file-card-context'
 import type { FileMention, PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import { FileCard, WikiLink } from '@/features/memory/components/streamdown-components'
@@ -22,6 +24,7 @@ import {
   type ChatTabViewState,
   type ConversationItem,
   type PermissionResponse,
+  groupConversationRenderBlocks,
   getProcessingStatusText,
   getWebSearchCardData,
   isChatMessage,
@@ -204,6 +207,7 @@ export function ChatMainPanel({
             const tabState = getChatTabStateForRender(tab.id)
             const tabHasConversation = tabState.conversation.length > 0 || tabState.currentAssistantMessage
             const processingStatusText = getProcessingStatusText(tabState)
+            const renderBlocks = groupConversationRenderBlocks(tabState.conversation)
             const tabConversationContentClassName = tabHasConversation
               ? 'mx-auto w-full max-w-4xl pb-28'
               : 'mx-auto w-full max-w-4xl min-h-full items-center justify-center pb-0'
@@ -231,36 +235,79 @@ export function ChatMainPanel({
                       </ConversationEmptyState>
                     ) : (
                       <>
-                        {tabState.conversation.map((item) => {
-                          const rendered = renderConversationItem(item, tab.id, {
-                            handlePermissionResponse,
-                            handleAskHumanResponse,
-                            isToolOpenForTab,
-                            setToolOpenForTab,
-                          })
+                        {renderBlocks.map((block) => {
+                          if (block.kind === 'item') {
+                            const item = block.item
+                            const rendered = renderConversationItem(item, tab.id, {
+                              handlePermissionResponse,
+                              handleAskHumanResponse,
+                              isToolOpenForTab,
+                              setToolOpenForTab,
+                            })
 
-                          if (isToolCall(item)) {
-                            const permRequest = tabState.allPermissionRequests.get(item.id)
-                            if (permRequest) {
-                              const response = tabState.permissionResponses.get(item.id) || null
-                              return (
-                                <div key={item.id} className="contents">
-                                  {rendered}
-                                  <PermissionRequest
-                                    toolCall={permRequest.toolCall}
-                                    onApprove={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve')}
-                                    onApproveSession={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'session')}
-                                    onApproveAlways={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'always')}
-                                    onDeny={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'deny')}
-                                    isProcessing={isActive && isProcessing}
-                                    response={response}
-                                  />
-                                </div>
-                              )
+                            if (isToolCall(item)) {
+                              const permRequest = tabState.allPermissionRequests.get(item.id)
+                              if (permRequest) {
+                                const response = tabState.permissionResponses.get(item.id) || null
+                                return (
+                                  <div key={item.id} className="contents">
+                                    {rendered}
+                                    <PermissionRequest
+                                      toolCall={permRequest.toolCall}
+                                      onApprove={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve')}
+                                      onApproveSession={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'session')}
+                                      onApproveAlways={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'always')}
+                                      onDeny={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'deny')}
+                                      isProcessing={isActive && isProcessing}
+                                      response={response}
+                                    />
+                                  </div>
+                                )
+                              }
                             }
+
+                            return <React.Fragment key={block.key}>{rendered}</React.Fragment>
                           }
 
-                          return rendered
+                          return (
+                            <ChatTurnGroup
+                              key={block.key}
+                              summary={block.summary}
+                              defaultOpen={block.defaultOpen}
+                            >
+                              {block.items.map((item) => {
+                                const rendered = renderConversationItem(item, tab.id, {
+                                  handlePermissionResponse,
+                                  handleAskHumanResponse,
+                                  isToolOpenForTab,
+                                  setToolOpenForTab,
+                                })
+
+                                if (isToolCall(item)) {
+                                  const permRequest = tabState.allPermissionRequests.get(item.id)
+                                  if (permRequest) {
+                                    const response = tabState.permissionResponses.get(item.id) || null
+                                    return (
+                                      <div key={item.id} className="contents">
+                                        {rendered}
+                                        <PermissionRequest
+                                          toolCall={permRequest.toolCall}
+                                          onApprove={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve')}
+                                          onApproveSession={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'session')}
+                                          onApproveAlways={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'always')}
+                                          onDeny={() => handlePermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'deny')}
+                                          isProcessing={isActive && isProcessing}
+                                          response={response}
+                                        />
+                                      </div>
+                                    )
+                                  }
+                                }
+
+                                return <React.Fragment key={item.id}>{rendered}</React.Fragment>
+                              })}
+                            </ChatTurnGroup>
+                          )
                         })}
 
                         {Array.from(tabState.pendingAskHumanRequests.values()).map((request) => (
@@ -321,6 +368,8 @@ export function ChatMainPanel({
                     onDraftChange={(text) => setChatDraftForTab(tab.id, text)}
                     conversation={tabState.conversation}
                     modelUsage={tabState.modelUsage}
+                    modelUsageUpdatedAt={tabState.modelUsageUpdatedAt}
+                    runStatus={tabState.runStatus}
                   />
                 </div>
               )

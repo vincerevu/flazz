@@ -63,6 +63,16 @@ export interface ContextCompactionItem {
 export type ConversationItem = ChatMessage | ToolCall | ErrorMessage | ContextCompactionItem
 export type PermissionResponse = 'approve' | 'deny'
 
+export type ConversationRenderBlock =
+  | { kind: 'item'; key: string; item: ConversationItem }
+  | {
+      kind: 'turn'
+      key: string
+      items: ConversationItem[]
+      summary: string
+      defaultOpen: boolean
+    }
+
 export type ChatTabViewState = {
   runId: string | null
   conversation: ConversationItem[]
@@ -95,6 +105,18 @@ export const isErrorMessage = (item: ConversationItem): item is ErrorMessage =>
   'kind' in item && item.kind === 'error'
 export const isContextCompactionItem = (item: ConversationItem): item is ContextCompactionItem =>
   'kind' in item && item.kind === 'context-compaction'
+
+export const isAuxiliaryConversationItem = (item: ConversationItem): boolean =>
+  isToolCall(item) || isErrorMessage(item) || isContextCompactionItem(item)
+
+const isMeaningfulChatMessage = (item: ChatMessage): boolean => {
+  if (item.role === 'user') return true
+  if (item.attachments && item.attachments.length > 0) return true
+  return item.content.trim().length > 0
+}
+
+const isVisibleAssistantMessage = (item: ConversationItem): item is ChatMessage =>
+  isChatMessage(item) && item.role === 'assistant' && isMeaningfulChatMessage(item)
 
 export const toToolState = (status: ToolCall['status']): ToolState => {
   switch (status) {
@@ -135,9 +157,136 @@ export const getProcessingStatusText = (state: ChatTabViewState): string => {
 
   if (state.currentAssistantMessage.trim()) return 'Receiving response...'
 
+  if (state.runStatus?.phase === 'checking-context') return 'Thinking...'
+
   if (state.runStatus?.message) return state.runStatus.message
 
   return 'Thinking...'
+}
+
+const formatElapsedDuration = (startMs: number, endMs: number): string | null => {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null
+  const totalSeconds = Math.max(1, Math.round((endMs - startMs) / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const parts: string[] = []
+  if (hours > 0) parts.push(`${hours}h`)
+  if (minutes > 0) parts.push(`${minutes}m`)
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`)
+  return parts.join(' ')
+}
+
+const isActiveAuxiliaryItem = (item: ConversationItem): boolean => {
+  if (isToolCall(item)) return item.status === 'pending' || item.status === 'running'
+  if (isContextCompactionItem(item)) return item.status === 'running'
+  return false
+}
+
+const hasTurnError = (items: ConversationItem[]): boolean =>
+  items.some((item) => {
+    if (isErrorMessage(item)) return true
+    if (isToolCall(item)) return item.status === 'error'
+    if (isContextCompactionItem(item)) return item.status === 'failed'
+    return false
+  })
+
+export const summarizeConversationTurn = (
+  items: ConversationItem[],
+  nextItem?: ConversationItem,
+): string => {
+  const firstTimestamp = items[0]?.timestamp ?? 0
+  const lastTimestamp = nextItem?.timestamp ?? items[items.length - 1]?.timestamp ?? firstTimestamp
+  const duration = formatElapsedDuration(firstTimestamp, lastTimestamp)
+  const failed = hasTurnError(items)
+  if (failed) return duration ? `Failed after ${duration}` : 'Failed'
+  return duration ? `Worked for ${duration}` : 'Worked'
+}
+
+export const groupConversationRenderBlocks = (
+  items: ConversationItem[],
+): ConversationRenderBlock[] => {
+  const blocks: ConversationRenderBlock[] = []
+  let currentTurn: ConversationItem[] = []
+
+  const flushTurn = () => {
+    if (currentTurn.length === 0) return
+
+    const lastVisibleAssistantIndex = (() => {
+      for (let index = currentTurn.length - 1; index >= 0; index -= 1) {
+        if (isVisibleAssistantMessage(currentTurn[index])) return index
+      }
+      return -1
+    })()
+
+    if (lastVisibleAssistantIndex === -1) {
+      const first = currentTurn[0]
+      const last = currentTurn[currentTurn.length - 1]
+      blocks.push({
+        kind: 'turn',
+        key: `turn-${first.id}-${last.id}`,
+        items: currentTurn,
+        summary: summarizeConversationTurn(currentTurn),
+        defaultOpen: true,
+      })
+      currentTurn = []
+      return
+    }
+
+    const trailingItems = currentTurn.slice(lastVisibleAssistantIndex + 1)
+    if (trailingItems.length > 0) {
+      const first = currentTurn[0]
+      const last = currentTurn[currentTurn.length - 1]
+      blocks.push({
+        kind: 'turn',
+        key: `turn-${first.id}-${last.id}`,
+        items: currentTurn,
+        summary: summarizeConversationTurn(currentTurn),
+        defaultOpen: currentTurn.some((item) => isActiveAuxiliaryItem(item)),
+      })
+      currentTurn = []
+      return
+    }
+
+    const prelude = currentTurn.slice(0, lastVisibleAssistantIndex)
+    const finalAssistant = currentTurn[lastVisibleAssistantIndex]
+
+    if (prelude.length > 0) {
+      const first = prelude[0]
+      const last = prelude[prelude.length - 1]
+      blocks.push({
+        kind: 'turn',
+        key: `turn-${first.id}-${last.id}`,
+        items: prelude,
+        summary: summarizeConversationTurn(prelude, finalAssistant),
+        defaultOpen: prelude.some((item) => isActiveAuxiliaryItem(item)),
+      })
+    }
+
+    if (isChatMessage(finalAssistant)) {
+      blocks.push({ kind: 'item', key: finalAssistant.id, item: finalAssistant })
+    }
+
+    currentTurn = []
+  }
+
+  for (const item of items) {
+    if (isChatMessage(item) && item.role === 'user') {
+      flushTurn()
+      blocks.push({ kind: 'item', key: item.id, item })
+      continue
+    }
+
+    if (isChatMessage(item) && !isMeaningfulChatMessage(item)) {
+      if (currentTurn.length > 0) currentTurn.push(item)
+      continue
+    }
+
+    currentTurn.push(item)
+  }
+
+  flushTurn()
+  return blocks
 }
 
 export const normalizeToolInput = (
