@@ -36,7 +36,7 @@ export type ModelConfig = {
   model: string
   memoryGraphModel?: string
   limits?: {
-    context?: number
+    context: number
     input?: number
     output?: number
   }
