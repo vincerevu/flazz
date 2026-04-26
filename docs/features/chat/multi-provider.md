@@ -514,5 +514,5 @@ Add custom headers to requests:
 ## Support
 
 - [Provider Status Pages](#) - Check provider status
-- [GitHub Issues](https://github.com/yourusername/flazz/issues) - Report problems
+- [GitHub Issues](https://github.com/vincerevu/flazz/issues) - Report problems
 - [Community Discord](#) - Get help

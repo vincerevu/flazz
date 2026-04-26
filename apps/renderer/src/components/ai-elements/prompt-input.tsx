@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -47,22 +45,21 @@ import {
   XIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useMentionDetection } from "@/hooks/use-mention-detection";
 import { MentionPopover } from "@/components/mention-popover";
-import { toMemoryPath, wikiLabel } from "@/lib/wiki-links";
-import { getMentionHighlightSegments } from "@/lib/mention-highlights";
 import {
-  type ChangeEvent,
+  usePromptInputAttachments as usePromptInputAttachmentState,
+} from "@/components/ai-elements/hooks/use-prompt-input-attachments";
+import { useSpeechRecognition } from "@/components/ai-elements/hooks/use-speech-recognition";
+import { usePromptInputTextareaBehavior } from "@/components/ai-elements/hooks/use-prompt-input-textarea-behavior";
+import {
   type ChangeEventHandler,
   Children,
-  type ClipboardEventHandler,
   type ComponentProps,
   createContext,
   type FormEvent,
   type FormEventHandler,
   Fragment,
   type HTMLAttributes,
-  type KeyboardEventHandler,
   type PropsWithChildren,
   type ReactNode,
   type RefObject,
@@ -200,70 +197,14 @@ export function PromptInputProvider({
   const clearInput = useCallback(() => setTextInput(""), []);
 
   // ----- attachments state (global when wrapped)
-  const [attachmentFiles, setAttachmentFiles] = useState<
-    (FileUIPart & { id: string })[]
-  >([]);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const openRef = useRef<() => void>(() => {});
-
-  const add = useCallback((files: File[] | FileList) => {
-    const incoming = Array.from(files);
-    if (incoming.length === 0) {
-      return;
-    }
-
-    setAttachmentFiles((prev) =>
-      prev.concat(
-        incoming.map((file) => ({
-          id: nanoid(),
-          type: "file" as const,
-          url: URL.createObjectURL(file),
-          mediaType: file.type,
-          filename: file.name,
-        }))
-      )
-    );
-  }, []);
-
-  const remove = useCallback((id: string) => {
-    setAttachmentFiles((prev) => {
-      const found = prev.find((f) => f.id === id);
-      if (found?.url) {
-        URL.revokeObjectURL(found.url);
-      }
-      return prev.filter((f) => f.id !== id);
-    });
-  }, []);
-
-  const clear = useCallback(() => {
-    setAttachmentFiles((prev) => {
-      for (const f of prev) {
-        if (f.url) {
-          URL.revokeObjectURL(f.url);
-        }
-      }
-      return [];
-    });
-  }, []);
-
-  // Keep a ref to attachments for cleanup on unmount (avoids stale closure)
-  const attachmentsRef = useRef(attachmentFiles);
-  attachmentsRef.current = attachmentFiles;
-
-  // Cleanup blob URLs on unmount to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      for (const f of attachmentsRef.current) {
-        if (f.url) {
-          URL.revokeObjectURL(f.url);
-        }
-      }
-    };
-  }, []);
-
-  const openFileDialog = useCallback(() => {
-    openRef.current?.();
-  }, []);
+  const {
+    files: attachmentFiles,
+    inputRef: fileInputRef,
+    addFiles: add,
+    removeFile: remove,
+    clearFiles: clear,
+    openFileDialog,
+  } = usePromptInputAttachmentState({});
 
   const attachments = useMemo<AttachmentsContext>(
     () => ({
@@ -274,7 +215,7 @@ export function PromptInputProvider({
       openFileDialog,
       fileInputRef,
     }),
-    [attachmentFiles, add, remove, clear, openFileDialog]
+    [attachmentFiles, add, remove, clear, openFileDialog, fileInputRef]
   );
 
   // ----- mentions state (for @ file mentions)
@@ -309,11 +250,10 @@ export function PromptInputProvider({
   );
 
   const __registerFileInput = useCallback(
-    (ref: RefObject<HTMLInputElement | null>, open: () => void) => {
+    (ref: RefObject<HTMLInputElement | null>, _open: () => void) => {
       fileInputRef.current = ref.current;
-      openRef.current = open;
     },
-    []
+    [fileInputRef]
   );
 
   const controller = useMemo<PromptInputControllerProps>(
@@ -564,139 +504,36 @@ export const PromptInput = ({
   const usingProvider = !!controller;
 
   // Refs
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
 
   // ----- Local attachments (only used when no provider)
-  const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
-  const files = usingProvider ? controller.attachments.files : items;
-
-  // Keep a ref to files for cleanup on unmount (avoids stale closure)
-  const filesRef = useRef(files);
-  filesRef.current = files;
-
-  const openFileDialogLocal = useCallback(() => {
-    inputRef.current?.click();
-  }, []);
-
-  const matchesAccept = useCallback(
-    (f: File) => {
-      if (!accept || accept.trim() === "") {
-        return true;
-      }
-
-      const patterns = accept
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      return patterns.some((pattern) => {
-        if (pattern.endsWith("/*")) {
-          const prefix = pattern.slice(0, -1); // e.g: image/* -> image/
-          return f.type.startsWith(prefix);
-        }
-        return f.type === pattern;
-      });
-    },
-    [accept]
-  );
-
-  const addLocal = useCallback(
-    (fileList: File[] | FileList) => {
-      const incoming = Array.from(fileList);
-      const accepted = incoming.filter((f) => matchesAccept(f));
-      if (incoming.length && accepted.length === 0) {
-        onError?.({
-          code: "accept",
-          message: "No files match the accepted types.",
-        });
-        return;
-      }
-      const withinSize = (f: File) =>
-        maxFileSize ? f.size <= maxFileSize : true;
-      const sized = accepted.filter(withinSize);
-      if (accepted.length > 0 && sized.length === 0) {
-        onError?.({
-          code: "max_file_size",
-          message: "All files exceed the maximum size.",
-        });
-        return;
-      }
-
-      setItems((prev) => {
-        const capacity =
-          typeof maxFiles === "number"
-            ? Math.max(0, maxFiles - prev.length)
-            : undefined;
-        const capped =
-          typeof capacity === "number" ? sized.slice(0, capacity) : sized;
-        if (typeof capacity === "number" && sized.length > capacity) {
-          onError?.({
-            code: "max_files",
-            message: "Too many files. Some were not added.",
-          });
-        }
-        const next: (FileUIPart & { id: string })[] = [];
-        for (const file of capped) {
-          next.push({
-            id: nanoid(),
-            type: "file",
-            url: URL.createObjectURL(file),
-            mediaType: file.type,
-            filename: file.name,
-          });
-        }
-        return prev.concat(next);
-      });
-    },
-    [matchesAccept, maxFiles, maxFileSize, onError]
-  );
-
-  const removeLocal = useCallback(
-    (id: string) =>
-      setItems((prev) => {
-        const found = prev.find((file) => file.id === id);
-        if (found?.url) {
-          URL.revokeObjectURL(found.url);
-        }
-        return prev.filter((file) => file.id !== id);
-      }),
-    []
-  );
-
-  const clearLocal = useCallback(
-    () =>
-      setItems((prev) => {
-        for (const file of prev) {
-          if (file.url) {
-            URL.revokeObjectURL(file.url);
-          }
-        }
-        return [];
-      }),
-    []
-  );
-
-  const add = usingProvider ? controller.attachments.add : addLocal;
-  const remove = usingProvider ? controller.attachments.remove : removeLocal;
-  const clear = usingProvider ? controller.attachments.clear : clearLocal;
+  const localAttachments = usePromptInputAttachmentState({
+    accept,
+    maxFiles,
+    maxFileSize,
+    onError,
+  });
+  const files = usingProvider ? controller.attachments.files : localAttachments.files;
+  const add = usingProvider ? controller.attachments.add : localAttachments.addFiles;
+  const remove = usingProvider ? controller.attachments.remove : localAttachments.removeFile;
+  const clear = usingProvider ? controller.attachments.clear : localAttachments.clearFiles;
   const openFileDialog = usingProvider
     ? controller.attachments.openFileDialog
-    : openFileDialogLocal;
+    : localAttachments.openFileDialog;
 
   // Let provider know about our hidden file input so external menus can call openFileDialog()
   useEffect(() => {
     if (!usingProvider) return;
-    controller.__registerFileInput(inputRef, () => inputRef.current?.click());
-  }, [usingProvider, controller]);
+    controller.__registerFileInput(localAttachments.inputRef, () => localAttachments.inputRef.current?.click());
+  }, [usingProvider, controller, localAttachments.inputRef]);
 
   // Note: File input cannot be programmatically set for security reasons
   // The syncHiddenInput prop is no longer functional
   useEffect(() => {
-    if (syncHiddenInput && inputRef.current && files.length === 0) {
-      inputRef.current.value = "";
+    if (syncHiddenInput && localAttachments.inputRef.current && files.length === 0) {
+      localAttachments.inputRef.current.value = "";
     }
-  }, [files, syncHiddenInput]);
+  }, [files, syncHiddenInput, localAttachments.inputRef]);
 
   // Attach drop handlers on nearest form and document (opt-in)
   useEffect(() => {
@@ -749,18 +586,6 @@ export const PromptInput = ({
     };
   }, [add, globalDrop]);
 
-  useEffect(
-    () => () => {
-      if (!usingProvider) {
-        for (const f of filesRef.current) {
-          if (f.url) URL.revokeObjectURL(f.url);
-        }
-      }
-    },
-     
-    [usingProvider]
-  );
-
   const handleChange: ChangeEventHandler<HTMLInputElement> = (event) => {
     if (event.currentTarget.files) {
       add(event.currentTarget.files);
@@ -793,9 +618,9 @@ export const PromptInput = ({
       remove,
       clear,
       openFileDialog,
-      fileInputRef: inputRef,
+      fileInputRef: localAttachments.inputRef,
     }),
-    [files, add, remove, clear, openFileDialog]
+    [files, add, remove, clear, openFileDialog, localAttachments.inputRef]
   );
 
   const handleSubmit: FormEventHandler<HTMLFormElement> = (event) => {
@@ -870,7 +695,7 @@ export const PromptInput = ({
         className="hidden"
         multiple={multiple}
         onChange={handleChange}
-        ref={inputRef}
+        ref={localAttachments.inputRef}
         title="Upload files"
         type="file"
       />
@@ -925,9 +750,33 @@ export const PromptInputTextarea = ({
   const memoryFilesCtx = useProviderMemoryFiles();
   const [isComposing, setIsComposing] = useState(false);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
   // Auto-focus the textarea when requested or when focusTrigger changes
+  const {
+    textareaRef,
+    containerRef,
+    highlightRef,
+    memoryFiles,
+    recentFiles,
+    visibleFiles,
+    activeMention,
+    cursorCoords,
+    mentionHighlights,
+    syncHighlightScroll,
+    handleMentionSelect,
+    handleMentionClose,
+    handleKeyDown,
+    handlePaste,
+    controlledProps,
+  } = usePromptInputTextareaBehavior({
+    controller,
+    attachments,
+    mentionsCtx,
+    memoryFilesCtx,
+    onChange,
+    onKeyDown: externalOnKeyDown,
+    isComposing,
+  });
+
   useEffect(() => {
     if (autoFocus || focusTrigger !== undefined) {
       // Small delay to ensure the element is fully mounted and visible
@@ -943,218 +792,6 @@ export const PromptInputTextarea = ({
       return () => clearTimeout(timer);
     }
   }, [autoFocus, focusTrigger]);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const highlightRef = useRef<HTMLDivElement>(null);
-
-  const currentValue = controller?.textInput.value ?? "";
-  const memoryFiles = memoryFilesCtx?.files ?? [];
-  const recentFiles = memoryFilesCtx?.recentFiles ?? [];
-  const visibleFiles = memoryFilesCtx?.visibleFiles ?? [];
-
-  // Build mention labels for highlighting (handles multi-word names like "AI Agents")
-  const mentionLabels = useMemo(() => {
-    if (memoryFiles.length === 0) return [];
-    const labels = memoryFiles
-      .map((path) => wikiLabel(path))
-      .map((label) => label.trim())
-      .filter(Boolean);
-    return Array.from(new Set(labels));
-  }, [memoryFiles]);
-
-  const { activeMention, cursorCoords } = useMentionDetection(
-    textareaRef,
-    currentValue,
-    memoryFiles.length > 0
-  );
-
-  // Use proper regex-based highlight segmentation that handles multi-word names
-  const mentionHighlights = useMemo(
-    () => getMentionHighlightSegments(currentValue, activeMention, mentionLabels),
-    [currentValue, activeMention, mentionLabels]
-  );
-
-  // Sync highlight overlay scroll with textarea
-  const syncHighlightScroll = useCallback(() => {
-    const textarea = textareaRef.current;
-    const highlight = highlightRef.current;
-    if (!textarea || !highlight) return;
-    highlight.scrollTop = textarea.scrollTop;
-    highlight.scrollLeft = textarea.scrollLeft;
-  }, []);
-
-  useEffect(() => {
-    syncHighlightScroll();
-  }, [currentValue, mentionHighlights.hasHighlights, syncHighlightScroll]);
-
-  const handleMentionSelect = useCallback(
-    (path: string, displayName: string) => {
-      if (!controller || !activeMention) return;
-
-      // Calculate the text before and after the @query
-      const currentText = controller.textInput.value;
-      const beforeAt = currentText.substring(0, activeMention.triggerIndex);
-      const afterQuery = currentText.substring(
-        activeMention.triggerIndex + 1 + activeMention.query.length
-      );
-
-      // Replace @query with @displayName followed by a space
-      const newText = `${beforeAt}@${displayName} ${afterQuery}`;
-      controller.textInput.setInput(newText);
-
-      // Convert to memory path and add mention
-      const fullPath = toMemoryPath(path);
-      if (fullPath && mentionsCtx) {
-        mentionsCtx.addMention(fullPath, displayName);
-      }
-
-      // Focus back on textarea
-      textareaRef.current?.focus();
-    },
-    [controller, activeMention, mentionsCtx]
-  );
-
-  const handleMentionClose = useCallback(() => {
-    // The popover handles its own closing
-  }, []);
-
-  const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
-    // If mention popover is open, let it handle navigation keys
-    if (activeMention && ["ArrowDown", "ArrowUp", "Tab"].includes(e.key)) {
-      // Don't prevent default here - the popover handles this via document listener
-      return;
-    }
-
-    if (e.key === "Enter") {
-      // If mention popover is open, Enter should select the item
-      if (activeMention) {
-        return;
-      }
-
-      if (isComposing || e.nativeEvent.isComposing) {
-        return;
-      }
-      if (e.shiftKey) {
-        return;
-      }
-      e.preventDefault();
-
-      // Check if the submit button is disabled before submitting
-      const form = e.currentTarget.form;
-      const submitButton = form?.querySelector(
-        'button[type="submit"]'
-      ) as HTMLButtonElement | null;
-      if (submitButton?.disabled) {
-        return;
-      }
-
-      form?.requestSubmit();
-    }
-
-    // Handle backspace to delete entire mention at once
-    if (e.key === "Backspace") {
-      const textarea = e.currentTarget;
-      const cursorPos = textarea.selectionStart;
-      const selectionEnd = textarea.selectionEnd;
-      const textValue = controller?.textInput.value ?? textarea.value;
-
-      // Only handle if no text is selected (cursor is at a single position)
-      if (cursorPos === selectionEnd) {
-        // Check if cursor is right after a mention
-        for (const label of mentionLabels) {
-          const mentionText = `@${label}`;
-          const startPos = cursorPos - mentionText.length;
-          if (startPos >= 0) {
-            const textBefore = textValue.substring(startPos, cursorPos);
-            if (textBefore === mentionText) {
-              // Check if it's at word boundary (start of string or preceded by whitespace)
-              if (startPos === 0 || /\s/.test(textValue[startPos - 1])) {
-                e.preventDefault();
-                const newText = textValue.substring(0, startPos) + textValue.substring(cursorPos);
-                if (controller) {
-                  controller.textInput.setInput(newText);
-                } else {
-                  // Fallback: directly set textarea value and trigger change
-                  textarea.value = newText;
-                  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-                // Remove the mention from state
-                if (mentionsCtx) {
-                  const mentionToRemove = mentionsCtx.mentions.find(m => m.displayName === label);
-                  if (mentionToRemove) {
-                    mentionsCtx.removeMention(mentionToRemove.id);
-                  }
-                }
-                // Set cursor position after React updates
-                setTimeout(() => {
-                  textarea.selectionStart = startPos;
-                  textarea.selectionEnd = startPos;
-                }, 0);
-                return;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Remove last attachment when Backspace is pressed and textarea is empty
-    if (
-      e.key === "Backspace" &&
-      e.currentTarget.value === "" &&
-      attachments.files.length > 0
-    ) {
-      e.preventDefault();
-      const lastAttachment = attachments.files.at(-1);
-      if (lastAttachment) {
-        attachments.remove(lastAttachment.id);
-      }
-    }
-
-    // Close mention popover on Escape
-    if (e.key === "Escape" && activeMention) {
-      // Let the popover handle this
-      return;
-    }
-
-    // Call external handler if provided
-    externalOnKeyDown?.(e);
-  };
-
-  const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
-    const items = event.clipboardData?.items;
-
-    if (!items) {
-      return;
-    }
-
-    const files: File[] = [];
-
-    for (const item of items) {
-      if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file) {
-          files.push(file);
-        }
-      }
-    }
-
-    if (files.length > 0) {
-      event.preventDefault();
-      attachments.add(files);
-    }
-  };
-
-  const controlledProps = controller
-    ? {
-        value: controller.textInput.value,
-        onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
-          controller.textInput.setInput(e.currentTarget.value);
-          onChange?.(e);
-        },
-      }
-    : {
-        onChange,
-      };
 
   return (
     <div ref={containerRef} className="relative flex flex-1 min-w-0">
@@ -1349,60 +986,6 @@ export const PromptInputSubmit = ({
   );
 };
 
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onresult:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any)
-    | null;
-  onerror:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any)
-    | null;
-}
-
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList;
-  resultIndex: number;
-}
-
-type SpeechRecognitionResultList = {
-  readonly length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
-};
-
-type SpeechRecognitionResult = {
-  readonly length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-  isFinal: boolean;
-};
-
-type SpeechRecognitionAlternative = {
-  transcript: string;
-  confidence: number;
-};
-
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: {
-      new (): SpeechRecognition;
-    };
-    webkitSpeechRecognition: {
-      new (): SpeechRecognition;
-    };
-  }
-}
-
 export type PromptInputSpeechButtonProps = ComponentProps<
   typeof PromptInputButton
 > & {
@@ -1416,82 +999,10 @@ export const PromptInputSpeechButton = ({
   onTranscriptionChange,
   ...props
 }: PromptInputSpeechButtonProps) => {
-  const [isListening, setIsListening] = useState(false);
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(
-    null
-  );
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-  useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
-    ) {
-      const SpeechRecognition =
-        window.SpeechRecognition || window.webkitSpeechRecognition;
-      const speechRecognition = new SpeechRecognition();
-
-      speechRecognition.continuous = true;
-      speechRecognition.interimResults = true;
-      speechRecognition.lang = "en-US";
-
-      speechRecognition.onstart = () => {
-        setIsListening(true);
-      };
-
-      speechRecognition.onend = () => {
-        setIsListening(false);
-      };
-
-      speechRecognition.onresult = (event) => {
-        let finalTranscript = "";
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (result.isFinal) {
-            finalTranscript += result[0]?.transcript ?? "";
-          }
-        }
-
-        if (finalTranscript && textareaRef?.current) {
-          const textarea = textareaRef.current;
-          const currentValue = textarea.value;
-          const newValue =
-            currentValue + (currentValue ? " " : "") + finalTranscript;
-
-          textarea.value = newValue;
-          textarea.dispatchEvent(new Event("input", { bubbles: true }));
-          onTranscriptionChange?.(newValue);
-        }
-      };
-
-      speechRecognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        setIsListening(false);
-      };
-
-      recognitionRef.current = speechRecognition;
-      setRecognition(speechRecognition);
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, [textareaRef, onTranscriptionChange]);
-
-  const toggleListening = useCallback(() => {
-    if (!recognition) {
-      return;
-    }
-
-    if (isListening) {
-      recognition.stop();
-    } else {
-      recognition.start();
-    }
-  }, [recognition, isListening]);
+  const { isListening, isSupported, toggleListening } = useSpeechRecognition({
+    textareaRef,
+    onTranscriptionChange,
+  });
 
   return (
     <PromptInputButton
@@ -1500,7 +1011,7 @@ export const PromptInputSpeechButton = ({
         isListening && "animate-pulse bg-accent text-accent-foreground",
         className
       )}
-      disabled={!recognition}
+      disabled={!isSupported}
       onClick={toggleListening}
       {...props}
     >

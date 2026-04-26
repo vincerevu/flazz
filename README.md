@@ -186,7 +186,7 @@ Works with all major LLM providers out of the box:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/flazz.git
+git clone https://github.com/vincerevu/flazz.git
 cd flazz
 
 # Install dependencies
@@ -552,8 +552,8 @@ you may not use this file except in compliance with the License.
 
 ## Community
 
-- **Issues** - [GitHub Issues](https://github.com/yourusername/flazz/issues)
-- **Discussions** - [GitHub Discussions](https://github.com/yourusername/flazz/discussions)
+- **Issues** - [GitHub Issues](https://github.com/vincerevu/flazz/issues)
+- **Discussions** - [GitHub Discussions](https://github.com/vincerevu/flazz/discussions)
 - **Twitter** - [@flazz_ai](https://twitter.com/flazz_ai)
 
 ## Acknowledgments
@@ -571,5 +571,5 @@ Built with amazing open source projects:
 <div align="center">
   Made with love by the Flazz team
   
-  [Star us on GitHub](https://github.com/yourusername/flazz) • [Read the docs](https://github.com/yourusername/flazz/wiki) • [Report a bug](https://github.com/yourusername/flazz/issues)
+  [Star us on GitHub](https://github.com/vincerevu/flazz) • [Read the docs](https://github.com/vincerevu/flazz/wiki) • [Report a bug](https://github.com/vincerevu/flazz/issues)
 </div>

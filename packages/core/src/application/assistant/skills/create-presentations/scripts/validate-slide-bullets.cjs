@@ -152,6 +152,34 @@ function collectNamedArrays(source) {
   return arrays;
 }
 
+function extractStringArray(arraySource) {
+  const items = [];
+  const pattern = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g;
+  let match;
+
+  while ((match = pattern.exec(arraySource)) !== null) {
+    items.push(stripQuoted(match[1]).trim());
+  }
+
+  return items.filter(Boolean);
+}
+
+function collectBulletHelperSets(source) {
+  const namedArrays = collectNamedArrays(source);
+  const sets = [];
+  const callPattern = /addBulletList\(\s*slide\s*,\s*([A-Za-z_$][\w$]*|\[[\s\S]*?\])\s*,/g;
+  let match;
+
+  while ((match = callPattern.exec(source)) !== null) {
+    const ref = match[1].trim();
+    const arraySource = ref.startsWith('[') ? ref : namedArrays.get(ref);
+    if (!arraySource) continue;
+    sets.push(extractStringArray(arraySource));
+  }
+
+  return sets;
+}
+
 function extractSummaryItems(arraySource) {
   const items = [];
   const itemPattern = /\{\s*title\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)?\s*,?\s*body\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)?[\s\S]*?\}/g;
@@ -492,17 +520,38 @@ function collectRelationMaps(source) {
   return maps;
 }
 
+function collectSlideSpecMetadata(source) {
+  const match = source.match(/\bconst\s+slideSpec\s*=\s*\{([\s\S]*?)\};/);
+  if (!match) return null;
+
+  const block = match[1];
+  const getProp = (name) => {
+    const propMatch = block.match(new RegExp(`\\b${name}\\s*:\\s*['"]([^'"]+)['"]`));
+    return propMatch ? propMatch[1].trim() : '';
+  };
+  const indexMatch = block.match(/\bindex\s*:\s*(\d+)/);
+
+  return {
+    type: getProp('type'),
+    title: getProp('title'),
+    layoutFamily: getProp('layoutFamily'),
+    layoutVariant: getProp('layoutVariant'),
+    density: getProp('density'),
+    language: getProp('language'),
+    index: indexMatch ? Number(indexMatch[1]) : null,
+  };
+}
+
 function validateSlideSpec(source, errors) {
   const isContentSlide = /\btype\s*:\s*['"]content['"]/.test(source);
-  if (!isContentSlide) return;
+  if (!isContentSlide) return null;
 
   if (!/\bconst\s+slideSpec\s*=/.test(source)) {
     errors.push('Content slide must define const slideSpec before drawing.');
+    return null;
   }
 
-  const layoutFamilyMatch = source.match(/\blayoutFamily\s*:\s*['"]([^'"]+)['"]/);
-  const densityMatch = source.match(/\bdensity\s*:\s*['"]([^'"]+)['"]/);
-  const layoutVariantMatch = source.match(/\blayoutVariant\s*:\s*['"]([^'"]+)['"]/);
+  const metadata = collectSlideSpecMetadata(source);
   const allowedFamilies = new Set([
     'text-visual',
     'comparison',
@@ -521,21 +570,39 @@ function validateSlideSpec(source, errors) {
   ]);
   const allowedDensities = new Set(['light', 'medium', 'dense']);
 
-  if (!layoutFamilyMatch) {
-    errors.push('Content slideSpec is missing layoutFamily.');
-  } else if (!allowedFamilies.has(layoutFamilyMatch[1])) {
-    errors.push(`Content slideSpec uses unknown layoutFamily "${layoutFamilyMatch[1]}".`);
+  if (!metadata?.title) {
+    errors.push('Content slideSpec is missing title.');
   }
 
-  if (!layoutVariantMatch) {
+  if (!metadata?.index) {
+    errors.push('Content slideSpec is missing a numeric index.');
+  }
+
+  if (!metadata?.language) {
+    errors.push('Content slideSpec is missing language. Lock every content slide to one deck language.');
+  }
+
+  if (!/\bconst\s+contentModel\s*=/.test(source)) {
+    errors.push('Content slide must define const contentModel before calling the layout helper.');
+  }
+
+  if (!metadata?.layoutFamily) {
+    errors.push('Content slideSpec is missing layoutFamily.');
+  } else if (!allowedFamilies.has(metadata.layoutFamily)) {
+    errors.push(`Content slideSpec uses unknown layoutFamily "${metadata.layoutFamily}".`);
+  }
+
+  if (!metadata?.layoutVariant) {
     errors.push('Content slideSpec is missing layoutVariant.');
   }
 
-  if (!densityMatch) {
+  if (!metadata?.density) {
     errors.push('Content slideSpec is missing density.');
-  } else if (!allowedDensities.has(densityMatch[1])) {
-    errors.push(`Content slideSpec uses unknown density "${densityMatch[1]}".`);
+  } else if (!allowedDensities.has(metadata.density)) {
+    errors.push(`Content slideSpec uses unknown density "${metadata.density}".`);
   }
+
+  return metadata;
 }
 
 function validateModuleShape(source, filePath, errors) {
@@ -552,6 +619,14 @@ function validateModuleShape(source, filePath, errors) {
 
   if (/function\s+addBullets\s*\(|const\s+addBullets\s*=|let\s+addBullets\s*=|var\s+addBullets\s*=/.test(source)) {
     errors.push('Do not define a local addBullets helper. Use scripts/pptx-bullet-helpers.cjs addBulletList() instead.');
+  }
+
+  if (!/\bfunction\s+createSlide\s*\(|\bconst\s+createSlide\s*=|\blet\s+createSlide\s*=|\bvar\s+createSlide\s*=/.test(source)) {
+    errors.push('Slide module must define createSlide(pres, theme).');
+  }
+
+  if (!/module\.exports\s*=\s*\{[\s\S]*\bcreateSlide\b/.test(source)) {
+    errors.push('Slide module must export createSlide in module.exports.');
   }
 }
 
@@ -891,14 +966,179 @@ function validateRelationMap(map, errors) {
   validateGenericInfographicItems(map.nodes, errors, 'Relation map node', 2, 6);
 }
 
+function validateLayoutHelperRouting(spec, source, errors) {
+  if (!spec?.layoutFamily) return;
+
+  const familyPatterns = {
+    comparison: /addComparisonCards\s*\(/,
+    timeline: /addProcessTimeline\s*\(/,
+    roadmap: /addRoadmap\s*\(/,
+    hierarchy: /addHierarchyStack\s*\(/,
+    quadrant: /addQuadrantMatrix\s*\(/,
+    relation: /addRelationMap\s*\(/,
+    cycle: /addCycleDiagram\s*\(/,
+    pyramid: /addPyramid\s*\(/,
+    staircase: /addStaircase\s*\(/,
+    boxes: /addBoxGrid\s*\(/,
+    data: /addBarChartWithTakeaways\s*\(/,
+    stats: /addStatCardGrid\s*\(/,
+    media: /addMixedMediaPanel\s*\(/,
+    'text-visual': /addBulletList\s*\(|addSummaryRows\s*\(|addMixedMediaPanel\s*\(/,
+  };
+
+  const requiredPattern = familyPatterns[spec.layoutFamily];
+  if (requiredPattern && !requiredPattern.test(source)) {
+    errors.push(`layoutFamily "${spec.layoutFamily}" must render through its approved helper, not ad hoc addText positioning.`);
+  }
+}
+
+function validateDensityBudget(spec, collected, errors) {
+  if (!spec?.density || !spec?.layoutFamily) return;
+
+  const densityLimits = {
+    light: {
+      bulletItems: 4,
+      summaryRows: 4,
+      processSteps: 4,
+      comparisonItemsPerColumn: 3,
+      dataSeries: 4,
+      dataTakeaways: 2,
+      statCards: 4,
+      mediaBullets: 3,
+      hierarchyNodes: 3,
+      roadmapStages: 3,
+      quadrantItemsPerQuadrant: 2,
+      infographicItems: 4,
+    },
+    medium: {
+      bulletItems: 6,
+      summaryRows: 5,
+      processSteps: 5,
+      comparisonItemsPerColumn: 4,
+      dataSeries: 6,
+      dataTakeaways: 3,
+      statCards: 4,
+      mediaBullets: 4,
+      hierarchyNodes: 4,
+      roadmapStages: 4,
+      quadrantItemsPerQuadrant: 3,
+      infographicItems: 5,
+    },
+    dense: {
+      bulletItems: 8,
+      summaryRows: 6,
+      processSteps: 6,
+      comparisonItemsPerColumn: 5,
+      dataSeries: 8,
+      dataTakeaways: 4,
+      statCards: 6,
+      mediaBullets: 4,
+      hierarchyNodes: 5,
+      roadmapStages: 5,
+      quadrantItemsPerQuadrant: 3,
+      infographicItems: 6,
+    },
+  };
+
+  const limits = densityLimits[spec.density];
+  if (!limits) return;
+
+  if (spec.layoutFamily === 'text-visual') {
+    for (const items of collected.bulletSets) {
+      if (items.length > limits.bulletItems) {
+        errors.push(`text-visual slide uses ${items.length} bullets but density "${spec.density}" allows at most ${limits.bulletItems}. Split the slide or lower density.`);
+      }
+    }
+    for (const rows of collected.summaryRows) {
+      if (rows.length > limits.summaryRows) {
+        errors.push(`text-visual slide uses ${rows.length} summary rows but density "${spec.density}" allows at most ${limits.summaryRows}. Split the slide or reduce rows.`);
+      }
+    }
+  }
+
+  for (const steps of collected.processSteps) {
+    if (steps.length > limits.processSteps) {
+      errors.push(`Process/timeline slide uses ${steps.length} steps but density "${spec.density}" allows at most ${limits.processSteps}.`);
+    }
+  }
+
+  for (const columns of collected.comparisonColumns) {
+    columns.forEach((column, index) => {
+      if (column.items.length > limits.comparisonItemsPerColumn) {
+        errors.push(`Comparison column ${index + 1} has ${column.items.length} items but density "${spec.density}" allows at most ${limits.comparisonItemsPerColumn}.`);
+      }
+    });
+  }
+
+  for (const block of collected.dataBlocks) {
+    if (block.series.length > limits.dataSeries) {
+      errors.push(`Data slide has ${block.series.length} series items but density "${spec.density}" allows at most ${limits.dataSeries}.`);
+    }
+    if (block.takeaways.length > limits.dataTakeaways) {
+      errors.push(`Data slide has ${block.takeaways.length} takeaways but density "${spec.density}" allows at most ${limits.dataTakeaways}.`);
+    }
+  }
+
+  for (const cards of collected.statCards) {
+    if (cards.length > limits.statCards) {
+      errors.push(`Stats slide has ${cards.length} cards but density "${spec.density}" allows at most ${limits.statCards}.`);
+    }
+  }
+
+  for (const panel of collected.mediaPanels) {
+    if (panel.bullets.length > limits.mediaBullets) {
+      errors.push(`Mixed-media slide has ${panel.bullets.length} bullets but density "${spec.density}" allows at most ${limits.mediaBullets}.`);
+    }
+  }
+
+  for (const nodes of collected.hierarchySets) {
+    if (nodes.length > limits.hierarchyNodes) {
+      errors.push(`Hierarchy slide has ${nodes.length} nodes but density "${spec.density}" allows at most ${limits.hierarchyNodes}.`);
+    }
+  }
+
+  for (const stages of collected.roadmapSets) {
+    if (stages.length > limits.roadmapStages) {
+      errors.push(`Roadmap slide has ${stages.length} stages but density "${spec.density}" allows at most ${limits.roadmapStages}.`);
+    }
+  }
+
+  for (const quadrants of collected.quadrantSets) {
+    quadrants.forEach((quadrant, index) => {
+      if (quadrant.items.length > limits.quadrantItemsPerQuadrant) {
+        errors.push(`Quadrant ${index + 1} has ${quadrant.items.length} items but density "${spec.density}" allows at most ${limits.quadrantItemsPerQuadrant}.`);
+      }
+    });
+  }
+
+  const infographicSets = [
+    ...collected.cycleSets,
+    ...collected.pyramidSets,
+    ...collected.staircaseSets,
+    ...collected.boxGridSets,
+  ];
+  for (const items of infographicSets) {
+    if (items.length > limits.infographicItems) {
+      errors.push(`Infographic slide has ${items.length} items but density "${spec.density}" allows at most ${limits.infographicItems}.`);
+    }
+  }
+
+  for (const map of collected.relationMaps) {
+    if (map.nodes.length > limits.infographicItems) {
+      errors.push(`Relation map has ${map.nodes.length} nodes but density "${spec.density}" allows at most ${limits.infographicItems}.`);
+    }
+  }
+}
+
 function validateSlide(filePath) {
   const source = fs.readFileSync(filePath, 'utf8');
   const errors = [];
 
   validateModuleShape(source, filePath, errors);
   validateThemeContract(source, errors);
-  validateSlideSpec(source, errors);
+  const slideSpec = validateSlideSpec(source, errors);
   validateLanguageConsistency(source, errors);
+  validateLayoutHelperRouting(slideSpec, source, errors);
 
   const fakeBulletPatterns = [
     /\b[A-Za-z_$][\w$]*\.addText\(\s*(['"`])\s*[•✓]\s*\1\s*\+/g,
@@ -909,6 +1149,8 @@ function validateSlide(filePath) {
   if (fakeBulletPatterns.some((pattern) => pattern.test(source))) {
     errors.push('Found typed bullet characters inside slide.addText(). Use PptxGenJS bullet formatting instead.');
   }
+
+  const bulletSets = collectBulletHelperSets(source);
 
   for (const block of collectArrayBlocks(source)) {
     const bulletEntries = collectBulletEntries(block);
@@ -930,61 +1172,93 @@ function validateSlide(filePath) {
     }
   }
 
-  for (const summaryRows of collectSummaryRowSets(source)) {
+  const summaryRowSets = collectSummaryRowSets(source);
+  for (const summaryRows of summaryRowSets) {
     validateSummaryRows(summaryRows, errors);
   }
 
-  for (const processSteps of collectProcessStepSets(source)) {
+  const processStepSets = collectProcessStepSets(source);
+  for (const processSteps of processStepSets) {
     validateProcessSteps(processSteps, errors);
   }
 
-  for (const comparisonColumns of collectComparisonSets(source)) {
+  const comparisonSets = collectComparisonSets(source);
+  for (const comparisonColumns of comparisonSets) {
     validateComparisonColumns(comparisonColumns, errors);
   }
 
-  for (const dataBlock of extractDataBlocks(source)) {
+  const dataBlocks = extractDataBlocks(source);
+  for (const dataBlock of dataBlocks) {
     validateDataBlock(dataBlock, errors);
   }
 
-  for (const statCards of collectStatCardSets(source)) {
+  const statCardSets = collectStatCardSets(source);
+  for (const statCards of statCardSets) {
     validateStatCards(statCards, errors);
   }
 
-  for (const mediaPanel of collectMediaPanels(source)) {
+  const mediaPanels = collectMediaPanels(source);
+  for (const mediaPanel of mediaPanels) {
     validateMediaPanel(mediaPanel, errors);
   }
 
-  for (const hierarchyNodes of collectHierarchySets(source)) {
+  const hierarchySets = collectHierarchySets(source);
+  for (const hierarchyNodes of hierarchySets) {
     validateHierarchyNodes(hierarchyNodes, errors);
   }
 
-  for (const roadmapStages of collectRoadmapSets(source)) {
+  const roadmapSets = collectRoadmapSets(source);
+  for (const roadmapStages of roadmapSets) {
     validateRoadmapStages(roadmapStages, errors);
   }
 
-  for (const quadrants of collectQuadrantSets(source)) {
+  const quadrantSets = collectQuadrantSets(source);
+  for (const quadrants of quadrantSets) {
     validateQuadrants(quadrants, errors);
   }
 
-  for (const relationMap of collectRelationMaps(source)) {
+  const relationMaps = collectRelationMaps(source);
+  for (const relationMap of relationMaps) {
     validateRelationMap(relationMap, errors);
   }
 
-  for (const items of collectGenericInfographicSets(source, 'addCycleDiagram')) {
+  const cycleSets = collectGenericInfographicSets(source, 'addCycleDiagram');
+  for (const items of cycleSets) {
     validateGenericInfographicItems(items, errors, 'Cycle diagram', 3, 6);
   }
 
-  for (const items of collectGenericInfographicSets(source, 'addPyramid')) {
+  const pyramidSets = collectGenericInfographicSets(source, 'addPyramid');
+  for (const items of pyramidSets) {
     validateGenericInfographicItems(items, errors, 'Pyramid', 3, 5);
   }
 
-  for (const items of collectGenericInfographicSets(source, 'addStaircase')) {
+  const staircaseSets = collectGenericInfographicSets(source, 'addStaircase');
+  for (const items of staircaseSets) {
     validateGenericInfographicItems(items, errors, 'Staircase', 3, 5);
   }
 
-  for (const items of collectGenericInfographicSets(source, 'addBoxGrid')) {
+  const boxGridSets = collectGenericInfographicSets(source, 'addBoxGrid');
+  for (const items of boxGridSets) {
     validateGenericInfographicItems(items, errors, 'Box grid', 2, 6);
   }
+
+  validateDensityBudget(slideSpec, {
+    bulletSets,
+    summaryRows: summaryRowSets,
+    processSteps: processStepSets,
+    comparisonColumns: comparisonSets,
+    dataBlocks,
+    statCards: statCardSets,
+    mediaPanels,
+    hierarchySets,
+    roadmapSets,
+    quadrantSets,
+    relationMaps,
+    cycleSets,
+    pyramidSets,
+    staircaseSets,
+    boxGridSets,
+  }, errors);
 
   if (errors.length) {
     const relative = path.relative(process.cwd(), filePath) || filePath;

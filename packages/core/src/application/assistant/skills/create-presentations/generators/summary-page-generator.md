@@ -95,7 +95,7 @@ You determine the optimal layout based on the content provided. The most effecti
 Preferred structured recap pattern:
 
 ```javascript
-const { addSummaryRows } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-summary-helpers.cjs");
+const { addSummaryRows } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-summary-helpers.cjs");
 
 const takeawayItems = [
   { title: "Water has three states", body: "Solid, liquid, and gas each appear in daily life." },
@@ -137,5 +137,5 @@ Only bypass the helper for centered thank-you layouts or intentionally custom vi
 2. **Choose Layout**: Select the most appropriate layout based on content type
 3. **Normalize takeaways**: Split dense text into short takeaway rows before coding. Prefer `{ title, body }[]` for recap rows.
 4. **Write Slide**: Use slide-making-skill. Use `addSummaryRows()` or `addBulletList()` for structured row layouts. Use shapes for decorative elements. **MUST include page number badge.**
-5. **Validate source**: Run `node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-XX.js` before preview. If it fails, split dense bullets and add missing `breakLine: true`.
-6. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.
+5. **Validate source**: Run `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs" slides/slide-XX.js` before preview. If it fails, split dense bullets and add missing `breakLine: true`.
+6. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.

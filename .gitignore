@@ -7,10 +7,14 @@ dist/
 **/dist/
 .package/
 **/.package/
+release/
+**/release/
 
 *.log
 *.stdout.log
 *.stderr.log
+__pycache__/
+*.pyc
 
 .DS_Store
 Thumbs.db

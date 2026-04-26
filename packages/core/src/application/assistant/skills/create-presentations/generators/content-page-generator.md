@@ -38,6 +38,16 @@ Before writing any visible text, identify the deck's primary language from the u
 - If a concept needs a foreign-language synonym, put it in speaker notes, not on the slide.
 - Use at most one icon/emoji per visible item. Never prepend a title or card label with an icon cluster such as `👶👧👦👨`; choose one icon or use a simple shape marker.
 
+## Overflow Rules
+
+Before coding, sanity-check whether the content can fit at readable sizes.
+
+- Do not build a slide that only works if body text becomes tiny.
+- `fit: "shrink"` is allowed for long titles and very short labels only. It is not the main fix for crowded body text, dense tables, or long comparison rows.
+- If one column would contain examples, tool names, or multi-line labels, do not squeeze it into a narrow table edge. Turn it into cards, a footer row, or a follow-up slide.
+- If the slide would need more than 3 text-heavy columns, strongly prefer a different layout family or split the content across two slides.
+- Preserve readability over density. A clean two-slide explanation is better than one overflowing slide.
+
 ### 1. Text
 - Bullets, quotes, or short paragraphs
 - Must still include icons or SVG shapes for visual interest — never plain text only
@@ -57,7 +67,7 @@ Before writing any visible text, identify the deck's primary language from the u
 - Image on one side, text on the other
 - Do not handcraft ordinary image + text panels
 - First normalize the content into `{ imagePath, title?, bullets?, caption? }`
-- Render with `addMixedMediaPanel()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-media-helpers.cjs`
+- Render with `addMixedMediaPanel()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-media-helpers.cjs`
 - Layout options:
   ```
   |  SLIDE TITLE                          |
@@ -70,7 +80,7 @@ Before writing any visible text, identify the deck's primary language from the u
 Preferred mixed-media pattern:
 
 ```javascript
-const { addMixedMediaPanel } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-media-helpers.cjs");
+const { addMixedMediaPanel } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-media-helpers.cjs");
 
 const mediaPanel = {
   imagePath: "./imgs/water-cycle.png",
@@ -99,7 +109,7 @@ addMixedMediaPanel(slide, mediaPanel, {
 - Must include data source
 - Do not handcraft standard chart blocks for normal data slides
 - First normalize the content into `{ series, takeaways, source }`
-- Render with `addBarChartWithTakeaways()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-data-helpers.cjs`
+- Render with `addBarChartWithTakeaways()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-data-helpers.cjs`
 - Layout options:
   ```
   |  SLIDE TITLE                          |
@@ -113,7 +123,7 @@ addMixedMediaPanel(slide, mediaPanel, {
 Preferred data pattern:
 
 ```javascript
-const { addBarChartWithTakeaways } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-data-helpers.cjs");
+const { addBarChartWithTakeaways } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-data-helpers.cjs");
 
 const chartData = {
   series: [
@@ -143,7 +153,7 @@ addBarChartWithTakeaways(slide, chartData, {
 - Clear visual distinction between the two sides
 - Do not handcraft standard comparison cards for normal A-vs-B slides
 - First normalize the content into exactly two columns: `{ title, items }[]`
-- Render with `addComparisonCards()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-comparison-helpers.cjs`
+- Render with `addComparisonCards()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-comparison-helpers.cjs`
 - Layout options:
   ```
   |  SLIDE TITLE                          |
@@ -157,7 +167,7 @@ addBarChartWithTakeaways(slide, chartData, {
 Preferred comparison pattern:
 
 ```javascript
-const { addComparisonCards } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-comparison-helpers.cjs");
+const { addComparisonCards } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-comparison-helpers.cjs");
 
 const columns = [
   { title: "Option A", items: ["Detail 1", "Detail 2", "Detail 3"] },
@@ -174,12 +184,14 @@ addComparisonCards(slide, columns, {
 }, theme);
 ```
 
+If the source naturally forms 3-4 categories with multi-line descriptions, do not force them into one wide table. Convert them into compact cards, reduce the number of columns, or split the comparison into two slides.
+
 ### 5. Timeline / Process
 - Steps with arrows, journey, or phases
 - Numbered steps with connectors
 - Do not handcraft process nodes or arrows for normal process slides
 - First normalize the content into `steps[]`
-- Render with `addProcessTimeline()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-process-helpers.cjs`
+- Render with `addProcessTimeline()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-process-helpers.cjs`
 - Layout options:
   ```
   |  SLIDE TITLE                          |
@@ -191,7 +203,7 @@ addComparisonCards(slide, columns, {
 Preferred process pattern:
 
 ```javascript
-const { addProcessTimeline } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-process-helpers.cjs");
+const { addProcessTimeline } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-process-helpers.cjs");
 
 const steps = [
   { label: "Step 1", caption: "Short explanation" },
@@ -213,12 +225,12 @@ addProcessTimeline(slide, steps, {
 - Future plan, maturity path, rollout, or strategy phases
 - Do not handcraft roadmap cards for normal phase slides
 - First normalize the content into `{ tag?, label, caption }[]`
-- Render with `addRoadmap()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-roadmap-helpers.cjs`
+- Render with `addRoadmap()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-roadmap-helpers.cjs`
 
 Preferred roadmap pattern:
 
 ```javascript
-const { addRoadmap } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-roadmap-helpers.cjs");
+const { addRoadmap } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-roadmap-helpers.cjs");
 
 const roadmapStages = [
   { tag: "Now", label: "Understand", caption: "Map the current situation and constraints." },
@@ -241,12 +253,12 @@ addRoadmap(slide, roadmapStages, {
 - Layers, categories, systems, or concept breakdowns
 - Do not flatten hierarchical content into one long bullet list
 - First normalize the content into `{ title, detail? }[]`
-- Render with `addHierarchyStack()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-hierarchy-helpers.cjs`
+- Render with `addHierarchyStack()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-hierarchy-helpers.cjs`
 
 Preferred hierarchy pattern:
 
 ```javascript
-const { addHierarchyStack } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-hierarchy-helpers.cjs");
+const { addHierarchyStack } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-hierarchy-helpers.cjs");
 
 const hierarchyNodes = [
   { title: "Core concept", detail: "The highest-level idea the slide explains." },
@@ -268,12 +280,12 @@ addHierarchyStack(slide, hierarchyNodes, {
 - 2x2 frameworks, prioritization, impact/effort, or positioning maps
 - Do not handcraft four boxes for ordinary quadrant slides
 - First normalize the content into exactly four quadrants
-- Render with `addQuadrantMatrix()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-quadrant-helpers.cjs`
+- Render with `addQuadrantMatrix()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-quadrant-helpers.cjs`
 
 Preferred quadrant pattern:
 
 ```javascript
-const { addQuadrantMatrix } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-quadrant-helpers.cjs");
+const { addQuadrantMatrix } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-quadrant-helpers.cjs");
 
 const quadrants = [
   { title: "High impact / Low effort", items: ["Quick wins", "Immediate adoption"] },
@@ -298,12 +310,12 @@ addQuadrantMatrix(slide, quadrants, {
 - Ecosystems, dependency maps, hub-and-spoke systems, connected concepts
 - Do not render relation content as plain boxes or bullets
 - First normalize into `{ center: { title, detail? }, nodes: { title, detail? }[] }`
-- Render with `addRelationMap()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs`
+- Render with `addRelationMap()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-infographic-helpers.cjs`
 
 Preferred relation pattern:
 
 ```javascript
-const { addRelationMap } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs");
+const { addRelationMap } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-infographic-helpers.cjs");
 
 const relationData = {
   center: { title: "Core system", detail: "Main organizing idea" },
@@ -328,22 +340,23 @@ addRelationMap(slide, relationData, {
 - Lifecycle, repeating process, feedback loop, or flywheel
 - Use only when the final stage loops back to the first
 - First normalize into `{ title, detail? }[]`
-- Render with `addCycleDiagram()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs`
+- Render with `addCycleDiagram()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-infographic-helpers.cjs`
 
 ### 11. Pyramid
 - Layered priority, maturity model, foundation-to-peak hierarchy, or funnel-like concept stack
 - First normalize into `{ title, detail? }[]`
-- Render with `addPyramid()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs`
+- Render with `addPyramid()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-infographic-helpers.cjs`
 
 ### 12. Staircase
 - Stepwise maturity, progressive improvement, increasing capability, or learning path
 - First normalize into `{ title, detail? }[]`
-- Render with `addStaircase()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs`
+- Render with `addStaircase()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-infographic-helpers.cjs`
 
 ### 13. Boxes
 - Feature groups, non-ordered categories, capability cards, or general concept grids
 - First normalize into `{ title, detail? }[]`
-- Render with `addBoxGrid()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-infographic-helpers.cjs`
+- Render with `addBoxGrid()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-infographic-helpers.cjs`
+- This is often the safest fallback when a comparison table is overflowing but the content does not imply chronology.
 
 ### 14. Image Showcase
 - Hero image, gallery, or visual-first layout
@@ -363,13 +376,13 @@ addRelationMap(slide, relationData, {
 - Best when the source material has 2-6 standalone metrics
 - Do not handcraft ordinary stat cards or metric boxes
 - First normalize the content into `{ value, label, detail? }[]`
-- Render with `addStatCardGrid()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-stat-helpers.cjs`
+- Render with `addStatCardGrid()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-stat-helpers.cjs`
 - Use 2x2 or 3-up card grids for compact metric storytelling
 
 Preferred stat-grid pattern:
 
 ```javascript
-const { addStatCardGrid } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-stat-helpers.cjs");
+const { addStatCardGrid } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-stat-helpers.cjs");
 
 const statCards = [
   { value: "71%", label: "Earth's surface covered by water", detail: "Most of it is ocean water." },
@@ -405,13 +418,14 @@ addStatCardGrid(slide, statCards, {
 3. **Visual elements required** — every content slide must have at least one non-text element (image, one-icon marker, chart, or SVG shape)
 4. **Breathing room** — 0.5" minimum margins, 0.3-0.5" between content blocks
 5. **One bullet = one idea** — if the source has 3 facts, produce 3 bullets or separate paragraphs, not one oversized bullet
+6. **Overflow is a layout problem first** — reduce columns, switch layout family, or split slides before shrinking body text
 
 ## Bullet Rules (Mandatory)
 
 - Never type bullet characters directly in the text content: no `•`, `*`, `-`, or `✓` as fake bullets
 - Do not handcraft bullet text runs for normal content slides
 - First normalize the content into a plain `string[]`
-- Render that array with `addBulletList()` from `packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-bullet-helpers.cjs`
+- Render that array with `addBulletList()` from `%FLAZZ_SKILL_ROOT%\create-presentations\scripts\pptx-bullet-helpers.cjs`
 - Use one bullet per idea
 - If a point contains a lead label and an explanation, split it into either:
   - one short bullet, or
@@ -421,7 +435,7 @@ addStatCardGrid(slide, statCards, {
 Correct pattern:
 
 ```javascript
-const { addBulletList } = require("../packages/core/src/application/assistant/skills/create-presentations/scripts/pptx-bullet-helpers.cjs");
+const { addBulletList } = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-bullet-helpers.cjs");
 
 const bulletItems = [
   "72% of businesses have deployed AI",
@@ -479,5 +493,5 @@ Structured generation rule:
 2. **Choose Layout Family**: Select `layoutFamily`, `layoutVariant`, and `density` before code
 3. **Normalize text units**: Split dense source paragraphs into slide-sized structured arrays/objects before coding
 4. **Write Slide**: Use the matching helper when one exists. Use shapes for charts, decorative elements, and icons. **MUST include page number badge.**
-5. **Validate source**: Run `node packages/core/src/application/assistant/skills/create-presentations/scripts/validate-slide-bullets.cjs slides/slide-XX.js` before preview. If it fails, fix the slideSpec, helper data, dense bullets, or missing `breakLine: true`.
-6. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index like 01, 02). Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.
+5. **Validate source**: Run `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs" slides/slide-XX.js` before preview. If it fails, fix the slideSpec, helper data, dense bullets, or missing `breakLine: true`.
+6. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index like 01, 02). Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.

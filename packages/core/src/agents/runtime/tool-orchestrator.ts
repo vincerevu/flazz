@@ -151,8 +151,13 @@ export async function* executeToolOrchestrator({
     try {
         result = await execTool(agent.tools![toolCall.toolName], toolCall.arguments, { runId, signal, abortRegistry });
     } catch (err) {
-        emitLog("error", "tool call error", { toolCallId, toolName: toolCall.toolName, error: err instanceof Error ? err.message : String(err) });
-        throw err;
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        emitLog("error", "tool call error", { toolCallId, toolName: toolCall.toolName, error: errorMessage });
+        result = {
+            success: false,
+            code: "tool_execution_failed",
+            error: errorMessage,
+        };
     }
 
     const resultPayload = result === undefined ? null : result;

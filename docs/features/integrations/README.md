@@ -545,4 +545,4 @@ Settings → Integrations → [Service] → Test Connection
 
 - [Composio Docs](https://docs.composio.dev/) - Composio help
 - [MCP Docs](https://modelcontextprotocol.io/) - MCP help
-- [GitHub Issues](https://github.com/yourusername/flazz/issues) - Report bugs
+- [GitHub Issues](https://github.com/vincerevu/flazz/issues) - Report bugs

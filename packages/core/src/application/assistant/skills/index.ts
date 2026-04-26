@@ -10,6 +10,8 @@ import organizeFilesSkill from "./organize-files/skill.js";
 import slackSkill from "./slack/skill.js";
 import backgroundAgentsSkill from "./background-agents/skill.js";
 import createPresentationsSkill from "./create-presentations/skill.js";
+import createDocumentsSkill from "./create-documents/skill.js";
+import createSpreadsheetsSkill from "./create-spreadsheets/skill.js";
 import webSearchSkill from "./web-search/skill.js";
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -30,9 +32,21 @@ export type ResolvedSkill = {
 
 export const builtInSkillDefinitions: SkillDefinition[] = [
   {
+    id: "create-documents",
+    title: "Create Documents",
+    summary: "Create and edit formal document artifacts such as reports, proposals, memos, and long-form deliverables using the dedicated DOCX workflow. Use this for document-style output and PDF-style requests that should be handled as documents rather than slides.",
+    content: createDocumentsSkill,
+  },
+  {
+    id: "create-spreadsheets",
+    title: "Create Spreadsheets",
+    summary: "Create and edit spreadsheet artifacts such as .xlsx reports, KPI tables, financial models, and tabular exports using the built-in workbook renderer for new files and XML-safe workflows for existing workbooks.",
+    content: createSpreadsheetsSkill,
+  },
+  {
     id: "create-presentations",
     title: "Create Presentations",
-    summary: "Create and edit native PowerPoint slide decks from natural language requests using workspace context, template editing workflows, and PptxGenJS generation.",
+    summary: "Create and edit native PowerPoint slide decks from natural language requests using workspace context, template editing workflows, and PptxGenJS generation with Node-based QA.",
     content: createPresentationsSkill,
   },
   {

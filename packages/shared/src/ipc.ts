@@ -370,6 +370,25 @@ const ipcSchemas = {
       success: z.literal(true),
     }),
   },
+  'models:getCapabilityStatus': {
+    req: z.null(),
+    res: z.object({
+      syncedAt: z.iso.datetime(),
+      source: z.literal('models.dev'),
+      sourceFetchedAt: z.iso.datetime().optional(),
+      providerCount: z.number().int().nonnegative(),
+    }),
+  },
+  'models:refreshCapabilities': {
+    req: z.null(),
+    res: z.object({
+      success: z.literal(true),
+      syncedAt: z.iso.datetime(),
+      source: z.literal('models.dev'),
+      sourceFetchedAt: z.iso.datetime().optional(),
+      providerCount: z.number().int().nonnegative(),
+    }),
+  },
   'oauth:connect': {
     req: z.object({
       provider: z.string(),

@@ -4,6 +4,9 @@ import { AssistantMessage, MessageList, ToolMessage } from "@flazz/shared";
 export const EMPTY_ASSISTANT_FALLBACK_TEXT =
     "The selected model returned no visible output for the last step. Please retry or switch to a different model/provider.";
 
+export const RATE_LIMIT_ASSISTANT_FALLBACK_TEXT =
+    "The selected model hit a rate limit or quota limit for this request. Please retry later, switch to another model/provider, or add credits if this route requires them.";
+
 function getAssistantText(message: z.infer<typeof AssistantMessage>): string {
     if (typeof message.content === "string") {
         return message.content.trim();

@@ -4,13 +4,16 @@
 
 const path = require('path');
 const pkg = require('./package.json');
+const { createPackage } = require('@electron/asar');
 
 module.exports = {
+    outDir: path.resolve(__dirname, '../../release'),
     packagerConfig: {
         executableName: 'Flazz',
         icon: './icons/icon',  // .icns extension added automatically
         appBundleId: 'com.flazz.app',
         appCategoryType: 'public.app-category.productivity',
+        prebuiltAsar: path.join(__dirname, '.package', 'app.asar'),
         osxSign: {
             batchCodesignCalls: true,
         },
@@ -19,17 +22,6 @@ module.exports = {
             appleIdPassword: process.env.APPLE_PASSWORD,
             teamId: process.env.APPLE_TEAM_ID
         },
-        // Since we bundle everything with esbuild, we don't need node_modules at all.
-        // These settings prevent Forge's dependency walker (flora-colossus) from trying
-        // to analyze/copy node_modules, which fails with pnpm's symlinked workspaces.
-        prune: false,
-        ignore: [
-            /src\//,
-            /node_modules\//,
-            /.gitignore/,
-            /bundle\.mjs/,
-            /tsconfig.json/,
-        ],
     },
     makers: [
         {
@@ -96,6 +88,8 @@ module.exports = {
             const fs = require('fs');
 
             const packageDir = path.join(__dirname, '.package');
+            const appDir = path.join(packageDir, 'app');
+            const asarPath = path.join(packageDir, 'app.asar');
 
             // Clean staging directory (ensures fresh build every time)
             console.log('Cleaning staging directory...');
@@ -103,6 +97,7 @@ module.exports = {
                 fs.rmSync(packageDir, { recursive: true });
             }
             fs.mkdirSync(packageDir, { recursive: true });
+            fs.mkdirSync(appDir, { recursive: true });
 
             // Build order matters! Dependencies must be built before dependents:
             // shared → core → (renderer, preload, main)
@@ -137,7 +132,7 @@ module.exports = {
 
             // Build main (TypeScript compilation) - depends on core, shared
             console.log('Building main (tsc)...');
-            execSync('pnpm run build', {
+            execSync('pnpm run build:tsc', {
                 cwd: __dirname,
                 stdio: 'inherit'
             });
@@ -149,21 +144,39 @@ module.exports = {
                 stdio: 'inherit'
             });
 
+            const minimalPackageJson = {
+                name: 'flazz',
+                productName: 'Flazz',
+                version: pkg.version,
+                author: 'Flazzlabs',
+                main: 'dist/main.cjs',
+            };
+            fs.writeFileSync(path.join(appDir, 'package.json'), JSON.stringify(minimalPackageJson, null, 2));
+
+            // Copy bundled main entry into staging app
+            console.log('Copying main bundle...');
+            const mainDest = path.join(appDir, 'dist');
+            fs.mkdirSync(mainDest, { recursive: true });
+            fs.copyFileSync(path.join(packageDir, 'dist', 'main.cjs'), path.join(mainDest, 'main.cjs'));
+
             // Copy preload dist into staging directory
             console.log('Copying preload...');
             const preloadSrc = path.join(__dirname, '../preload/dist');
-            const preloadDest = path.join(packageDir, 'preload/dist');
+            const preloadDest = path.join(appDir, 'preload/dist');
             fs.mkdirSync(preloadDest, { recursive: true });
             fs.cpSync(preloadSrc, preloadDest, { recursive: true });
 
             // Copy renderer dist into staging directory
             console.log('Copying renderer...');
             const rendererSrc = path.join(__dirname, '../renderer/dist');
-            const rendererDest = path.join(packageDir, 'renderer/dist');
+            const rendererDest = path.join(appDir, 'renderer/dist');
             fs.mkdirSync(rendererDest, { recursive: true });
             fs.cpSync(rendererSrc, rendererDest, { recursive: true });
 
-            console.log('✅ All assets staged in .package/');
+            console.log('Creating prebuilt asar...');
+            await createPackage(appDir, asarPath);
+
+            console.log('✅ Prebuilt app.asar ready in .package/');
         },
     }
 };

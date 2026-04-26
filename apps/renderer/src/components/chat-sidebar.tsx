@@ -1,33 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Maximize2, Minimize2, SquarePen } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ScrollPositionPreserver,
-} from '@/components/ai-elements/conversation'
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
 import { ContextCompactionCard } from '@/components/ai-elements/context-compaction'
-import { Shimmer } from '@/components/ai-elements/shimmer'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { WebSearchResult } from '@/components/ai-elements/web-search-result'
-import { PermissionRequest } from '@/components/ai-elements/permission-request'
-import { AskHumanRequest } from '@/components/ai-elements/ask-human-request'
-import { Suggestions } from '@/components/ai-elements/suggestions'
 import { type PromptInputMessage, type FileMention } from '@/components/ai-elements/prompt-input'
 import { FileCardProvider } from '@/contexts/file-card-context'
 import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
-import { TabBar, type ChatTab } from '@/components/tab-bar'
-import { ChatInputWithMentions, type StagedAttachment } from '@/components/chat-input-with-mentions'
+import { type ChatTab } from '@/components/tab-bar'
+import { ChatSidebarHeader } from '@/components/chat-sidebar-header'
+import { ChatSidebarInputPanels } from '@/components/chat-sidebar-input-panels'
+import { type StagedAttachment } from '@/components/chat-input-with-mentions'
 import { ChatMessageAttachments } from '@/components/chat-message-attachments'
+import { ChatSidebarConversationPanel } from '@/components/chat-sidebar-conversation-panel'
 import { wikiLabel } from '@/lib/wiki-links'
 import {
   type ChatTabViewState,
@@ -89,6 +79,7 @@ interface ChatSidebarProps {
   onOpenFullScreen?: () => void
   conversation: ConversationItem[]
   currentAssistantMessage: string
+  runStatus?: ChatTabViewState['runStatus']
   modelUsage?: import('ai').LanguageModelUsage | null
   modelUsageUpdatedAt?: number | null
   chatTabStates?: Record<string, ChatTabViewState>
@@ -125,10 +116,11 @@ export function ChatSidebar({
   isChatTabProcessing,
   onSwitchChatTab,
   onCloseChatTab,
-  onNewChatTab,
+  onNewChatTab: _onNewChatTab,
   onOpenFullScreen,
   conversation,
   currentAssistantMessage,
+  runStatus = null,
   modelUsage = null,
   modelUsageUpdatedAt = null,
   chatTabStates = {},
@@ -243,6 +235,7 @@ export function ChatSidebar({
     runId: runId ?? null,
     conversation,
     currentAssistantMessage,
+    runStatus,
     modelUsage,
     modelUsageUpdatedAt,
     pendingAskHumanRequests,
@@ -252,6 +245,7 @@ export function ChatSidebar({
     runId,
     conversation,
     currentAssistantMessage,
+    runStatus,
     modelUsage,
     modelUsageUpdatedAt,
     pendingAskHumanRequests,
@@ -395,50 +389,16 @@ export function ChatSidebar({
 
       {showContent && (
         <>
-          <header className="titlebar-drag-region flex h-auto shrink-0 flex-col border-b border-border bg-sidebar">
-            <div className="flex items-stretch gap-1 px-2 py-1">
-              <TabBar
-                tabs={chatTabs}
-                activeTabId={activeChatTabId}
-                getTabTitle={getChatTabTitle}
-                getTabId={(tab) => tab.id}
-                isProcessing={isChatTabProcessing}
-                onSwitchTab={onSwitchChatTab}
-                onCloseTab={onCloseChatTab}
-              />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={onNewChatTab}
-                    className="titlebar-no-drag h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-                  >
-                    <SquarePen className="size-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">New chat tab</TooltipContent>
-              </Tooltip>
-              {onOpenFullScreen && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={onOpenFullScreen}
-                      className="titlebar-no-drag ml-auto h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-                      aria-label={isMaximized ? 'Restore two-pane view' : 'Maximize chat view'}
-                    >
-                      {isMaximized ? <Minimize2 className="size-5" /> : <Maximize2 className="size-5" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {isMaximized ? 'Restore two-pane view' : 'Maximize chat view'}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-          </header>
+          <ChatSidebarHeader
+            chatTabs={chatTabs}
+            activeChatTabId={activeChatTabId}
+            getChatTabTitle={getChatTabTitle}
+            isChatTabProcessing={isChatTabProcessing}
+            isMaximized={isMaximized}
+            onSwitchChatTab={onSwitchChatTab}
+            onCloseChatTab={onCloseChatTab}
+            onOpenFullScreen={onOpenFullScreen}
+          />
 
           <FileCardProvider onOpenMemoryFile={onOpenMemoryFile ?? (() => {})}>
             <div className="flex min-h-0 flex-1 flex-col">
@@ -446,120 +406,45 @@ export function ChatSidebar({
                 {chatTabs.map((tab) => {
                   const isActive = tab.id === activeChatTabId
                   const tabState = getTabState(tab.id)
-                  const tabHasConversation = tabState.conversation.length > 0 || Boolean(tabState.currentAssistantMessage)
                   const processingStatusText = getProcessingStatusText(tabState)
                   return (
-                    <div
+                    <ChatSidebarConversationPanel
                       key={tab.id}
-                      className={cn(
-                        'min-h-0 h-full flex-col',
-                        isActive
-                          ? 'flex'
-                          : 'pointer-events-none invisible absolute inset-0 flex'
-                      )}
-                      data-chat-tab-panel={tab.id}
-                      aria-hidden={!isActive}
-                    >
-                      <Conversation className="relative flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-                        <ScrollPositionPreserver />
-                        <ConversationContent className={tabHasConversation ? 'mx-auto w-full max-w-4xl px-3 pb-28' : 'mx-auto w-full max-w-4xl min-h-full items-center justify-center px-3 pb-0'}>
-                          {!tabHasConversation ? (
-                            <ConversationEmptyState className="h-auto">
-                              <div className="text-sm text-muted-foreground">Ask anything...</div>
-                            </ConversationEmptyState>
-                          ) : (
-                            <>
-                              {tabState.conversation.map((item) => {
-                                const rendered = renderConversationItem(item, tab.id)
-                                if (isToolCall(item) && onPermissionResponse) {
-                                  const permRequest = tabState.allPermissionRequests.get(item.id)
-                                  if (permRequest) {
-                                    const response = tabState.permissionResponses.get(item.id) || null
-                                    return (
-                                      <React.Fragment key={item.id}>
-                                        {rendered}
-                                        <PermissionRequest
-                                          toolCall={permRequest.toolCall}
-                                          onApprove={() => onPermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve')}
-                                          onApproveSession={() => onPermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'session')}
-                                          onApproveAlways={() => onPermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'approve', 'always')}
-                                          onDeny={() => onPermissionResponse(permRequest.toolCall.toolCallId, permRequest.subflow, 'deny')}
-                                          isProcessing={isActive && isProcessing}
-                                          response={response}
-                                        />
-                                      </React.Fragment>
-                                    )
-                                  }
-                                }
-                                return rendered
-                              })}
-
-                              {onAskHumanResponse && Array.from(tabState.pendingAskHumanRequests.values()).map((request) => (
-                                <AskHumanRequest
-                                  key={request.toolCallId}
-                                  query={request.query}
-                                  onResponse={(response) => onAskHumanResponse(request.toolCallId, request.subflow, response)}
-                                  isProcessing={isActive && isProcessing}
-                                />
-                              ))}
-
-                              {isActive && isProcessing && (
-                                <Message from="assistant">
-                                  <MessageContent>
-                                    <Shimmer duration={1}>{processingStatusText}</Shimmer>
-                                  </MessageContent>
-                                </Message>
-                              )}
-                            </>
-                          )}
-                        </ConversationContent>
-                      </Conversation>
-                    </div>
+                      tabId={tab.id}
+                      isActive={isActive}
+                      tabState={tabState}
+                      isProcessing={isProcessing}
+                      processingStatusText={processingStatusText}
+                      renderConversationItem={renderConversationItem}
+                      onPermissionResponse={onPermissionResponse}
+                      onAskHumanResponse={onAskHumanResponse}
+                    />
                   )
                 })}
               </div>
 
-              <div className="sticky bottom-0 z-10 bg-background pb-12 pt-0 shadow-lg">
-                <div className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-linear-to-t from-background to-transparent" />
-                <div className="mx-auto w-full max-w-4xl px-3">
-                  {!hasConversation && (
-                    <Suggestions onSelect={setLocalPresetMessage} className="mb-3 justify-center" />
-                  )}
-                  {chatTabs.map((tab) => {
-                    const isActive = tab.id === activeChatTabId
-                    const tabState = getTabState(tab.id)
-                    return (
-                      <div
-                        key={tab.id}
-                        className={isActive ? 'block' : 'hidden'}
-                        data-chat-input-panel={tab.id}
-                        aria-hidden={!isActive}
-                      >
-                        <ChatInputWithMentions
-                          memoryFiles={memoryFiles}
-                          recentFiles={recentFiles}
-                          visibleFiles={visibleFiles}
-                          onSubmit={onSubmit}
-                          onStop={onStop}
-                          isProcessing={isActive && isProcessing}
-                          isStopping={isActive && isStopping}
-                          isActive={isActive}
-                          presetMessage={isActive ? (localPresetMessage ?? presetMessage) : undefined}
-                          onPresetMessageConsumed={isActive ? () => {
-                            setLocalPresetMessage(undefined)
-                            onPresetMessageConsumed?.()
-                          } : undefined}
-                          runId={tabState.runId}
-                          initialDraft={getInitialDraft?.(tab.id)}
-                          onDraftChange={onDraftChangeForTab ? (text) => onDraftChangeForTab(tab.id, text) : undefined}
-                          conversation={tabState.conversation}
-                          modelUsage={tabState.modelUsage}
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+              <ChatSidebarInputPanels
+                chatTabs={chatTabs}
+                activeChatTabId={activeChatTabId}
+                getTabState={getTabState}
+                hasConversation={hasConversation}
+                localPresetMessage={localPresetMessage}
+                presetMessage={presetMessage}
+                memoryFiles={memoryFiles}
+                recentFiles={recentFiles}
+                visibleFiles={visibleFiles}
+                isProcessing={isProcessing}
+                isStopping={isStopping}
+                onSubmit={onSubmit}
+                onStop={onStop}
+                getInitialDraft={getInitialDraft}
+                onDraftChangeForTab={onDraftChangeForTab}
+                onPresetMessageSelected={setLocalPresetMessage}
+                onPresetMessageConsumed={() => {
+                  setLocalPresetMessage(undefined)
+                  onPresetMessageConsumed?.()
+                }}
+              />
             </div>
           </FileCardProvider>
         </>

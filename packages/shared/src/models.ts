@@ -38,8 +38,15 @@ export const LlmProvider = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 });
 
+export const LlmModelLimits = z.object({
+  context: z.number().int().positive(),
+  input: z.number().int().positive().optional(),
+  output: z.number().int().positive().optional(),
+});
+
 export const LlmModelConfig = z.object({
   provider: LlmProvider,
   model: z.string(),
   memoryGraphModel: z.string().optional(),
+  limits: LlmModelLimits.optional(),
 });

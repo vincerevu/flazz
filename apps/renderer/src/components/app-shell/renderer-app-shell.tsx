@@ -16,7 +16,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 
 const DEFAULT_SIDEBAR_WIDTH = 256
 const CUSTOM_TITLEBAR_HEIGHT_PX = 40
-const TITLEBAR_LEADING_WIDTH_PX = 96
+const TITLEBAR_LEADING_WIDTH_PX = 220
 const TITLEBAR_TRAILING_WIDTH_PX = 150
 
 function FlazzTitlebarBrand({
@@ -27,6 +27,7 @@ function FlazzTitlebarBrand({
   canNavigateForward,
   onNavigateBack,
   onNavigateForward,
+  children,
 }: {
   logoSrc: string
   isSidebarVisible: boolean
@@ -35,6 +36,7 @@ function FlazzTitlebarBrand({
   canNavigateForward: boolean
   onNavigateBack: () => void
   onNavigateForward: () => void
+  children?: ReactNode
 }) {
   return (
     <div className="titlebar-no-drag relative z-20 flex min-w-0 shrink-0 items-center pl-3 pr-2 gap-1">
@@ -59,6 +61,8 @@ function FlazzTitlebarBrand({
       >
         <PanelLeftIcon className="size-4" />
       </button>
+
+      {children ? <div className="titlebar-no-drag flex items-center gap-1 pr-1">{children}</div> : null}
 
       <button
         type="button"
@@ -90,6 +94,7 @@ function DesktopTitlebarLeadingControls({
   canNavigateForward,
   onNavigateBack,
   onNavigateForward,
+  children,
 }: {
   logoSrc: string
   isSidebarVisible: boolean
@@ -98,11 +103,12 @@ function DesktopTitlebarLeadingControls({
   canNavigateForward: boolean
   onNavigateBack: () => void
   onNavigateForward: () => void
+  children?: ReactNode
 }) {
   return (
     <div
       className="titlebar-no-drag absolute left-0 top-0 z-40 flex h-10 items-center"
-      style={{ width: TITLEBAR_LEADING_WIDTH_PX + 40 }}
+      style={{ width: TITLEBAR_LEADING_WIDTH_PX }}
     >
       <FlazzTitlebarBrand
         logoSrc={logoSrc}
@@ -112,7 +118,9 @@ function DesktopTitlebarLeadingControls({
         canNavigateForward={canNavigateForward}
         onNavigateBack={onNavigateBack}
         onNavigateForward={onNavigateForward}
-      />
+      >
+        {children}
+      </FlazzTitlebarBrand>
     </div>
   )
 }
@@ -232,6 +240,7 @@ type RendererAppShellProps = {
   onWindowMinimize: () => void
   onWindowToggleMaximize: () => void
   onWindowClose: () => void
+  titlebarLeadingContent?: ReactNode
   onActivatePrimaryPane?: () => void
   leftSidebar: ReactNode
   headerContent: ReactNode
@@ -257,6 +266,7 @@ function RendererAppShellFrame({
   onWindowMinimize,
   onWindowToggleMaximize,
   onWindowClose,
+  titlebarLeadingContent,
   onActivatePrimaryPane,
   leftSidebar,
   headerContent,
@@ -298,7 +308,9 @@ function RendererAppShellFrame({
           canNavigateForward={canNavigateForward}
           onNavigateBack={onNavigateBack}
           onNavigateForward={onNavigateForward}
-        />
+        >
+          {titlebarLeadingContent}
+        </DesktopTitlebarLeadingControls>
         {leftSidebar}
         <SidebarInset
           className={cn(

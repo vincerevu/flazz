@@ -27,6 +27,14 @@ function ensureDefaultConfigs() {
             configured: false
         }, null, 2));
     }
+
+    const compactionConfig = path.join(WorkDir, "config", "compaction.json");
+    if (!fs.existsSync(compactionConfig)) {
+        fs.writeFileSync(compactionConfig, JSON.stringify({
+            auto: true,
+            prune: true
+        }, null, 2));
+    }
 }
 
 // Welcome content inlined to work with bundled builds (esbuild changes __dirname)

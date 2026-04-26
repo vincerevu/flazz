@@ -3,13 +3,12 @@ import path from "path";
 import crypto from "crypto";
 import { WorkDir } from "../config/config.js";
 import { getNoteCreationStrictness } from "../config/note_creation_config.js";
-import { Agent, AssistantMessage } from "@flazz/shared";
+import { Agent } from "@flazz/shared";
 import { RunEvent } from "@flazz/shared/dist/runs.js";
 import { CopilotAgent } from "../application/assistant/agent.js";
 import container, { contextBuilder, runLearningService, runMemoryService } from "../di/container.js";
 import { IModelConfigRepo } from "../models/repo.js";
-import { createProvider } from "../models/models.js";
-import { getModelExecutionPolicy } from "../models/provider-capabilities.js";
+import { IModelCapabilityRepo } from "../models/capability-repo.js";
 import { IAgentsRepo } from "./repo.js";
 import { IMonotonicallyIncreasingIdGenerator } from "../application/lib/id-gen.js";
 import { IBus } from "../application/lib/bus.js";
@@ -29,24 +28,22 @@ import { z } from "zod";
 import {
     AgentState,
     StreamStepMessageBuilder,
-    normalizeAssistantMessage,
-    appendLengthStopNotice,
-    hasVisibleAssistantOutput,
-    streamLlm,
-    buildTools,
-    executeToolOrchestrator,
-    handleSubflowDelegation,
     handlePermissionAndHumanRequests,
-    trimMessagesForPrompt,
     deriveRunCompactionMetrics,
+    createMessageEvent,
+    createRunStatusEvent,
+    prepareLlmTurn,
+    assessCompactionNeed,
+    checkOverflow,
+    consumeLlmStream,
+    finalizeAssistantMessage,
+    executePendingToolCalls,
+    shouldExitForPendingRequests,
+    shouldExitAfterAssistantResponse,
+    drainQueuedUserMessages,
+    bootstrapStreamAgent,
+    runCompactionPhase,
 } from "./runtime/index.js";
-import { buildSafeRecentMessages } from "./runtime/history-window.js";
-import { prepareCompactedContext } from "./runtime/context-compaction.js";
-import { estimatePromptTokens, resolveModelContextBudget } from "./runtime/model-context-budget.js";
-import { checkOverflow } from "./runtime/overflow-detector.js";
-import { pruneToolOutputs } from "./runtime/context-pruner.js";
-import { buildAutoContinueMessage } from "./runtime/auto-continue.js";
-import { EMPTY_ASSISTANT_FALLBACK_TEXT, sanitizeMessagesForPrompt } from "./runtime/prompt-sanitizer.js";
 import { isToolCallFinishReason } from "../llm/stream-normalizers/index.js";
 
 export interface IAgentRuntime {
@@ -59,6 +56,7 @@ export class AgentRuntime implements IAgentRuntime {
     private bus: IBus;
     private messageQueue: IMessageQueue;
     private modelConfigRepo: IModelConfigRepo;
+    private modelCapabilityRepo: IModelCapabilityRepo;
     private runsLock: IRunsLock;
     private abortRegistry: IAbortRegistry;
 
@@ -68,6 +66,7 @@ export class AgentRuntime implements IAgentRuntime {
         bus,
         messageQueue,
         modelConfigRepo,
+        modelCapabilityRepo,
         runsLock,
         abortRegistry,
     }: {
@@ -76,6 +75,7 @@ export class AgentRuntime implements IAgentRuntime {
         bus: IBus;
         messageQueue: IMessageQueue;
         modelConfigRepo: IModelConfigRepo;
+        modelCapabilityRepo: IModelCapabilityRepo;
         runsLock: IRunsLock;
         abortRegistry: IAbortRegistry;
     }) {
@@ -84,6 +84,7 @@ export class AgentRuntime implements IAgentRuntime {
         this.bus = bus;
         this.messageQueue = messageQueue;
         this.modelConfigRepo = modelConfigRepo;
+        this.modelCapabilityRepo = modelCapabilityRepo;
         this.runsLock = runsLock;
         this.abortRegistry = abortRegistry;
     }
@@ -131,10 +132,23 @@ export class AgentRuntime implements IAgentRuntime {
                         runId,
                         messageQueue: this.messageQueue,
                         modelConfigRepo: this.modelConfigRepo,
+                        modelCapabilityRepo: this.modelCapabilityRepo,
                         signal,
                         abortRegistry: this.abortRegistry,
                         correlationId,
                     })) {
+                        if (!event || typeof event !== "object" || typeof (event as { type?: unknown }).type !== "string") {
+                            console.warn(JSON.stringify({
+                                ts: new Date().toISOString(),
+                                level: "warn",
+                                service: "agent-runtime",
+                                runId,
+                                correlationId,
+                                message: "invalid run event yielded from streamAgent; skipping",
+                                event,
+                            }));
+                            continue;
+                        }
                         if (event.type !== "run-status") {
                             eventCount++;
                         }
@@ -200,6 +214,35 @@ export class AgentRuntime implements IAgentRuntime {
             });
         }
     }
+}
+
+function isRunEventLike(event: unknown): event is z.infer<typeof RunEvent> {
+    return typeof event === "object"
+        && event !== null
+        && typeof (event as { type?: unknown }).type === "string";
+}
+
+function categorizeCompactionError(error: unknown): "abort" | "provider" | "invalid-response" | "parse" | "other" {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    const normalized = message.toLowerCase();
+
+    if (error instanceof Error && error.name === "AbortError") return "abort";
+    if (normalized.includes("invalid json response") || normalized.includes("unexpected token")) {
+        return "invalid-response";
+    }
+    if (normalized.includes("parse")) {
+        return "parse";
+    }
+    if (
+        normalized.includes("cloudflare")
+        || normalized.includes("error 520")
+        || normalized.includes("web server is returning an unknown error")
+        || normalized.includes("provider")
+        || normalized.includes("api.minimax.io")
+    ) {
+        return "provider";
+    }
+    return "other";
 }
 
 export class RunLogger {
@@ -316,24 +359,13 @@ function shouldContinueLoop(finishReason: string | null): boolean {
     return isToolCallFinishReason(finishReason);
 }
 
-function buildEmptyAssistantFallback(): z.infer<typeof AssistantMessage> {
-    return {
-        role: "assistant",
-        content: [
-            {
-                type: "text",
-                text: EMPTY_ASSISTANT_FALLBACK_TEXT
-            }
-        ],
-    };
-}
-
 export async function* streamAgent({
     state,
     idGenerator,
     runId,
     messageQueue,
     modelConfigRepo,
+    modelCapabilityRepo,
     signal,
     abortRegistry,
     correlationId,
@@ -343,6 +375,7 @@ export async function* streamAgent({
     runId: string;
     messageQueue: IMessageQueue;
     modelConfigRepo: IModelConfigRepo;
+    modelCapabilityRepo: IModelCapabilityRepo;
     signal: AbortSignal;
     abortRegistry: IAbortRegistry;
     correlationId?: string;
@@ -364,6 +397,10 @@ export async function* streamAgent({
     };
 
     async function* processEvent(event: z.infer<typeof RunEvent>): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
+        if (!isRunEventLike(event)) {
+            emitLog("warn", "attempted to process invalid run event; skipping", { event });
+            return;
+        }
         state.ingest(event);
         yield event;
     }
@@ -379,51 +416,49 @@ export async function* streamAgent({
             | "finalizing",
         message: string,
         toolName?: string,
+        contextDebug?: {
+            providerFlavor: string;
+            modelId: string;
+            contextLimit: number;
+            usableInputBudget: number;
+            outputReserve: number;
+            compactionThreshold: number;
+            targetThreshold: number;
+            estimatedPromptTokens: number;
+            overflowSource: "estimated" | "actual" | "none";
+            budgetSource: "config" | "registry" | "fallback" | "unknown";
+        },
     ): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
-        yield* processEvent(RunEvent.parse({
+        yield* processEvent(createRunStatusEvent({
             runId,
-            type: "run-status",
             phase,
             message,
             toolName,
-            subflow: [],
-            ts: new Date().toISOString(),
+            contextDebug,
         }));
     }
 
-    const modelConfig = await modelConfigRepo.getConfig();
-    if (!modelConfig) {
-        throw new Error("Model config not found");
-    }
-
-    // set up agent
-    const agent = await loadAgent(state.agentName!);
-
-    // Extract first user message for tool filtering
-    const firstUserMessage = state.messages.find(m => m.role === 'user');
-    const userMessage = firstUserMessage 
-        ? (typeof firstUserMessage.content === 'string' 
-            ? firstUserMessage.content 
-            : firstUserMessage.content.map(c => c.type === 'text' ? c.text : '').join(' '))
-        : '';
-
-    // set up tools with smart filtering
-    const requestedTools = await buildTools(agent, userMessage);
-    const executionPolicy = getModelExecutionPolicy(modelConfig.provider);
-    const tools = executionPolicy.toolExecutionMode === "full" ? requestedTools : {};
-
-    // set up provider + model
-    const provider = createProvider(modelConfig.provider);
-      const memoryGraphAgents = ["note_creation", "labeling_agent", "email-draft", "meeting-prep"];
-      const modelId = (memoryGraphAgents.includes(state.agentName!) && modelConfig.memoryGraphModel)
-          ? modelConfig.memoryGraphModel
-        : modelConfig.model;
-    const model = provider.languageModel(modelId);
-    logger.log(`using model: ${modelId}`);
+    const {
+        modelConfig,
+        resolvedModelLimits,
+        resolvedModelLimitSource,
+        agent,
+        requestedTools,
+        tools,
+        executionPolicy,
+        modelId,
+        model,
+    } = await bootstrapStreamAgent({
+        state,
+        modelConfigRepo,
+        modelCapabilityRepo,
+        logger,
+    });
 
     let loopCounter = 0;
     while (true) {
-        console.time(`runtime-loop-iter-${loopCounter}`);
+        const timerLabel = `runtime-loop-${runId}-iter-${loopCounter}`;
+        console.time(timerLabel);
         // Check abort at the top of each iteration
         signal.throwIfAborted();
 
@@ -432,526 +467,240 @@ export async function* streamAgent({
         loopLogger.log('starting loop iteration');
         yield* emitStatus("checking", "Checking next action...");
 
-        // execute any pending tool calls
-        for (const toolCallId of Object.keys(state.pendingToolCalls)) {
-            const toolCall = state.toolCallIdMap[toolCallId];
-            const _logger = loopLogger.child(`tc-${toolCallId}-${toolCall.toolName}`);
-            _logger.log('processing');
-
-            // if ask-human, skip
-            if (toolCall.toolName === "ask-human") {
-                _logger.log('skipping, reason: ask-human');
-                continue;
-            }
-
-            // if tool has been denied, deny
-            if (state.deniedToolCallIds[toolCallId]) {
-                _logger.log('returning denied tool message, reason: tool has been denied');
-                yield* processEvent({
-                    runId,
-                    messageId: await idGenerator.next(),
-                    type: "message",
-                    message: {
-                        role: "tool",
-                        content: "Unable to execute this tool: Permission was denied.",
-                        toolCallId: toolCallId,
-                        toolName: toolCall.toolName,
-                    },
-                    subflow: [],
-                });
-                continue;
-            }
-
-            // if permission is pending on this tool call, skip execution
-            if (state.pendingToolPermissionRequests[toolCallId]) {
-                _logger.log('skipping, reason: permission is pending');
-                continue;
-            }
-
-            // execute approved tool
-            // Check abort before starting tool execution
-            if (signal.aborted) {
-                _logger.log('skipping, reason: aborted');
-                break;
-            }
-            _logger.log('executing tool');
-            yield* emitStatus("running-tool", `Running ${toolCall.toolName}...`, toolCall.toolName);
-
-            if (agent.tools![toolCall.toolName].type === "agent") {
-                const subflowState = state.subflowStates[toolCallId];
-                yield* handleSubflowDelegation({
-                    toolCall,
-                    toolCallId,
-                    subflowState,
-                    runId,
-                    signal,
-                    abortRegistry,
-                    emitLog,
-                    processEvent,
-                    idGenerator,
-                    streamAgentFn: streamAgent,
-                    messageQueue,
-                    modelConfigRepo,
-                    activeCorrelationId
-                });
-            } else {
-                yield* executeToolOrchestrator({
-                    toolCall,
-                    toolCallId,
-                    agent,
-                    runId,
-                    signal,
-                    abortRegistry,
-                    emitLog,
-                    processEvent,
-                    idGenerator
-                });
-            }
+        const toolExecutionResult = yield* executePendingToolCalls({
+            state,
+            agent,
+            runId,
+            signal,
+            abortRegistry,
+            emitLog,
+            processEvent,
+            emitStatus,
+            idGenerator,
+            loopLogger,
+            messageQueue,
+            modelConfigRepo,
+            modelCapabilityRepo,
+            activeCorrelationId,
+            streamAgentFn: streamAgent,
+        });
+        if (toolExecutionResult.aborted) {
+            console.timeEnd(timerLabel);
+            return;
         }
 
         // if waiting on user permission or ask-human, exit
-        if (state.getPendingAskHumans().length || state.getPendingPermissions().length) {
+        if (shouldExitForPendingRequests(state)) {
             loopLogger.log('exiting loop, reason: pending asks or permissions');
-            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
+            console.timeEnd(timerLabel);
             return;
         }
 
         // get any queued user messages
-        while (true) {
-            const msg = await messageQueue.dequeue(runId);
-            if (!msg) {
-                break;
-            }
-            loopLogger.log('dequeued user message', msg.messageId);
-            yield* processEvent({
-                runId,
-                type: "message",
-                messageId: msg.messageId,
-                message: {
-                    role: "user",
-                    content: msg.message,
-                },
-                subflow: [],
-            });
-        }
+        yield* drainQueuedUserMessages({
+            runId,
+            messageQueue,
+            loopLogger,
+            processEvent,
+        });
 
         // if last response is from assistant and text, exit
-        const lastMessage = state.messages[state.messages.length - 1];
-        if (lastMessage
-            && lastMessage.role === "assistant"
-            && (typeof lastMessage.content === "string"
-                || !lastMessage.content.some(part => part.type === "tool-call")
-            )
-        ) {
+        if (shouldExitAfterAssistantResponse(state.messages)) {
             loopLogger.log('exiting loop, reason: last message is from assistant and text');
-            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
+            console.timeEnd(timerLabel);
             return;
         }
 
         // run one LLM turn.
         loopLogger.log('running llm turn');
         yield* emitStatus("preparing-context", "Preparing context...");
-        // stream agent response and build message
-        const now = new Date();
-        const currentDateTime = now.toLocaleString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short'
-        });
-        const compatibilityNote = executionPolicy.toolExecutionMode === "disabled" && Object.keys(requestedTools).length > 0
-            ? "\n\nProvider compatibility note: Tool execution is disabled for this provider endpoint because it does not reliably return structured tool calls in Flazz. Do not claim to inspect tools, run MCP servers, browse, or execute actions. Answer directly with the information already available in the conversation and be explicit when tool access is unavailable."
-            : "";
-        
-        // Build context using ContextBuilder
-        // Get first user message to determine query for context building
-        const firstUserMessage = state.messages.find(m => m.role === 'user');
-        const query = firstUserMessage 
-            ? (typeof firstUserMessage.content === 'string' 
-                ? firstUserMessage.content 
-                : firstUserMessage.content.map(c => c.type === 'text' ? c.text : '').join(' '))
-            : '';
-        
-        // Build context (memory + skills)
-        const contextParts = await contextBuilder.buildContext(query, {
-            includeMemory: true,
-            includeSkills: true,
-            includeMemorySearch: false, // Don't auto-include memory note search (too expensive)
-        });
-        
-        const contextSection = contextParts.length > 0 ? '\n\n' + contextParts.join('\n\n') : '';
-        const instructionsWithDateTime = `Current date and time: ${currentDateTime}\n\n${agent.instructions}${compatibilityNote}${contextSection}`;
-        let streamError: string | null = null;
-        let lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "error" | "other" | "unknown" | null = null;
-        // Actual input tokens from the last LLM response — used for precise overflow detection.
-        let lastActualInputTokens: number | undefined = undefined;
         const messageBuilder = new StreamStepMessageBuilder({
             sanitizeTextArtifacts: executionPolicy.sanitizeTextArtifacts,
         });
-        
-        // Budget prompt per model/provider rather than trimming by fixed message count.
-        const MINIMUM_RECENT_MESSAGES = 20;
-        const budget = resolveModelContextBudget(modelConfig.provider, modelId);
-        const sanitizedPromptSource = sanitizeMessagesForPrompt(state.messages);
-        if (sanitizedPromptSource.length !== state.messages.length) {
-            loopLogger.log(
-                `sanitized prompt history: messages=${state.messages.length}->${sanitizedPromptSource.length}`
-            );
-        }
-        const trimmedPrompt = trimMessagesForPrompt(sanitizedPromptSource, MINIMUM_RECENT_MESSAGES);
-        if (trimmedPrompt.droppedMessages > 0 || trimmedPrompt.downgradedMessages > 0) {
-            loopLogger.log(
-                `trimmed prompt before compaction: dropped=${trimmedPrompt.droppedMessages} ` +
-                `downgraded=${trimmedPrompt.downgradedMessages} ` +
-                `messages=${sanitizedPromptSource.length}->${trimmedPrompt.messages.length}`
-            );
-        }
-        const promptMessages = trimmedPrompt.messages;
-        // ── Overflow / compaction decision ──────────────────────────────────────
-        // Primary: use actual tokens from previous LLM turn if available.
-        // Fallback: heuristic estimate before the prompt is sent.
-        const overflowCheck = checkOverflow({
-            actualInputTokens: lastActualInputTokens,
-            estimatedTokens: estimatePromptTokens({
-                messages: promptMessages,
-                instructions: instructionsWithDateTime,
-                tools,
-            }),
-            budget,
-        });
-        const estimatedPromptTokens = overflowCheck.usedTokens;
-        loopLogger.log(`context check: tokens=${estimatedPromptTokens} source=${overflowCheck.source} threshold=${budget.compactionThreshold}`);
-        yield* emitStatus("checking-context", "Checking context window...");
 
-        const safeRecentMessages = buildSafeRecentMessages(promptMessages, MINIMUM_RECENT_MESSAGES);
+        const turnPreparation = await prepareLlmTurn({
+            state,
+            agentInstructions: agent.instructions,
+            executionPolicy: {
+                toolExecutionMode: executionPolicy.toolExecutionMode,
+            },
+            requestedToolCount: Object.keys(requestedTools).length,
+            tools,
+            provider: modelConfig.provider,
+            modelId,
+            modelLimits: resolvedModelLimits,
+            modelLimitSource: resolvedModelLimitSource,
+            contextBuilder,
+        });
+        const {
+            instructionsWithDateTime,
+            promptMessages,
+            operationalPromptSource,
+            safeRecentMessages,
+            budget,
+            compactionConfig,
+            overflowCheck,
+            assessment,
+            estimatedPromptTokens,
+            sanitizedPromptSourceCount,
+            trimmedPromptSourceCount,
+            droppedMessages,
+            downgradedMessages,
+        } = turnPreparation;
+
+        if (sanitizedPromptSourceCount !== operationalPromptSource.length) {
+            loopLogger.log(
+                `sanitized prompt history: messages=${operationalPromptSource.length}->${sanitizedPromptSourceCount}`
+            );
+        }
+        if (droppedMessages > 0 || downgradedMessages > 0) {
+            loopLogger.log(
+                `trimmed prompt before compaction: dropped=${droppedMessages} ` +
+                `downgraded=${downgradedMessages} ` +
+                `messages=${sanitizedPromptSourceCount}->${trimmedPromptSourceCount}`
+            );
+        }
+        loopLogger.log(
+            `context check: tokens=${estimatedPromptTokens} overflowSource=${overflowCheck.source} `
+            + `budgetSource=${budget.source} contextLimit=${budget.contextLimit} `
+            + `usable=${budget.usableInputBudget} outputReserve=${budget.outputReserve} `
+            + `threshold=${budget.compactionThreshold} target=${budget.targetPromptTokens}`,
+        );
+        yield* emitStatus("checking-context", "Checking context window...", undefined, {
+            providerFlavor: modelConfig.provider.flavor,
+            modelId,
+            contextLimit: budget.contextLimit,
+            usableInputBudget: budget.usableInputBudget,
+            outputReserve: budget.outputReserve,
+            compactionThreshold: budget.compactionThreshold,
+            targetThreshold: budget.targetPromptTokens,
+            estimatedPromptTokens,
+            overflowSource: overflowCheck.source,
+            budgetSource: budget.source,
+        });
         let modelMessages = overflowCheck.isOverflow
             ? safeRecentMessages
             : promptMessages;
 
-        const messagesSinceLastCompaction = state.lastCompactionMessageCount == null
-            ? Number.POSITIVE_INFINITY
-            : Math.max(0, state.messages.length - state.lastCompactionMessageCount);
-        const cooldownSatisfied = messagesSinceLastCompaction >= budget.recompactCooldownMessages;
-        const mustCompactNow = estimatedPromptTokens >= budget.usableInputBudget;
-        const shouldCompact = overflowCheck.isOverflow
-            && (cooldownSatisfied || mustCompactNow);
-
-        if (!cooldownSatisfied && overflowCheck.isOverflow && !mustCompactNow) {
-            loopLogger.log(
-                `skipping compaction due to cooldown: est=${estimatedPromptTokens} ` +
-                `messagesSinceLast=${messagesSinceLastCompaction}/${budget.recompactCooldownMessages}`
-            );
-        }
-
-        if (shouldCompact) {
-            const MAX_CONSECUTIVE_COMPACTION_FAILURES = 3;
-            if (state.consecutiveCompactionFailures >= MAX_CONSECUTIVE_COMPACTION_FAILURES) {
-                // Circuit breaker open — compaction has failed too many times in a row.
-                // Fall back to safe recent messages and continue without compacting.
-                emitLog("warn", "compaction circuit breaker open \u2014 skipping compaction this turn", {
-                    consecutiveFailures: state.consecutiveCompactionFailures,
-                });
-                modelMessages = safeRecentMessages;
-            } else {
-                yield* emitStatus("compacting-context", "Compacting context...");
-                const compactionId = await idGenerator.next();
-                const estimatedTokensBefore = estimatePromptTokens({
-                messages: promptMessages,
-                instructions: instructionsWithDateTime,
-                tools,
-            });
-            const messageCountBefore = promptMessages.length;
-
-            loopLogger.log(
-                `preparing context compaction: est=${estimatedPromptTokens} threshold=${budget.compactionThreshold} `
-                + `target=${budget.targetPromptTokens} usable=${budget.usableInputBudget} context=${budget.contextLimit}`
-            );
-            const compactionStartEvent = {
-                runId,
-                type: "context-compaction-start",
-                compactionId,
-                strategy: "summary-window",
-                escalated: false,
-                messageCountBefore,
-                estimatedTokensBefore,
-                contextLimit: budget.contextLimit,
-                usableInputBudget: budget.usableInputBudget,
-                compactionThreshold: budget.compactionThreshold,
-                targetThreshold: budget.targetPromptTokens,
-                subflow: [],
-                ts: new Date().toISOString(),
-            } as z.infer<typeof RunEvent>;
-            yield* processEvent(compactionStartEvent);
-
-            try {
-                // ── Step 1: try prune first — avoid full compaction if possible ──
-                const pruneResult = pruneToolOutputs(promptMessages);
-                if (pruneResult.prunedCount > 0) {
-                    loopLogger.log(
-                        `pruned ${pruneResult.prunedCount} tool results, saved ~${pruneResult.tokensSaved} tokens`
-                    );
-                    yield* processEvent(RunEvent.parse({
-                        runId,
-                        type: "context-pruned",
-                        prunedCount: pruneResult.prunedCount,
-                        tokensSaved: pruneResult.tokensSaved,
-                        estimatedTokensAfter: Math.max(0, estimatedPromptTokens - pruneResult.tokensSaved),
-                        subflow: [],
-                        ts: new Date().toISOString(),
-                    }));
-                }
-                const messagesForCompaction = pruneResult.messages;
-
-                // ── Step 2: full compaction ──
-                let compacted = await prepareCompactedContext({
-                    messages: messagesForCompaction,
-                    model,
-                    signal,
-                    recentBudgetTokens: budget.recentMessagesBudget,
-                    previousSummary: state.compactedContextSummary,
-                    previousAnchorHash: state.compactedContextAnchorHash,
-                    previousCarryover: state.compactedContextCarryover,
-                    previousTaskState: state.compactedTaskState,
-                    reason: "compaction",
-                    skipPrune: true, // already pruned above
-                });
-                let escalated = false;
-
-                if (compacted.snapshot) {
-                    const landedNearTarget = compacted.snapshot.estimatedTokensAfter <= budget.targetPromptTokens;
-                    const savedEnough = compacted.snapshot.tokensSaved >= budget.minimumSavingsTokens;
-                    if (!landedNearTarget || !savedEnough) {
-                        escalated = true;
-                        const escalatedStartEvent = {
-                            runId,
-                            type: "context-compaction-start",
-                            compactionId: `${compactionId}-escalated`,
-                            strategy: "summary-window",
-                            escalated: true,
-                            messageCountBefore,
-                            estimatedTokensBefore,
-                            contextLimit: budget.contextLimit,
-                            usableInputBudget: budget.usableInputBudget,
-                            compactionThreshold: budget.compactionThreshold,
-                            targetThreshold: budget.targetPromptTokens,
-                            subflow: [],
-                            ts: new Date().toISOString(),
-                        } as z.infer<typeof RunEvent>;
-                        yield* processEvent(escalatedStartEvent);
-
-                        loopLogger.log(
-                            `escalating compaction: after=${compacted.snapshot.estimatedTokensAfter} `
-                            + `target=${budget.targetPromptTokens} saved=${compacted.snapshot.tokensSaved}`
-                        );
-
-                        compacted = await prepareCompactedContext({
-                            messages: messagesForCompaction,
-                            model,
-                            signal,
-                            recentBudgetTokens: Math.max(8_000, Math.floor(budget.recentMessagesBudget * 0.7)),
-                            previousSummary: state.compactedContextSummary,
-                            previousAnchorHash: state.compactedContextAnchorHash,
-                            previousCarryover: state.compactedContextCarryover,
-                            previousTaskState: state.compactedTaskState,
-                            reason: "compaction",
-                            skipPrune: true,
-                        });
-                    }
-                }
-                modelMessages = compacted.messages;
-
-                if (compacted.snapshot) {
-                    const landedNearTarget = compacted.snapshot.estimatedTokensAfter <= budget.targetPromptTokens;
-                    const savedEnough = compacted.snapshot.tokensSaved >= budget.minimumSavingsTokens;
-                    loopLogger.log(
-                        `compacted history: ${compacted.snapshot.omittedMessages} older messages summarized, `
-                        + `${messageCountBefore} -> ${modelMessages.length} prompt messages `
-                        + `(saved=${compacted.snapshot.tokensSaved}, target=${budget.targetPromptTokens}, `
-                        + `landed=${landedNearTarget}, minSaved=${budget.minimumSavingsTokens})`
-                    );
-                    const compactionCompleteEvent = {
-                        runId,
-                        type: "context-compaction-complete",
-                        compactionId,
-                        strategy: "summary-window",
-                        escalated,
-                        summary: compacted.snapshot.summary,
-                        anchorHash: compacted.snapshot.anchorHash,
-                        provenanceRefs: compacted.snapshot.provenanceRefs,
-                        omittedMessages: compacted.snapshot.omittedMessages,
-                        recentMessages: compacted.snapshot.recentMessages,
-                        messageCountBefore,
-                        messageCountAfter: modelMessages.length,
-                        estimatedTokensBefore: compacted.snapshot.estimatedTokensBefore,
-                        estimatedTokensAfter: compacted.snapshot.estimatedTokensAfter,
-                        tokensSaved: compacted.snapshot.tokensSaved,
-                        reductionPercent: compacted.snapshot.reductionPercent,
-                        contextLimit: budget.contextLimit,
-                        usableInputBudget: budget.usableInputBudget,
-                        compactionThreshold: budget.compactionThreshold,
-                        targetThreshold: budget.targetPromptTokens,
-                        reused: compacted.snapshot.reused,
-                        subflow: [],
-                        ts: new Date().toISOString(),
-                    } as z.infer<typeof RunEvent>;
-                    yield* processEvent(compactionCompleteEvent);
-                    state.compactedContextCarryover = compacted.snapshot.carryover;
-                    state.compactedTaskState = compacted.snapshot.taskState;
-                    state.consecutiveCompactionFailures = 0; // ← reset circuit breaker on success
-
-                    // Inject auto-continue so the agent resumes without manual user input.
-                    const autoContinueMessage = buildAutoContinueMessage("compaction");
-                    yield* processEvent({
-                        runId,
-                        messageId: await idGenerator.next(),
-                        type: "message",
-                        message: autoContinueMessage,
-                        subflow: [],
-                    });
-                    modelMessages.push(autoContinueMessage);
-
-                    if (!landedNearTarget || !savedEnough) {
-                        loopLogger.log(
-                            `compaction under target: after=${compacted.snapshot.estimatedTokensAfter} `
-                            + `target=${budget.targetPromptTokens} saved=${compacted.snapshot.tokensSaved}`
-                        );
-                    }
-                }
-            } catch (error) {
-                const compactionError = error instanceof Error ? error.message : "Context compaction failed";
-                emitLog("warn", "context compaction failed", {
-                    error: compactionError,
-                    messages: state.messages.length,
-                });
-                const compactionFailedEvent = {
-                    runId,
-                    type: "context-compaction-failed",
-                    compactionId,
-                    strategy: "summary-window",
-                    escalated: false,
-                    error: compactionError,
-                    messageCountBefore,
-                    estimatedTokensBefore,
-                    contextLimit: budget.contextLimit,
-                    usableInputBudget: budget.usableInputBudget,
-                    compactionThreshold: budget.compactionThreshold,
-                    targetThreshold: budget.targetPromptTokens,
-                    subflow: [],
-                    ts: new Date().toISOString(),
-                } as z.infer<typeof RunEvent>;
-                yield* processEvent(compactionFailedEvent);
-                modelMessages = safeRecentMessages;
-                loopLogger.log(`falling back to safe recent history: ${messageCountBefore} -> ${modelMessages.length} messages`);
-
-                // Circuit breaker: stop retrying compaction if it fails repeatedly.
-                state.consecutiveCompactionFailures += 1;
-                if (state.consecutiveCompactionFailures >= MAX_CONSECUTIVE_COMPACTION_FAILURES) {
-                    emitLog("warn", `compaction circuit breaker open after ${state.consecutiveCompactionFailures} consecutive failures — compaction disabled for this run`, {
-                        consecutiveFailures: state.consecutiveCompactionFailures,
-                    });
-                }
-                }
-            }
-        } // end if (shouldCompact)
+        const compactionPhaseResult = await runCompactionPhase({
+            runId,
+            state,
+            assessment,
+            overflowed: overflowCheck.isOverflow,
+            budget,
+            promptMessages,
+            safeRecentMessages,
+            modelMessages,
+            model,
+            signal,
+            compactionConfig,
+            processEvent,
+            emitStatus,
+            nextId: () => idGenerator.next(),
+            log: (message) => loopLogger.log(message),
+            warn: (message, extra) => emitLog("warn", message, extra),
+            categorizeError: categorizeCompactionError,
+        });
+        modelMessages = compactionPhaseResult.modelMessages;
         yield* emitStatus("waiting-for-model", "Waiting for model response...");
-        for await (const event of streamLlm(
+        const streamResult = yield* consumeLlmStream({
+            runId,
             model,
             modelMessages,
             instructionsWithDateTime,
             tools,
             signal,
-        )) {
-            messageBuilder.ingest(event);
-            yield* processEvent({
-                runId,
-                type: "llm-stream-event",
-                event: event,
-                subflow: [],
-            });
-            if (event.type === "finish-step") {
-                // Capture actual input tokens for the next overflow check.
-                const usage = event.usage as Record<string, number> | undefined;
-                if (usage) {
-                    const inputTokens = usage.inputTokens ?? usage.promptTokens;
-                    if (inputTokens !== undefined && inputTokens > 0) {
-                        lastActualInputTokens = inputTokens;
-                    }
-                }
-                yield* processEvent(RunEvent.parse({
-                    runId,
-                    type: "usage-update",
-                    usage: event.usage,
-                    finishReason: event.finishReason,
-                    subflow: [],
-                    ts: new Date().toISOString(),
-                }));
-            } else if (event.type === "finish") {
-                const finishEvent = event as { usage?: Record<string, number>; totalUsage?: Record<string, number> };
-                const usageInfo: Record<string, number> | undefined = finishEvent.usage ?? finishEvent.totalUsage;
-                if (usageInfo) {
-                    yield* processEvent(RunEvent.parse({
-                        runId,
-                        type: "usage-update",
-                        usage: usageInfo,
-                        finishReason: event.finishReason,
-                        subflow: [],
-                        ts: new Date().toISOString(),
-                    }));
-                }
-            }
-            if (event.type === "error") {
-                streamError = event.error;
-                emitLog("error", "provider error", { error: streamError, messages: state.messages.length });
-                yield* processEvent({
-                    runId,
-                    type: "error",
-                    error: streamError,
-                    subflow: [],
-                });
-                break;
-            }
-            if (event.type === "finish-step" || event.type === "finish") {
-                lastFinishReason = event.finishReason;
-            }
-        }
+            messageBuilder,
+            processEvent,
+            emitLog: (level, message, extra) => emitLog(level, message, {
+                ...extra,
+                ...(level === "error" ? { messages: state.messages.length } : {}),
+            }),
+        });
 
         yield* emitStatus("processing-response", "Processing model response...");
-        let message = await normalizeAssistantMessage({
-            message: messageBuilder.get(),
+        const message = await finalizeAssistantMessage({
+            messageBuilder,
             agent,
             idGenerator,
             allowTextToolFallback: executionPolicy.allowTextToolFallback,
+            lastFinishReason: streamResult.lastFinishReason,
+            streamError: streamResult.streamError,
+            emitLog,
+            stateMessageCount: state.messages.length,
         });
-
-        if (lastFinishReason === "length" && !hasVisibleAssistantOutput(message)) {
-            message = appendLengthStopNotice(message);
-        }
-        if (!hasVisibleAssistantOutput(message)) {
-            emitLog("warn", "provider returned no visible assistant output", {
-                finishReason: lastFinishReason,
-                messages: state.messages.length,
-            });
-            message = buildEmptyAssistantFallback();
-        }
         yield* processEvent({
-            runId,
-            messageId: await idGenerator.next(),
-            type: "message",
-            message,
-            subflow: [],
+            ...createMessageEvent({
+                runId,
+                messageId: await idGenerator.next(),
+                message,
+            }),
         });
 
-        if (streamError) {
-            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
+        if (streamResult.streamError) {
+            console.timeEnd(timerLabel);
             return;
         }
 
         // Check if we should continue the loop based on structured finish reason
-        if (!shouldContinueLoop(lastFinishReason)) {
-            console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
+        if (!shouldContinueLoop(streamResult.lastFinishReason)) {
+            const postResponsePreparation = await prepareLlmTurn({
+                state,
+                agentInstructions: agent.instructions,
+                executionPolicy: {
+                    toolExecutionMode: executionPolicy.toolExecutionMode,
+                },
+                requestedToolCount: Object.keys(requestedTools).length,
+                tools,
+                provider: modelConfig.provider,
+                modelId,
+                modelLimits: resolvedModelLimits,
+                modelLimitSource: resolvedModelLimitSource,
+                contextBuilder,
+            });
+            const postResponseOverflowCheck = checkOverflow({
+                actualTokens: state.lastObservedInputTokens ?? undefined,
+                estimatedTokens: postResponsePreparation.estimatedPromptTokens,
+                budget: postResponsePreparation.budget,
+            });
+            const postResponseAssessment = assessCompactionNeed({
+                state,
+                promptMessages: postResponsePreparation.promptMessages,
+                operationalPromptSource: postResponsePreparation.operationalPromptSource,
+                instructions: postResponsePreparation.instructionsWithDateTime,
+                tools,
+                budget: postResponsePreparation.budget,
+                overflowCheck: postResponseOverflowCheck,
+                compactionConfig: postResponsePreparation.compactionConfig,
+            });
+
+            if (postResponseAssessment.shouldCompact) {
+                loopLogger.log(
+                    `post-response context check: actual=${state.lastObservedInputTokens ?? "none"} `
+                    + `estimated=${postResponsePreparation.estimatedPromptTokens} overflowSource=${postResponseOverflowCheck.source} `
+                    + `threshold=${postResponsePreparation.budget.compactionThreshold} usable=${postResponsePreparation.budget.usableInputBudget}`,
+                );
+                await runCompactionPhase({
+                    runId,
+                    state,
+                    assessment: postResponseAssessment,
+                    overflowed: postResponseOverflowCheck.isOverflow,
+                    budget: postResponsePreparation.budget,
+                    promptMessages: postResponsePreparation.promptMessages,
+                    safeRecentMessages: postResponsePreparation.safeRecentMessages,
+                    modelMessages: postResponsePreparation.promptMessages,
+                    model,
+                    signal,
+                    compactionConfig: postResponsePreparation.compactionConfig,
+                    processEvent,
+                    emitStatus,
+                    nextId: () => idGenerator.next(),
+                    log: (message) => loopLogger.log(message),
+                    warn: (message, extra) => emitLog("warn", message, extra),
+                    categorizeError: categorizeCompactionError,
+                });
+            }
+            console.timeEnd(timerLabel);
             return;
         }
 
@@ -965,6 +714,6 @@ export async function* streamAgent({
             processEvent,
             loopLogger
         });
-        console.timeEnd(`runtime-loop-iter-${loopCounter - 1}`);
+        console.timeEnd(timerLabel);
     }
 }

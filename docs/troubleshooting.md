@@ -436,8 +436,8 @@ GDK_BACKEND=x11 ./flazz
 
 If your issue isn't covered here:
 
-1. **Check existing issues**: https://github.com/yourusername/flazz/issues
-2. **Search discussions**: https://github.com/yourusername/flazz/discussions
+1. **Check existing issues**: https://github.com/vincerevu/flazz/issues
+2. **Search discussions**: https://github.com/vincerevu/flazz/discussions
 3. **Create new issue**: Include:
    - OS and version
    - Flazz version

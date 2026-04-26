@@ -61,7 +61,7 @@ Consider: Purpose (corporate/educational/creative), Audience, Tone, Content Volu
 1. **Analyze**: Understand topic, audience, purpose
 2. **Choose Layout**: Select based on content
 3. **Write Slide**: Use PptxGenJS. Use shapes and SVG elements for visual interest.
-4. **Verify**: Generate preview as `slide-XX-preview.pptx`. Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content present and no placeholder text remains.
+4. **Verify**: Generate preview as `slide-XX-preview.pptx`. Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx`, verify all content present and no placeholder text remains.
 
 ---
 
@@ -145,7 +145,7 @@ Consider: Purpose (corporate/educational/creative), Audience, Tone, Content Volu
 2. **Choose Layout**: Based on section count and content
 3. **Plan Visual Hierarchy**: Numbering style, font sizes, spacing
 4. **Write Slide**: Use PptxGenJS. Use shapes for decorative elements. **MUST include page number badge.**
-5. **Verify**: Generate preview, extract text with markitdown, verify content and badge.
+5. **Verify**: Generate preview, extract text with audit-pptx, verify content and badge.
 
 ---
 
@@ -386,7 +386,7 @@ Use `scripts/pptx-media-helpers.cjs` when an image showcase also needs a side te
 1. **Analyze**: Content, determine subtype, plan layout
 2. **Choose Layout**: Best fit for subtype and content volume
 3. **Write Slide**: Use PptxGenJS. Use shapes for charts, decorative elements, icons. **MUST include page number badge.**
-4. **Verify**: Generate preview as `slide-XX-preview.pptx`. Extract text with markitdown, verify all content present, no placeholder text, badge included.
+4. **Verify**: Generate preview as `slide-XX-preview.pptx`. Extract text with audit-pptx, verify all content present, no placeholder text, badge included.
 
 ---
 

@@ -123,4 +123,4 @@ When analyzing the user's requirements, consider:
 2. **Choose Layout**: Select the most appropriate layout based on section count and content
 3. **Plan Visual Hierarchy**: Determine numbering style, font sizes, and spacing
 4. **Write Slide**: Use slide-making-skill to create the slide. Use shapes for all decorative elements (dividers, number backgrounds, accent elements). **MUST include a page number badge in the bottom-right corner.**
-5. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `python -m markitdown slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.
+5. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.

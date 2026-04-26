@@ -7,3 +7,6 @@ export * from "./agent-tools.js";
 export * from "./memory-tools.js";
 export * from "./memory-archive-tool.js";
 export * from "./skill-tools.js";
+export * from "./pdf-tools.js";
+export * from "./spreadsheet-tools.js";
+export * from "./docx-tools.js";

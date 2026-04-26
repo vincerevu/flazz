@@ -3,7 +3,7 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import { glob } from "glob";
 import { WorkDir } from "../../../config/config.js";
-import { execFileSync, execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as workspace from "../../../workspace/workspace.js";
 import { generateText } from "ai";
 import { createProvider } from "../../../models/models.js";

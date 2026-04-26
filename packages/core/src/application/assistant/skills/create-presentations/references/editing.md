@@ -7,7 +7,7 @@ When using an existing presentation as a template:
 1. **Copy and analyze**:
    ```bash
    cp /path/to/user-provided.pptx template.pptx
-   python -m markitdown template.pptx > template.md
+   node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" template.pptx > template.md
    ```
    Review `template.md` to see placeholder text and slide structure.
 
@@ -26,7 +26,7 @@ When using an existing presentation as a template:
 
    Match content type to layout style (e.g., key points -> bullet slide, team info -> multi-column, testimonials -> quote slide).
 
-3. **Unpack**: Extract the PPTX into an editable XML tree using Python's `zipfile` module. Pretty-print the XML for readability.
+3. **Unpack**: Extract the PPTX into an editable XML tree using Node `jszip`. Pretty-print the XML for readability.
 
 4. **Build presentation** (do this yourself, not with subagents):
    - Delete unwanted slides (remove from `<p:sldIdLst>`)
@@ -39,9 +39,9 @@ When using an existing presentation as a template:
 
 6. **Clean**: Remove orphaned files — slides not in `<p:sldIdLst>`, unreferenced media, orphaned rels.
 
-7. **Pack**: Repack the XML tree into a PPTX file. Validate, repair, condense XML, re-encode smart quotes.
+7. **Pack**: Repack the XML tree into a PPTX file. Validate, repair, condense XML, and re-encode smart quotes.
 
-   Always write to `/tmp/` first, then copy to the final path. Python's `zipfile` module uses `seek` internally, which fails on some volume mounts (e.g. Docker bind mounts). Writing to a local temp path avoids this.
+   Write to a local temp/output path first, then copy to the final destination if needed. Keep pack/unpack steps in the local workspace, not on remote mounts.
 
 ## Output Structure
 
@@ -54,7 +54,7 @@ cp /path/to/user-provided.pptx template.pptx
 ```text
 ./
 ├── template.pptx               # Copy of user-provided file (never modified)
-├── template.md                 # markitdown extraction
+├── template.md                 # audit-pptx extraction
 ├── unpacked/                   # Editable XML tree
 └── edited.pptx                 # Final repacked deck
 ```
@@ -67,10 +67,10 @@ Use supporting scripts when available instead of manually reconstructing PPTX in
 
 | Script | Purpose |
 |--------|---------|
-| `unpack.py` | Extract and pretty-print PPTX XML into an editable tree |
-| `add_slide.py` | Duplicate a slide or add one from a layout while preserving relationships |
-| `clean.py` | Remove orphaned slides, relationships, and media |
-| `pack.py` | Repack the tree into a validated PPTX |
+| `audit-pptx.cjs` | Extract visible text and notes for QA before and after edits |
+| `unpack/pack helper` | Extract or repack PPTX XML while preserving ZIP structure |
+| `add_slide helper` | Duplicate a slide or add one from a layout while preserving relationships |
+| `clean helper` | Remove orphaned slides, relationships, and media |
 
 ## Slide Operations
 
@@ -80,9 +80,9 @@ Slide order is in `ppt/presentation.xml` -> `<p:sldIdLst>`.
 
 **Delete**: Remove `<p:sldId>`, then clean orphaned files.
 
-**Add**: Prefer `add_slide.py`. Never manually copy slide files unless you also update notes references, relationship IDs, `Content_Types.xml`, and `presentation.xml`.
+**Add**: Prefer a slide-duplication helper when available. Never manually copy slide files unless you also update notes references, relationship IDs, `Content_Types.xml`, and `presentation.xml`.
 
-If `add_slide.py` exists in the workflow, treat it as the source of truth for duplication. Manual copying is a last resort and is easy to corrupt.
+If a slide-duplication helper exists in the workflow, treat it as the source of truth for duplication. Manual copying is a last resort and is easy to corrupt.
 
 ## Editing Content
 
@@ -96,12 +96,12 @@ For each slide:
 2. Identify ALL placeholder content — text, images, charts, icons, captions
 3. Replace each placeholder with final content
 
-**Use the Edit tool, not sed or Python scripts.** The Edit tool forces specificity about what to replace and where, yielding better reliability.
+**Use the Edit tool, not sed or ad hoc scripts.** The Edit tool forces specificity about what to replace and where, yielding better reliability.
 
 ## Recommended Execution Order
 
 1. Copy source deck to `template.pptx`
-2. Extract text with `markitdown`
+2. Extract text with `audit-pptx`
 3. Unpack XML tree
 4. Perform structural operations first
 5. Edit slide XML content
@@ -125,12 +125,12 @@ For each slide:
 When source content has fewer items than the template:
 - **Remove excess elements entirely** (images, shapes, text boxes), don't just clear text
 - Check for orphaned visuals after clearing text content
-- Run content QA with `markitdown` to catch mismatched counts
+- Run content QA with `audit-pptx` to catch mismatched counts
 
 When replacing text with different length content:
 - **Shorter replacements**: Usually safe
 - **Longer replacements**: May overflow or wrap unexpectedly
-- Verify with `markitdown` after text changes
+- Verify with `audit-pptx` after text changes
 - Consider truncating or splitting content to fit the template's design constraints
 
 **Template slots != Source items**: If template has 4 team members but source has 3 users, delete the 4th member's entire group (image + text boxes), not just the text.

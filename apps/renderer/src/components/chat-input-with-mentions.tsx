@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LanguageModelUsage } from 'ai'
+import z from 'zod'
 import {
   ArrowUp,
   AudioLines,
@@ -38,6 +39,7 @@ import { toast } from 'sonner'
 import { shellIpc } from '@/services/shell-ipc'
 import { workspaceIpc } from '@/services/workspace-ipc'
 import { MODEL_CONFIG_PATH, type ModelConfig } from '@/features/providers/provider-connections'
+import { RunStatusEvent } from '@flazz/shared/src/runs.js'
 
 export type StagedAttachment = {
   id: string
@@ -115,6 +117,7 @@ interface ChatInputInnerProps {
   conversation?: import('@/lib/chat-conversation').ConversationItem[]
   modelUsage?: LanguageModelUsage | null
   modelUsageUpdatedAt?: number | null
+  runStatus?: z.infer<typeof RunStatusEvent> | null
 }
 
 function ChatInputInner({
@@ -131,6 +134,7 @@ function ChatInputInner({
   conversation = [],
   modelUsage = null,
   modelUsageUpdatedAt = null,
+  runStatus = null,
 }: ChatInputInnerProps) {
   const controller = usePromptInputController()
   const message = controller.textInput.value
@@ -401,6 +405,7 @@ function ChatInputInner({
           conversation={conversation}
           usage={modelUsage}
           usageUpdatedAt={modelUsageUpdatedAt}
+          runStatus={runStatus}
           runtimeConfig={runtimeConfig}
           className="mr-1"
         />
@@ -461,6 +466,8 @@ export interface ChatInputWithMentionsProps {
   onDraftChange?: (text: string) => void
   conversation?: import('@/lib/chat-conversation').ConversationItem[]
   modelUsage?: LanguageModelUsage | null
+  modelUsageUpdatedAt?: number | null
+  runStatus?: z.infer<typeof RunStatusEvent> | null
 }
 
 export function ChatInputWithMentions({
@@ -479,6 +486,8 @@ export function ChatInputWithMentions({
   onDraftChange,
   conversation,
   modelUsage,
+  modelUsageUpdatedAt,
+  runStatus,
 }: ChatInputWithMentionsProps) {
   return (
     <PromptInputProvider memoryFiles={memoryFiles} recentFiles={recentFiles} visibleFiles={visibleFiles}>
@@ -495,6 +504,8 @@ export function ChatInputWithMentions({
         onDraftChange={onDraftChange}
         conversation={conversation}
         modelUsage={modelUsage}
+        modelUsageUpdatedAt={modelUsageUpdatedAt}
+        runStatus={runStatus}
       />
     </PromptInputProvider>
   )

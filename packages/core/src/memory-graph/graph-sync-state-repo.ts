@@ -95,10 +95,10 @@ export class GraphSyncStateRepo {
 
   getLatestAppState(app: string, source: GraphSyncSource): GraphSyncAppState | null {
     const state = this.load();
-    return state.apps
+    const latest = state.apps
       .filter((entry) => entry.app === app && entry.source === source)
-      .sort((a, b) => b.day.localeCompare(a.day))
-      [0] ?? null;
+      .sort((a, b) => b.day.localeCompare(a.day));
+    return latest[0] ?? null;
   }
 
   getObjectState(app: string, objectId: string): GraphSyncObjectState | null {

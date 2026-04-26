@@ -68,13 +68,6 @@ function stripPrefixes(value: string) {
     .trim();
 }
 
-function compactTitleSlug(title: string | undefined, summary: string | undefined, maxLength = 48) {
-  const preferred = stripPrefixes(title ?? "").trim();
-  const fallback = (summary ?? "").trim().split(/\s+/).slice(0, 8).join(" ");
-  const raw = preferred || fallback || "work item";
-  return sanitizePathSegment(raw).slice(0, maxLength) || "work item";
-}
-
 function summarizeText(value: string | undefined, maxLength = 320) {
   const compact = value?.replace(/\s+/g, " ").trim() ?? "";
   if (!compact) return "";
@@ -375,7 +368,7 @@ export class IntegrationItemMemoryPromoter {
     if (
       existingPath &&
       existingPath !== canonicalPath &&
-      this.shouldMigrateToCanonical(existingPath, target.kind) &&
+      this.shouldMigrateToCanonical(existingPath) &&
       !fs.existsSync(canonicalPath)
     ) {
       fs.renameSync(existingPath, canonicalPath);
@@ -419,7 +412,7 @@ export class IntegrationItemMemoryPromoter {
     return `${next.trimEnd()}\n`;
   }
 
-  private shouldMigrateToCanonical(existingPath: string, targetKind: TargetKind) {
+  private shouldMigrateToCanonical(existingPath: string) {
     const normalized = existingPath.replace(/\\/g, "/");
     if (normalized.includes("/memory/Knowledge/")) return true;
     if (normalized.includes("/memory/Work/")) return true;

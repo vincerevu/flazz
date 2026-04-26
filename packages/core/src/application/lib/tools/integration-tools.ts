@@ -4,11 +4,23 @@ import { executeAction as executeComposioAction, isConfigured as isComposioConfi
 import { integrationService } from "../../../integrations/service.js";
 const MAX_INTEGRATION_OUTPUT_CHARS = 40_000;
 
-function capIntegrationResult(result: any): any {
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function capIntegrationResult(result: unknown): unknown {
     if (result == null) return result;
     const json = JSON.stringify(result);
     if (json.length <= MAX_INTEGRATION_OUTPUT_CHARS) return result;
-    
+
+    if (!isPlainRecord(result)) {
+        return {
+            _truncated: true,
+            _warning: "Raw payload exceeded 40k chars and was truncated to prevent context overflow.",
+            preview: json.slice(0, 5000) + "... [TRUNCATED]",
+        };
+    }
+
     // Simple truncation for objects to avoid breaking context
     return {
         ...result,

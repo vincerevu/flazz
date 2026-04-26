@@ -18,6 +18,7 @@ export async function* handleSubflowDelegation({
     streamAgentFn,
     messageQueue,
     modelConfigRepo,
+    modelCapabilityRepo,
     activeCorrelationId,
 }: {
     toolCall: z.infer<typeof ToolCallPart>;
@@ -33,6 +34,7 @@ export async function* handleSubflowDelegation({
     streamAgentFn: (args: any) => AsyncGenerator<z.infer<typeof RunEvent>, void, unknown>;
     messageQueue: unknown;
     modelConfigRepo: unknown;
+    modelCapabilityRepo: unknown;
     activeCorrelationId: string;
 }): AsyncGenerator<z.infer<typeof RunEvent>, void, unknown> {
     emitLog("info", "tool call start", { toolCallId, toolName: toolCall.toolName, arguments: toolCall.arguments });
@@ -52,6 +54,7 @@ export async function* handleSubflowDelegation({
         runId,
         messageQueue,
         modelConfigRepo,
+        modelCapabilityRepo,
         signal,
         abortRegistry,
         correlationId: activeCorrelationId,

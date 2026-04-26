@@ -381,4 +381,4 @@ Adjust creativity per message:
 
 - [FAQ](../../faq.md) - Common questions
 - [Troubleshooting](../../troubleshooting.md) - Fix issues
-- [GitHub Issues](https://github.com/yourusername/flazz/issues) - Report bugs
+- [GitHub Issues](https://github.com/vincerevu/flazz/issues) - Report bugs
