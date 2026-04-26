@@ -6,23 +6,37 @@ const path = require('path');
 const pkg = require('./package.json');
 const { createPackage } = require('@electron/asar');
 
+const hasAppleNotarizationSecrets =
+    Boolean(process.env.APPLE_ID) &&
+    Boolean(process.env.APPLE_PASSWORD) &&
+    Boolean(process.env.APPLE_TEAM_ID);
+
+const packagerConfig = {
+    executableName: 'Flazz',
+    icon: './icons/icon',  // .icns extension added automatically
+    appBundleId: 'com.flazz.app',
+    appCategoryType: 'public.app-category.productivity',
+    prebuiltAsar: path.join(__dirname, '.package', 'app.asar'),
+    // The app is fully staged into a prebuilt ASAR during generateAssets.
+    // Leave pnpm workspace node_modules alone; Forge's prune step tries to
+    // walk @flazz/core symlink deps and fails on workspace-only packages.
+    prune: false,
+};
+
+if (hasAppleNotarizationSecrets) {
+    packagerConfig.osxSign = {
+        batchCodesignCalls: true,
+    };
+    packagerConfig.osxNotarize = {
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_PASSWORD,
+        teamId: process.env.APPLE_TEAM_ID,
+    };
+}
+
 module.exports = {
     outDir: path.resolve(__dirname, '../../release'),
-    packagerConfig: {
-        executableName: 'Flazz',
-        icon: './icons/icon',  // .icns extension added automatically
-        appBundleId: 'com.flazz.app',
-        appCategoryType: 'public.app-category.productivity',
-        prebuiltAsar: path.join(__dirname, '.package', 'app.asar'),
-        osxSign: {
-            batchCodesignCalls: true,
-        },
-        osxNotarize: {
-            appleId: process.env.APPLE_ID,
-            appleIdPassword: process.env.APPLE_PASSWORD,
-            teamId: process.env.APPLE_TEAM_ID
-        },
-    },
+    packagerConfig,
     makers: [
         {
             name: '@electron-forge/maker-dmg',
@@ -73,8 +87,8 @@ module.exports = {
             name: '@electron-forge/publisher-github',
             config: {
                 repository: {
-                    owner: 'Flazzlabs',
-                    name: 'Flazz'
+                    owner: 'vincerevu',
+                    name: 'flazz'
                 },
                 prerelease: true
             }

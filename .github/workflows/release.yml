@@ -41,13 +41,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Sync app version to release tag
+        run: node apps/main/scripts/sync-version.cjs
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+
       - name: Package Windows app
         run: cd apps/main && pnpm run make:windows
 
       - name: List output files
         run: |
           echo "Contents of release:"
-          dir release /s
+          Get-ChildItem -Path release -Recurse
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -91,6 +96,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Sync app version to release tag
+        run: node apps/main/scripts/sync-version.cjs
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
 
       - name: Package macOS app
         run: cd apps/main && pnpm run make:desktop
@@ -147,6 +157,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Sync app version to release tag
+        run: node apps/main/scripts/sync-version.cjs
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
 
       - name: Install Linux packaging dependencies
         run: |
