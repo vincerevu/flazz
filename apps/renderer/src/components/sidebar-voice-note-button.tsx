@@ -18,8 +18,39 @@ export function SidebarVoiceNoteButton({
   const chunksRef = React.useRef<Blob[]>([])
   const notePathRef = React.useRef<string | null>(null)
   const timestampRef = React.useRef<string | null>(null)
+  const recordedAtIsoRef = React.useRef<string | null>(null)
   const relativePathRef = React.useRef<string | null>(null)
+  const audioPathRef = React.useRef<string | null>(null)
   const transcriptRef = React.useRef<string>('')
+
+  const buildNoteContent = React.useCallback(
+    (recordedAt: Date, relativePath: string, transcript: string, audioPath?: string | null) => {
+      const lines = [
+        '---',
+        'type: voice memo',
+        `recorded_at: "${recordedAt.toISOString()}"`,
+        `path: "${relativePath}"`,
+      ]
+
+      if (audioPath) {
+        lines.push(`audio: "${audioPath}"`)
+      }
+
+      lines.push(
+        '---',
+        '',
+        '# Voice Memo',
+        '',
+        '## Transcript',
+        '',
+        transcript || '*No speech detected.*',
+        '',
+      )
+
+      return lines.join('\n')
+    },
+    [],
+  )
 
   const startRecording = async () => {
     try {
@@ -28,24 +59,16 @@ export function SidebarVoiceNoteButton({
       const dateStr = now.toISOString().split('T')[0]
       const noteName = `voice-memo-${timestamp}`
       const notePath = `memory/Voice Memos/${dateStr}/${noteName}.md`
+      const relativePath = `Voice Memos/${dateStr}/${noteName}.md`
 
       timestampRef.current = timestamp
+      recordedAtIsoRef.current = now.toISOString()
       notePathRef.current = notePath
-      const relativePath = `Voice Memos/${dateStr}/${noteName}`
       relativePathRef.current = relativePath
+      audioPathRef.current = null
 
       await workspaceIpc.mkdir(`memory/Voice Memos/${dateStr}`, { recursive: true })
-
-      const initialContent = `# Voice Memo
-
-**Type:** voice memo
-**Recorded:** ${now.toLocaleString()}
-**Path:** ${relativePath}
-
-## Transcript
-
-*Recording in progress...*
-`
+      const initialContent = buildNoteContent(now, relativePath, '*Recording in progress...*')
       await workspaceIpc.writeFile(notePath, initialContent, { encoding: 'utf8' })
       onNoteCreated?.(notePath)
 
@@ -92,10 +115,13 @@ export function SidebarVoiceNoteButton({
         const audioFilename = `voice-memo-${timestampRef.current}.${ext}`
 
         try {
-          await workspaceIpc.mkdir('voice_memos', { recursive: true })
+          const currentTimestamp = timestampRef.current
+          const currentDate = currentTimestamp?.split('T')[0] ?? new Date().toISOString().split('T')[0]
+          const audioPath = `memory/Voice Memos/${currentDate}/${audioFilename}`
           const arrayBuffer = await blob.arrayBuffer()
           const base64 = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''))
-          await workspaceIpc.writeFile(`voice_memos/${audioFilename}`, base64, { encoding: 'base64' })
+          await workspaceIpc.writeFile(audioPath, base64, { encoding: 'base64' })
+          audioPathRef.current = audioPath
         } catch (err) {
           console.error('Failed to save audio file', err)
         }
@@ -104,16 +130,13 @@ export function SidebarVoiceNoteButton({
         const currentRelativePath = relativePathRef.current
         if (currentNotePath && currentRelativePath) {
           const finalTranscript = transcriptRef.current.trim()
-          const finalContent = `# Voice Memo
-
-**Type:** voice memo
-**Recorded:** ${new Date().toLocaleString()}
-**Path:** ${currentRelativePath}
-
-## Transcript
-
-${finalTranscript || '*No speech detected.*'}
-`
+          const recordedAt = recordedAtIsoRef.current ? new Date(recordedAtIsoRef.current) : new Date()
+          const finalContent = buildNoteContent(
+            recordedAt,
+            currentRelativePath,
+            finalTranscript,
+            audioPathRef.current,
+          )
           await workspaceIpc.writeFile(currentNotePath, finalContent, { encoding: 'utf8' })
           onNoteCreated?.(currentNotePath)
           toast(finalTranscript ? 'Voice memo saved' : 'Voice memo saved (no transcript)', 'success')

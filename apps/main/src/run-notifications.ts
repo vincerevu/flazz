@@ -30,7 +30,7 @@ let unsubscribe: (() => void) | null = null
 function getNotificationIconPath(): string {
   const iconName = nativeTheme.shouldUseDarkColors ? 'logo-white.png' : 'logo-black.png'
   if (app.isPackaged) {
-    return path.join(app.getAppPath(), '..', 'renderer', 'dist', iconName)
+    return path.join(app.getAppPath(), 'renderer', 'dist', iconName)
   }
   return path.join(app.getAppPath(), 'apps', 'renderer', 'public', iconName)
 }
