@@ -8,6 +8,12 @@ const mainRoot = path.resolve(__dirname, '..');
 const packageRoot = path.join(mainRoot, '.package');
 const appStageRoot = path.join(packageRoot, 'app');
 const releaseRoot = path.join(repoRoot, 'release');
+const projectHomepage = 'https://github.com/vincerevu/flazz';
+const packageAuthor = {
+  name: 'Flazzlabs',
+  email: 'vincerevu@users.noreply.github.com',
+};
+const linuxMaintainer = `${packageAuthor.name} <${packageAuthor.email}>`;
 
 function getTargetArch() {
   switch (process.arch) {
@@ -61,8 +67,13 @@ function stageApp(pkg) {
     name: 'flazz',
     productName: 'Flazz',
     version: pkg.version,
-    author: 'Flazzlabs',
+    author: packageAuthor,
     description: pkg.description,
+    homepage: projectHomepage,
+    repository: {
+      type: 'git',
+      url: `${projectHomepage}.git`,
+    },
     main: 'dist/main.cjs',
   };
 
@@ -112,6 +123,7 @@ async function main() {
     config: {
       appId: 'com.flazz.app',
       productName: 'Flazz',
+      artifactName: 'Flazz-${os}-${arch}.${ext}',
       electronVersion,
       directories: {
         output: releaseRoot,
@@ -146,6 +158,7 @@ async function main() {
         icon: path.join(repoRoot, 'assets', 'icons', 'png'),
         category: 'Office',
         synopsis: pkg.description,
+        maintainer: linuxMaintainer,
         target: ['deb', 'rpm', 'zip'],
         artifactName: 'Flazz-linux-${arch}.${ext}',
       },
