@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality-checks:
     runs-on: ubuntu-latest
@@ -125,20 +129,63 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: List output files (Windows)
-        if: runner.os == 'Windows'
+        if: always() && runner.os == 'Windows'
         run: |
           echo "Contents of release:"
           Get-ChildItem -Path release -Recurse
 
+      - name: Verify packaged artifacts (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $patterns = @(
+            "release/FlazzSetup-*.exe",
+            "release/Flazz-win32-*.zip"
+          )
+          foreach ($pattern in $patterns) {
+            $matches = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
+            if (-not $matches) {
+              Write-Error "Missing packaged artifact matching pattern: $pattern"
+            }
+          }
+
       - name: List output files (Unix)
-        if: runner.os != 'Windows'
+        if: always() && runner.os != 'Windows'
         run: |
           echo "Contents of release:"
           ls -R release
 
+      - name: Verify packaged artifacts (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            macOS)
+              patterns=(
+                "release/Flazz-darwin-*.dmg"
+                "release/Flazz-darwin-*.zip"
+              )
+              ;;
+            Linux)
+              patterns=(
+                "release/Flazz-linux-*.deb"
+                "release/Flazz-linux-*.rpm"
+                "release/Flazz-linux-*.zip"
+              )
+              ;;
+          esac
+
+          for pattern in "${patterns[@]}"; do
+            if ! compgen -G "$pattern" > /dev/null; then
+              echo "Missing packaged artifact matching pattern: $pattern" >&2
+              exit 1
+            fi
+          done
+
       - name: Upload packaging artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_paths }}
+          if-no-files-found: warn
           retention-days: 7

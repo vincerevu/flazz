@@ -3,10 +3,10 @@
  * 
  * Why we bundle:
  * - pnpm uses symlinks for workspace packages (@flazz/core, @flazz/shared)
- * - Electron Forge's dependency walker (flora-colossus) cannot follow these symlinks
+ * - Desktop packagers can stumble on these workspace symlinks while collecting runtime deps
  * - Bundling inlines all dependencies into a single file, eliminating node_modules
  * 
- * This script is called by the generateAssets hook in forge.config.js before packaging.
+ * This script is called by the desktop packaging pipeline before packaging.
  */
 
 import * as esbuild from 'esbuild';

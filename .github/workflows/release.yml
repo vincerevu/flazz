@@ -11,6 +11,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_version || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -55,17 +59,33 @@ jobs:
         run: cd apps/main && pnpm run make:windows
 
       - name: List output files
+        if: always()
         run: |
           echo "Contents of release:"
           Get-ChildItem -Path release -Recurse
 
+      - name: Verify Windows artifacts
+        run: |
+          $patterns = @(
+            "release/FlazzSetup-*.exe",
+            "release/Flazz-win32-*.zip"
+          )
+          foreach ($pattern in $patterns) {
+            $matches = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
+            if (-not $matches) {
+              Write-Error "Missing release artifact matching pattern: $pattern"
+            }
+          }
+
       - name: Upload Windows artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flazz-windows
           path: |
             release/FlazzSetup-*.exe
             release/Flazz-win32-*.zip
+          if-no-files-found: warn
           retention-days: 7
 
   build-macos:
@@ -116,17 +136,33 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: List output files
+        if: always()
         run: |
           echo "Contents of release:"
           ls -R release
 
+      - name: Verify macOS artifacts
+        shell: bash
+        run: |
+          for pattern in \
+            "release/Flazz-darwin-*.dmg" \
+            "release/Flazz-darwin-*.zip"
+          do
+            if ! compgen -G "$pattern" > /dev/null; then
+              echo "Missing release artifact matching pattern: $pattern" >&2
+              exit 1
+            fi
+          done
+
       - name: Upload macOS artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flazz-macos
           path: |
             release/Flazz-darwin-*.dmg
             release/Flazz-darwin-*.zip
+          if-no-files-found: warn
           retention-days: 7
 
   build-linux:
@@ -179,11 +215,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List output files
+        if: always()
         run: |
           echo "Contents of release:"
           ls -R release
 
+      - name: Verify Linux artifacts
+        shell: bash
+        run: |
+          for pattern in \
+            "release/Flazz-linux-*.deb" \
+            "release/Flazz-linux-*.rpm" \
+            "release/Flazz-linux-*.zip"
+          do
+            if ! compgen -G "$pattern" > /dev/null; then
+              echo "Missing release artifact matching pattern: $pattern" >&2
+              exit 1
+            fi
+          done
+
       - name: Upload Linux artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flazz-linux
@@ -191,6 +243,7 @@ jobs:
             release/Flazz-linux-*.deb
             release/Flazz-linux-*.rpm
             release/Flazz-linux-*.zip
+          if-no-files-found: warn
           retention-days: 7
 
   create-release:
