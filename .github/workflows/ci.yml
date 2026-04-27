@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  build-and-test:
+  quality-checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -42,8 +42,103 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run checks (lint & typecheck)
-        run: pnpm run check || echo "Linting has pre-existing errors, ignoring for now"
+      - name: Run lint
+        run: pnpm run lint
 
-      - name: Build
-        run: pnpm -r run build || pnpm run deps
+      - name: Run typecheck
+        run: pnpm run typecheck
+
+  package-smoke:
+    needs: quality-checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            package_command: pnpm run make:windows
+            artifact_name: flazz-package-windows
+            artifact_paths: |
+              release/FlazzSetup-*.exe
+              release/Flazz-win32-*.zip
+          - os: macos-latest
+            package_command: pnpm run make:desktop
+            artifact_name: flazz-package-macos
+            artifact_paths: |
+              release/Flazz-darwin-*.dmg
+              release/Flazz-darwin-*.zip
+          - os: ubuntu-latest
+            package_command: pnpm run make:desktop
+            artifact_name: flazz-package-linux
+            artifact_paths: |
+              release/Flazz-linux-*.deb
+              release/Flazz-linux-*.rpm
+              release/Flazz-linux-*.zip
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync app version for CI packaging
+        run: node apps/main/scripts/sync-version.cjs
+        env:
+          RELEASE_VERSION: 0.0.0-ci
+
+      - name: Install Linux packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm fakeroot
+
+      - name: Package app
+        run: cd apps/main && ${{ matrix.package_command }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: List output files (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "Contents of release:"
+          Get-ChildItem -Path release -Recurse
+
+      - name: List output files (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Contents of release:"
+          ls -R release
+
+      - name: Upload packaging artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_paths }}
+          retention-days: 7
