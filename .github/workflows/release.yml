@@ -59,8 +59,8 @@ jobs:
         with:
           name: flazz-windows
           path: |
-            release/installer/FlazzSetup.exe
-            release/Flazz-win32-x64/**
+            release/FlazzSetup.exe
+            release/Flazz-win32-x64.zip
           retention-days: 7
 
   build-macos:
@@ -120,8 +120,8 @@ jobs:
         with:
           name: flazz-macos
           path: |
-            release/make/**/*.dmg
-            release/make/**/*.zip
+            release/Flazz-darwin-arm64.dmg
+            release/Flazz-darwin-arm64.zip
           retention-days: 7
 
   build-linux:
@@ -183,9 +183,9 @@ jobs:
         with:
           name: flazz-linux
           path: |
-            release/make/**/*.deb
-            release/make/**/*.rpm
-            release/make/**/*.zip
+            release/Flazz-linux-x64.deb
+            release/Flazz-linux-x64.rpm
+            release/Flazz-linux-x64.zip
           retention-days: 7
 
   create-release:
@@ -237,7 +237,7 @@ jobs:
 
             ### Windows
             - `FlazzSetup.exe` - Windows installer
-            - `Flazz-win32-x64/` - unpacked portable app
+            - `Flazz-win32-x64.zip` - Windows portable build
 
             ### macOS
             - `*.dmg` - macOS installer
