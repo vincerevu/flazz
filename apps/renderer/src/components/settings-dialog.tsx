@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect, useCallback } from "react"
-import { Server, Key, Shield, Palette, Loader2, CheckCircle2, Plug, Search, X } from "lucide-react"
+import { Server, Key, Shield, Palette, Loader2, CheckCircle2, Plug, Search, X, RefreshCw, Download } from "lucide-react"
 
 import {
   Dialog,
@@ -20,11 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/contexts/theme-context"
 import { ProviderSettingsPanel } from "@/components/provider-settings-panel"
 import { AccountsSettingsPanel } from "@/components/settings/accounts-settings-panel"
 import { SearchSettingsPanel } from "@/components/settings/search-settings-panel"
+import { appIpc } from "@/services/app-ipc"
 import { toast } from "sonner"
 import { workspaceIpc } from "@/services/workspace-ipc"
 import { modelsIpc } from "@/services/models-ipc"
@@ -32,6 +34,7 @@ import { modelsActionsIpc } from "@/services/models-actions-ipc"
 
 type ConfigTab = "accounts" | "models" | "search" | "mcp" | "security" | "appearance"
 const CHAT_NOTIFICATIONS_STORAGE_KEY = 'flazz:chat-notifications-enabled'
+const LAST_UPDATE_TOAST_VERSION_STORAGE_KEY = 'flazz:last-update-toast-version'
 
 interface TabConfig {
   id: ConfigTab
@@ -111,13 +114,69 @@ function AccountsSettings() {
   return <AccountsSettingsPanel />
 }
 
-function AppearanceSettings() {
+type AppVersionInfo = Awaited<ReturnType<typeof appIpc.getVersions>>
+type AppUpdateInfo = Awaited<ReturnType<typeof appIpc.checkForUpdates>>
+type AppUpdateStatus = Awaited<ReturnType<typeof appIpc.getUpdateStatus>>
+
+function AppearanceSettings({ dialogOpen }: { dialogOpen: boolean }) {
   const { colorScheme, setColorScheme } = useTheme()
   const [chatNotificationsEnabled, setChatNotificationsEnabled] = React.useState<boolean>(() => {
     if (typeof window === "undefined") return true
     const raw = window.localStorage.getItem(CHAT_NOTIFICATIONS_STORAGE_KEY)
     return raw == null ? true : raw === "true"
   })
+  const [versionInfo, setVersionInfo] = React.useState<AppVersionInfo | null>(null)
+  const [updateInfo, setUpdateInfo] = React.useState<AppUpdateInfo | null>(null)
+  const [updateStatus, setUpdateStatus] = React.useState<AppUpdateStatus | null>(null)
+  const [versionLoading, setVersionLoading] = React.useState(false)
+  const [checkingUpdates, setCheckingUpdates] = React.useState(false)
+
+  const checkForUpdates = React.useCallback(
+    async (announce: boolean) => {
+      setCheckingUpdates(true)
+      try {
+        const result = await appIpc.checkForUpdates()
+        setUpdateInfo(result)
+        const latestStatus = await appIpc.getUpdateStatus()
+        setUpdateStatus(latestStatus)
+
+        if (result.error) {
+          if (announce) {
+            toast.error(result.error)
+          }
+          return
+        }
+
+        if (result.updateAvailable && result.latestVersion) {
+          const shouldAnnounce =
+            announce ||
+            (typeof window !== "undefined" &&
+              window.localStorage.getItem(LAST_UPDATE_TOAST_VERSION_STORAGE_KEY) !== result.latestVersion)
+
+          if (shouldAnnounce) {
+            toast.success(`Flazz ${result.latestVersion} is available`, {
+              description: announce ? "Use Update to download and install the latest version." : "A new version is ready to download.",
+            })
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(LAST_UPDATE_TOAST_VERSION_STORAGE_KEY, result.latestVersion)
+            }
+          }
+          return
+        }
+
+        if (announce) {
+          toast.success("You already have the latest version")
+        }
+      } catch (error) {
+        if (announce) {
+          toast.error(error instanceof Error ? error.message : "Failed to check for updates")
+        }
+      } finally {
+        setCheckingUpdates(false)
+      }
+    },
+    [],
+  )
 
   React.useEffect(() => {
     if (typeof window === "undefined") return
@@ -126,6 +185,71 @@ function AppearanceSettings() {
       detail: { enabled: chatNotificationsEnabled },
     }))
   }, [chatNotificationsEnabled])
+
+  React.useEffect(() => {
+    if (!dialogOpen) return
+
+    let cancelled = false
+
+    const loadVersionState = async () => {
+      setVersionLoading(true)
+      try {
+        const [info, status] = await Promise.all([
+          appIpc.getVersions(),
+          appIpc.getUpdateStatus(),
+        ])
+        if (!cancelled) {
+          setVersionInfo(info)
+          setUpdateStatus(status)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : "Failed to load app version")
+        }
+      } finally {
+        if (!cancelled) {
+          setVersionLoading(false)
+        }
+      }
+    }
+
+    void loadVersionState()
+    void checkForUpdates(false)
+    const cleanup = appIpc.onUpdateStatusChanged((nextStatus) => {
+      setUpdateStatus(nextStatus)
+    })
+
+    return () => {
+      cancelled = true
+      cleanup()
+    }
+  }, [dialogOpen, checkForUpdates])
+
+  const handleUpdate = React.useCallback(async () => {
+    const result = await appIpc.performUpdate()
+    if (result.started) {
+      toast.success(result.message ?? (result.fallback ? "Opened the latest Flazz download." : "Started updating Flazz."))
+      return
+    }
+    toast.error(result.message ?? "Failed to start the update")
+  }, [])
+
+  const versionDescription = versionLoading
+    ? "Loading current version..."
+    : versionInfo
+      ? `Current version ${versionInfo.app}${versionInfo.packaged ? "" : " (dev build)"}`
+      : "Version information is unavailable."
+  const updateAvailable = updateStatus?.status === "available" || Boolean(updateInfo?.updateAvailable)
+  const updateButtonLabel = updateStatus?.status === "downloaded"
+    ? "Restart to update"
+    : updateStatus?.status === "downloading"
+      ? "Downloading…"
+      : updateStatus?.autoUpdateSupported === false
+        ? "Open download"
+        : "Update"
+  const updateProgressText = updateStatus?.status === "downloading" && updateStatus.progressPercent != null
+    ? `${Math.round(updateStatus.progressPercent)}% downloaded`
+    : updateStatus?.message
 
   return (
     <div className="flex flex-col gap-2">
@@ -157,6 +281,48 @@ function AppearanceSettings() {
           description="Show a system notification when Flazz finishes a run or needs your answer while you're not looking at that chat."
         >
           <Switch checked={chatNotificationsEnabled} onCheckedChange={setChatNotificationsEnabled} />
+        </AppearanceRow>
+        <AppearanceRow
+          title="Version"
+          description={
+            <div className="flex flex-wrap items-center gap-2">
+              <span>{versionDescription}</span>
+              {updateAvailable && (updateStatus?.latestVersion ?? updateInfo?.latestVersion) ? (
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                  New {updateStatus?.latestVersion ?? updateInfo?.latestVersion}
+                </Badge>
+              ) : null}
+              {updateProgressText ? (
+                <span className={cn(updateStatus?.status === "error" ? "text-destructive" : "text-muted-foreground")}>
+                  {updateProgressText}
+                </span>
+              ) : null}
+            </div>
+          }
+        >
+          <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void checkForUpdates(true)}
+              disabled={checkingUpdates}
+            >
+              {checkingUpdates ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-4" />}
+              Check for updates
+            </Button>
+            {updateAvailable ? (
+              <Button
+                size="sm"
+                onClick={() => void handleUpdate()}
+                disabled={updateStatus?.status === "checking" || updateStatus?.status === "downloading"}
+              >
+                {updateStatus?.status === "downloading"
+                  ? <Loader2 className="mr-2 size-4 animate-spin" />
+                  : <Download className="mr-2 size-4" />}
+                {updateButtonLabel}
+              </Button>
+            ) : null}
+          </div>
         </AppearanceRow>
       </div>
     </div>
@@ -688,7 +854,7 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
                   <AccountsSettings />
                 </div>
               ) : activeTab === "appearance" ? (
-                <AppearanceSettings />
+                <AppearanceSettings dialogOpen={open} />
               ) : loading ? (
                 <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                   Loading...

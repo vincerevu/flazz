@@ -20,10 +20,76 @@ const ipcSchemas = {
   'app:getVersions': {
     req: z.null(),
     res: z.object({
+      app: z.string(),
       chrome: z.string(),
       node: z.string(),
       electron: z.string(),
+      packaged: z.boolean(),
     }),
+  },
+  'app:checkForUpdates': {
+    req: z.null(),
+    res: z.object({
+      currentVersion: z.string(),
+      latestVersion: z.string().nullable(),
+      updateAvailable: z.boolean(),
+      releaseUrl: z.string().nullable(),
+      downloadUrl: z.string().nullable(),
+      publishedAt: z.string().nullable(),
+      checkedAt: z.string(),
+      error: z.string().nullable(),
+    }),
+  },
+  'app:openUpdateUrl': {
+    req: z.object({
+      url: z.string().url(),
+    }),
+    res: z.object({
+      success: z.literal(true),
+    }),
+  },
+  'app:getUpdateStatus': {
+    req: z.null(),
+    res: z.object({
+      status: z.enum(['idle', 'checking', 'available', 'not-available', 'downloading', 'downloaded', 'error']),
+      currentVersion: z.string(),
+      latestVersion: z.string().nullable(),
+      releaseUrl: z.string().nullable(),
+      downloadUrl: z.string().nullable(),
+      checkedAt: z.string().nullable(),
+      progressPercent: z.number().nullable(),
+      transferredBytes: z.number().nullable(),
+      totalBytes: z.number().nullable(),
+      bytesPerSecond: z.number().nullable(),
+      message: z.string().nullable(),
+      autoUpdateSupported: z.boolean(),
+    }),
+  },
+  'app:performUpdate': {
+    req: z.null(),
+    res: z.object({
+      started: z.boolean(),
+      fallback: z.boolean(),
+      status: z.enum(['idle', 'checking', 'available', 'not-available', 'downloading', 'downloaded', 'error']),
+      message: z.string().nullable(),
+    }),
+  },
+  'app:updateStatusChanged': {
+    req: z.object({
+      status: z.enum(['idle', 'checking', 'available', 'not-available', 'downloading', 'downloaded', 'error']),
+      currentVersion: z.string(),
+      latestVersion: z.string().nullable(),
+      releaseUrl: z.string().nullable(),
+      downloadUrl: z.string().nullable(),
+      checkedAt: z.string().nullable(),
+      progressPercent: z.number().nullable(),
+      transferredBytes: z.number().nullable(),
+      totalBytes: z.number().nullable(),
+      bytesPerSecond: z.number().nullable(),
+      message: z.string().nullable(),
+      autoUpdateSupported: z.boolean(),
+    }),
+    res: z.null(),
   },
   'app:getWindowState': {
     req: z.null(),

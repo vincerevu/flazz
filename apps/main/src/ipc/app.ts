@@ -1,18 +1,23 @@
-import { BrowserWindow } from 'electron';
+import { app as electronApp, BrowserWindow, shell } from 'electron';
 import { isOnboardingComplete, markOnboardingComplete } from '@flazz/core/dist/config/note_creation_config.js';
 import type { InvokeHandlers } from '../ipc.js';
-import type { IPCChannels } from '@flazz/shared';
+import type { IPCChannels } from '@flazz/shared/dist/ipc.js';
 import { setAttentionState } from '../attention-state.js';
+import { checkForUpdates, getUpdateStatus, performUpdate } from '../updater.js';
 
 export function getVersions(): {
+  app: string;
   chrome: string;
   node: string;
   electron: string;
+  packaged: boolean;
 } {
   return {
+    app: electronApp.getVersion(),
     chrome: process.versions.chrome,
     node: process.versions.node,
     electron: process.versions.electron,
+    packaged: electronApp.isPackaged,
   };
 }
 
@@ -33,6 +38,19 @@ export function registerAppHandlers(handlers: Partial<InvokeHandlers>) {
   handlers['app:getVersions'] = async () => {
     // args is null for this channel (no request payload)
     return getVersions();
+  };
+  handlers['app:checkForUpdates'] = async () => {
+    return checkForUpdates();
+  };
+  handlers['app:openUpdateUrl'] = async (_event, args) => {
+    await shell.openExternal(args.url);
+    return { success: true };
+  };
+  handlers['app:getUpdateStatus'] = async () => {
+    return getUpdateStatus();
+  };
+  handlers['app:performUpdate'] = async () => {
+    return performUpdate();
   };
   handlers['app:getWindowState'] = async (event) => {
     return getWindowState(getEventWindow(event));

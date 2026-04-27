@@ -65,12 +65,16 @@ jobs:
             artifact_paths: |
               release/FlazzSetup-*.exe
               release/Flazz-win32-*.zip
+              release/latest.yml
+              release/*.blockmap
           - os: macos-latest
             package_command: pnpm run make:desktop
             artifact_name: flazz-package-macos
             artifact_paths: |
               release/Flazz-darwin-*.dmg
               release/Flazz-darwin-*.zip
+              release/latest-mac.yml
+              release/*.blockmap
           - os: ubuntu-latest
             package_command: pnpm run make:desktop
             artifact_name: flazz-package-linux
@@ -78,6 +82,8 @@ jobs:
               release/Flazz-linux-*.deb
               release/Flazz-linux-*.rpm
               release/Flazz-linux-*.zip
+              release/latest-linux.yml
+              release/*.blockmap
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -139,7 +145,8 @@ jobs:
         run: |
           $patterns = @(
             "release/FlazzSetup-*.exe",
-            "release/Flazz-win32-*.zip"
+            "release/Flazz-win32-*.zip",
+            "release/latest.yml"
           )
           foreach ($pattern in $patterns) {
             $matches = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
@@ -163,6 +170,7 @@ jobs:
               patterns=(
                 "release/Flazz-darwin-*.dmg"
                 "release/Flazz-darwin-*.zip"
+                "release/latest-mac.yml"
               )
               ;;
             Linux)
@@ -170,6 +178,7 @@ jobs:
                 "release/Flazz-linux-*.deb"
                 "release/Flazz-linux-*.rpm"
                 "release/Flazz-linux-*.zip"
+                "release/latest-linux.yml"
               )
               ;;
           esac
