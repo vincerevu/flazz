@@ -9,6 +9,17 @@ const packageRoot = path.join(mainRoot, '.package');
 const appStageRoot = path.join(packageRoot, 'app');
 const releaseRoot = path.join(repoRoot, 'release');
 
+function getTargetArch() {
+  switch (process.arch) {
+    case 'x64':
+      return Arch.x64;
+    case 'arm64':
+      return Arch.arm64;
+    default:
+      throw new Error(`Unsupported architecture for packaging: ${process.arch}`);
+  }
+}
+
 function run(command, cwd) {
   execSync(command, {
     cwd,
@@ -69,13 +80,15 @@ function stageApp(pkg) {
 }
 
 function buildTarget() {
+  const arch = getTargetArch();
+
   switch (process.platform) {
     case 'win32':
-      return Platform.WINDOWS.createTarget(['nsis', 'zip'], Arch.x64);
+      return Platform.WINDOWS.createTarget(['nsis', 'zip'], arch);
     case 'darwin':
-      return Platform.MAC.createTarget(['dmg', 'zip'], Arch.arm64);
+      return Platform.MAC.createTarget(['dmg', 'zip'], arch);
     case 'linux':
-      return Platform.LINUX.createTarget(['deb', 'rpm', 'zip'], Arch.x64);
+      return Platform.LINUX.createTarget(['deb', 'rpm', 'zip'], arch);
     default:
       throw new Error(`Unsupported platform for packaging: ${process.platform}`);
   }
@@ -121,26 +134,26 @@ async function main() {
       win: {
         icon: path.join(repoRoot, 'assets', 'icon.ico'),
         target: ['nsis', 'zip'],
-        artifactName: 'Flazz-win32-x64.${ext}',
+        artifactName: 'Flazz-win32-${arch}.${ext}',
       },
       nsis: {
         oneClick: false,
         perMachine: false,
         allowToChangeInstallationDirectory: true,
-        artifactName: 'FlazzSetup.${ext}',
+        artifactName: 'FlazzSetup-${arch}.${ext}',
       },
       linux: {
         icon: path.join(repoRoot, 'assets', 'icons', 'png'),
         category: 'Office',
         synopsis: pkg.description,
         target: ['deb', 'rpm', 'zip'],
-        artifactName: 'Flazz-linux-x64.${ext}',
+        artifactName: 'Flazz-linux-${arch}.${ext}',
       },
       mac: {
         category: 'public.app-category.productivity',
         icon: path.join(repoRoot, 'assets', 'icon.icns'),
         target: ['dmg', 'zip'],
-        artifactName: 'Flazz-darwin-arm64.${ext}',
+        artifactName: 'Flazz-darwin-${arch}.${ext}',
       },
     },
   });

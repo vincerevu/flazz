@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: Release version to package, for example v0.1.5
+        required: true
+        type: string
 
 jobs:
   build-windows:
@@ -44,7 +49,7 @@ jobs:
       - name: Sync app version to release tag
         run: node apps/main/scripts/sync-version.cjs
         env:
-          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_version || github.ref_name }}
 
       - name: Package Windows app
         run: cd apps/main && pnpm run make:windows
@@ -59,8 +64,8 @@ jobs:
         with:
           name: flazz-windows
           path: |
-            release/FlazzSetup.exe
-            release/Flazz-win32-x64.zip
+            release/FlazzSetup-*.exe
+            release/Flazz-win32-*.zip
           retention-days: 7
 
   build-macos:
@@ -100,7 +105,7 @@ jobs:
       - name: Sync app version to release tag
         run: node apps/main/scripts/sync-version.cjs
         env:
-          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_version || github.ref_name }}
 
       - name: Package macOS app
         run: cd apps/main && pnpm run make:desktop
@@ -120,8 +125,8 @@ jobs:
         with:
           name: flazz-macos
           path: |
-            release/Flazz-darwin-arm64.dmg
-            release/Flazz-darwin-arm64.zip
+            release/Flazz-darwin-*.dmg
+            release/Flazz-darwin-*.zip
           retention-days: 7
 
   build-linux:
@@ -161,7 +166,7 @@ jobs:
       - name: Sync app version to release tag
         run: node apps/main/scripts/sync-version.cjs
         env:
-          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_version || github.ref_name }}
 
       - name: Install Linux packaging dependencies
         run: |
@@ -183,9 +188,9 @@ jobs:
         with:
           name: flazz-linux
           path: |
-            release/Flazz-linux-x64.deb
-            release/Flazz-linux-x64.rpm
-            release/Flazz-linux-x64.zip
+            release/Flazz-linux-*.deb
+            release/Flazz-linux-*.rpm
+            release/Flazz-linux-*.zip
           retention-days: 7
 
   create-release:
@@ -236,8 +241,8 @@ jobs:
             ## Downloads
 
             ### Windows
-            - `FlazzSetup.exe` - Windows installer
-            - `Flazz-win32-x64.zip` - Windows portable build
+            - `FlazzSetup-<arch>.exe` - Windows installer
+            - `Flazz-win32-<arch>.zip` - Windows portable build
 
             ### macOS
             - `*.dmg` - macOS installer
