@@ -1,19 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron';
-import { createRequire } from 'node:module';
+import { autoUpdater, type ProgressInfo, type UpdateDownloadedEvent } from 'electron-updater';
 import type { IPCChannels } from '@flazz/shared/dist/ipc.js';
-
-const require = createRequire(import.meta.url);
-
-type ProgressInfo = {
-  percent: number;
-  transferred: number;
-  total: number;
-  bytesPerSecond: number;
-};
-
-type UpdateDownloadedEvent = {
-  version: string;
-};
+import { getCurrentAppVersion } from './version.js';
 
 type UpdaterLike = {
   autoDownload: boolean;
@@ -23,8 +11,7 @@ type UpdaterLike = {
   quitAndInstall: () => void;
 };
 
-const electronUpdater = require('electron-updater') as { autoUpdater: UpdaterLike };
-const { autoUpdater } = electronUpdater;
+const typedAutoUpdater = autoUpdater as unknown as UpdaterLike;
 
 const RELEASES_URL = 'https://api.github.com/repos/vincerevu/flazz/releases/latest';
 
@@ -47,7 +34,7 @@ let initialized = false;
 
 let updateStatus: UpdateStatus = {
   status: 'idle',
-  currentVersion: app.getVersion(),
+  currentVersion: getCurrentAppVersion(),
   latestVersion: null,
   releaseUrl: null,
   downloadUrl: null,
@@ -133,7 +120,7 @@ function setUpdateStatus(next: Partial<UpdateStatus>): void {
   updateStatus = {
     ...updateStatus,
     ...next,
-    currentVersion: app.getVersion(),
+    currentVersion: getCurrentAppVersion(),
     autoUpdateSupported: isAutoUpdateSupported(),
   };
   emitUpdateStatus();
@@ -163,10 +150,10 @@ export function initializeUpdater(): void {
   if (initialized) return;
   initialized = true;
 
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  typedAutoUpdater.autoDownload = false;
+  typedAutoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('checking-for-update', () => {
+  typedAutoUpdater.on('checking-for-update', () => {
     setUpdateStatus({
       status: 'checking',
       checkedAt: new Date().toISOString(),
@@ -178,15 +165,15 @@ export function initializeUpdater(): void {
     });
   });
 
-  autoUpdater.on('download-progress', (progress) => {
+  typedAutoUpdater.on('download-progress', (progress) => {
     applyProgress(progress as ProgressInfo);
   });
 
-  autoUpdater.on('update-downloaded', (event) => {
+  typedAutoUpdater.on('update-downloaded', (event) => {
     applyDownloaded(event as UpdateDownloadedEvent);
   });
 
-  autoUpdater.on('error', (error) => {
+  typedAutoUpdater.on('error', (error) => {
     setUpdateStatus({
       status: 'error',
       message: error == null ? 'Auto-update failed.' : String(error),
@@ -198,7 +185,7 @@ async function fetchLatestRelease(): Promise<GitHubRelease> {
   const response = await fetch(RELEASES_URL, {
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': `Flazz/${app.getVersion()}`,
+      'User-Agent': `Flazz/${getCurrentAppVersion()}`,
     },
   });
 
@@ -210,7 +197,7 @@ async function fetchLatestRelease(): Promise<GitHubRelease> {
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
-  const currentVersion = app.getVersion();
+  const currentVersion = getCurrentAppVersion();
   const checkedAt = new Date().toISOString();
 
   try {
@@ -268,7 +255,7 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 export function getUpdateStatus(): UpdateStatus {
   return {
     ...updateStatus,
-    currentVersion: app.getVersion(),
+    currentVersion: getCurrentAppVersion(),
     autoUpdateSupported: isAutoUpdateSupported(),
   };
 }
@@ -277,7 +264,7 @@ export async function performUpdate(): Promise<IPCChannels['app:performUpdate'][
   const targetUrl = updateStatus.downloadUrl ?? updateStatus.releaseUrl;
 
   if (updateStatus.status === 'downloaded') {
-    autoUpdater.quitAndInstall();
+    typedAutoUpdater.quitAndInstall();
     return {
       started: true,
       fallback: false,
@@ -337,7 +324,7 @@ export async function performUpdate(): Promise<IPCChannels['app:performUpdate'][
   });
 
   try {
-    await autoUpdater.downloadUpdate();
+    await typedAutoUpdater.downloadUpdate();
     return {
       started: true,
       fallback: false,

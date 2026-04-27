@@ -4,6 +4,7 @@ import type { InvokeHandlers } from '../ipc.js';
 import type { IPCChannels } from '@flazz/shared/dist/ipc.js';
 import { setAttentionState } from '../attention-state.js';
 import { checkForUpdates, getUpdateStatus, performUpdate } from '../updater.js';
+import { getCurrentAppVersion } from '../version.js';
 
 export function getVersions(): {
   app: string;
@@ -13,7 +14,7 @@ export function getVersions(): {
   packaged: boolean;
 } {
   return {
-    app: electronApp.getVersion(),
+    app: getCurrentAppVersion(),
     chrome: process.versions.chrome,
     node: process.versions.node,
     electron: process.versions.electron,
