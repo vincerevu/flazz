@@ -6,7 +6,6 @@ import {
 } from "./ipc.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname } from "node:path";
-import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 
 import { ServiceRegistry } from "@flazz/core/dist/services/service_registry.js";
 import { graphBuilderService } from "@flazz/core/dist/memory-graph/build-graph.js";
@@ -21,6 +20,7 @@ import { initConfigs } from "@flazz/core/dist/config/initConfigs.js";
 import { setPdfExportService } from "@flazz/core/dist/application/lib/tools/pdf-tools.js";
 import started from "electron-squirrel-startup";
 import { ElectronPdfExportService } from "./pdf-export/pdf-export-service.js";
+import { initializeUpdater } from "./updater.js";
 
 const rendererDevUrl = "http://localhost:4318";
 
@@ -186,16 +186,7 @@ app.whenReady().then(async () => {
     registerAppProtocol();
   }
 
-  // Initialize auto-updater (only in production)
-  if (app.isPackaged) {
-    updateElectronApp({
-      updateSource: {
-        type: UpdateSourceType.ElectronPublicUpdateService,
-        repo: "Flazzlabs/Flazz",
-      },
-      notifyUser: true, // Shows native dialog when update is available
-    });
-  }
+  initializeUpdater();
 
   // Initialize all config files before UI can access them
   await initConfigs();

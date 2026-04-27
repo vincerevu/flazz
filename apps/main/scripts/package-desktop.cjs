@@ -120,6 +120,7 @@ async function main() {
   await build({
     targets: buildTarget(),
     projectDir: appStageRoot,
+    publish: 'never',
     config: {
       appId: 'com.flazz.app',
       productName: 'Flazz',
@@ -139,7 +140,15 @@ async function main() {
       asar: true,
       npmRebuild: false,
       buildDependenciesFromSource: false,
-      publish: null,
+      electronUpdaterCompatibility: '>=2.16',
+      publish: [
+        {
+          provider: 'github',
+          owner: 'vincerevu',
+          repo: 'flazz',
+          releaseType: 'release',
+        },
+      ],
       dmg: {
         sign: false,
       },
