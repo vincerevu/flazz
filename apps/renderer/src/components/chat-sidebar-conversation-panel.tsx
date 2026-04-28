@@ -9,6 +9,7 @@ import {
 import {
   Message,
   MessageContent,
+  MessageResponse,
 } from '@/components/ai-elements/message'
 import { AskHumanRequest } from '@/components/ai-elements/ask-human-request'
 import { PermissionRequest } from '@/components/ai-elements/permission-request'
@@ -21,6 +22,9 @@ import {
   type ConversationItem,
   type PermissionResponse,
 } from '@/lib/chat-conversation'
+import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
+
+const streamdownComponents = { pre: MarkdownPreOverride }
 
 type RenderConversationItem = (item: ConversationItem, tabId: string) => React.ReactNode
 
@@ -60,6 +64,7 @@ export function ChatSidebarConversationPanel({
     () => groupConversationRenderBlocks(tabState.conversation),
     [tabState.conversation],
   )
+  const hasStreamingAssistantMessage = tabState.currentAssistantMessage.trim().length > 0
 
   return (
     <div
@@ -71,7 +76,11 @@ export function ChatSidebarConversationPanel({
       data-chat-tab-panel={tabId}
       aria-hidden={!isActive}
     >
-      <Conversation className="relative flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+      <Conversation
+        key={`${tabId}:${tabState.runId ?? 'new-chat'}`}
+        isActive={isActive}
+        className="relative flex-1 overflow-y-auto [scrollbar-gutter:stable]"
+      >
         <ScrollPositionPreserver />
         <ConversationContent
           className={
@@ -211,7 +220,17 @@ export function ChatSidebarConversationPanel({
                   />
                 ))}
 
-              {isActive && isProcessing && (
+              {hasStreamingAssistantMessage && (
+                <Message from="assistant">
+                  <MessageContent>
+                    <MessageResponse components={streamdownComponents} streaming>
+                      {tabState.currentAssistantMessage}
+                    </MessageResponse>
+                  </MessageContent>
+                </Message>
+              )}
+
+              {isActive && isProcessing && !hasStreamingAssistantMessage && (
                 <Message from="assistant">
                   <MessageContent>
                     <Shimmer duration={1}>{processingStatusText}</Shimmer>

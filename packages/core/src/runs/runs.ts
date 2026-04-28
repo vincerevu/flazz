@@ -123,7 +123,10 @@ export async function fetchRun(runId: string): Promise<z.infer<typeof Run>> {
     return repo.fetch(runId);
 }
 
-export async function listRuns(cursor?: string): Promise<z.infer<typeof ListRunsResponse>> {
+export async function listRuns(
+    cursor?: string,
+    filters?: { runType?: z.infer<typeof Run>["runType"] },
+): Promise<z.infer<typeof ListRunsResponse>> {
     const repo = container.resolve<IRunsRepo>('runsRepo');
-    return repo.list(cursor);
+    return repo.list(cursor, filters);
 }

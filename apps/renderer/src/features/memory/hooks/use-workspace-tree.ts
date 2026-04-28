@@ -3,7 +3,13 @@ import type { TreeNode, DirEntry } from '../types'
 import { stripMemoryPrefix, toMemoryPath } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
-const HIDDEN_MEMORY_UI_PREFIXES = ['memory/Runs', 'memory/Workflows', 'memory/Signals', 'memory/Sources']
+const HIDDEN_MEMORY_UI_PREFIXES = [
+  'memory/Runs',
+  'memory/Workflows',
+  'memory/Signals',
+  'memory/Sources',
+  'memory/Voice Memos',
+]
 
 function isHiddenMemoryUiPath(path: string): boolean {
   return HIDDEN_MEMORY_UI_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))

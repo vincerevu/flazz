@@ -78,6 +78,7 @@ async function labelEmailBatch(
 ): Promise<{ runId: string; filesEdited: Set<string> }> {
     const run = await createRun({
         agentId: LABELING_AGENT,
+        runType: "background",
     });
 
     let message = `Label the following ${files.length} email files by prepending YAML frontmatter.\n\n`;

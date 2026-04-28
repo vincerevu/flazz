@@ -49,7 +49,10 @@ export const RunStatusEvent = BaseRunEvent.extend({
 export const StartEvent = BaseRunEvent.extend({
     type: z.literal("start"),
     agentName: z.string(),
+    runType: z.enum(["chat", "background"]).optional(),
 });
+
+export const RunType = z.enum(["chat", "background"]);
 
 export const SpawnSubFlowEvent = BaseRunEvent.extend({
     type: z.literal("spawn-subflow"),
@@ -248,6 +251,7 @@ export const Run = z.object({
     title: z.string().optional(),
     createdAt: z.iso.datetime(),
     agentId: z.string(),
+    runType: RunType,
     log: z.array(RunEvent),
 });
 
@@ -257,10 +261,12 @@ export const ListRunsResponse = z.object({
         title: true,
         createdAt: true,
         agentId: true,
+        runType: true,
     })),
     nextCursor: z.string().optional(),
 });
 
 export const CreateRunOptions = Run.pick({
     agentId: true,
+    runType: true,
 });

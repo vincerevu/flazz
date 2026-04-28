@@ -16,6 +16,7 @@ type UseWorkspaceSidebarPropsOptions = {
   setPendingFolderRenamePath: (path: string | null) => void
   handleVoiceNoteCreated: SidebarProps['onVoiceNoteCreated']
   runs: SidebarProps['runs']
+  runsLoading?: boolean
   runId: string | null
   processingRunIds: SidebarProps['processingRunIds']
   openNewChatTab: () => void
@@ -48,6 +49,7 @@ export function useWorkspaceSidebarProps({
   setPendingFolderRenamePath,
   handleVoiceNoteCreated,
   runs,
+  runsLoading = false,
   runId,
   processingRunIds,
   openNewChatTab,
@@ -70,6 +72,34 @@ export function useWorkspaceSidebarProps({
   refreshTree,
 }: UseWorkspaceSidebarPropsOptions) {
   const onReset = useMemo(() => (() => { void refreshTree() }), [refreshTree])
+  const sidebarRuns = useMemo(() => {
+    const byId = new Map(runs.map((item) => [item.id, item]))
+    const merged = [...runs]
+
+    for (const tab of chatTabs) {
+      const tabRunId = tab.runId
+      if (!tabRunId || byId.has(tabRunId)) continue
+      const fallbackRun = {
+        id: tabRunId,
+        title: undefined,
+        createdAt: new Date().toISOString(),
+        agentId: '',
+      }
+      byId.set(tabRunId, fallbackRun)
+      merged.push(fallbackRun)
+    }
+
+    if (runId && !byId.has(runId)) {
+      merged.unshift({
+        id: runId,
+        title: undefined,
+        createdAt: new Date().toISOString(),
+        agentId: '',
+      })
+    }
+
+    return merged
+  }, [chatTabs, runId, runs])
 
   const sidebarProps = useMemo<SidebarProps>(() => ({
     tree,
@@ -80,7 +110,8 @@ export function useWorkspaceSidebarProps({
     pendingFolderRenamePath,
     onPendingFolderRenameHandled: setPendingFolderRenamePath,
     onVoiceNoteCreated: handleVoiceNoteCreated,
-    runs,
+    runs: sidebarRuns,
+    runsLoading,
     currentRunId: runId,
     processingRunIds,
     tasksActions: {
@@ -162,9 +193,10 @@ export function useWorkspaceSidebarProps({
     openNewChatTab,
     pendingFolderRenamePath,
     processingRunIds,
+    runsLoading,
     replaceTabRunId,
     runId,
-    runs,
+    sidebarRuns,
     selectedBackgroundTask,
     selectedPath,
     selectedPathOrGraphOpen,

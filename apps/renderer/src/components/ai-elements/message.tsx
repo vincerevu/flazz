@@ -20,7 +20,7 @@ import {
   XIcon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, memo, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, memo, useContext, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -316,14 +316,6 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-function hashMarkdownBlock(input: string) {
-  let hash = 0;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = (hash * 31 + input.charCodeAt(index)) | 0;
-  }
-  return `${hash}`;
-}
-
 const MessageResponseBlock = memo(function MessageResponseBlock({
   content,
   ...props
@@ -344,9 +336,14 @@ const MessageResponseBlock = memo(function MessageResponseBlock({
 
 export const MessageResponse = memo(
   ({ className, children, streaming, ...props }: MessageResponseProps & { streaming?: boolean }) => {
+    const textChildren = typeof children === "string" ? children : null;
+    const deferredTextChildren = useDeferredValue(textChildren);
+    const renderText = streaming
+      ? (deferredTextChildren ?? textChildren)
+      : textChildren;
     const blocks = useMemo(
-      () => (typeof children === "string" ? splitStreamingMarkdown(children, streaming) : null),
-      [children, streaming]
+      () => (renderText ? splitStreamingMarkdown(renderText, streaming) : null),
+      [renderText, streaming]
     );
 
     if (blocks) {
@@ -359,7 +356,7 @@ export const MessageResponse = memo(
         >
           {blocks.map((block, index) => (
             <MessageResponseBlock
-              key={`${index}-${block.mode}-${hashMarkdownBlock(block.raw)}`}
+              key={`${index}-${block.mode}`}
               {...props}
               content={block.src}
             />

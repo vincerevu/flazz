@@ -164,7 +164,7 @@ async function runAgent(
 
     try {
         // Create a new run
-        const run = await runsRepo.create({ agentId: agentName });
+        const run = await runsRepo.create({ agentId: agentName, runType: "background" });
         console.log(`[AgentRunner] Created run ${run.id} for agent ${agentName}`);
 
         // Add the starting message as a user message

@@ -11,10 +11,11 @@ import type { IPCChannels } from '@flazz/shared/src/ipc.js'
 type UserMessageContent = IPCChannels['runs:createMessage']['req']['message']
 type PermissionAuthorization = IPCChannels['runs:authorizePermission']['req']['authorization']
 type HumanReply = IPCChannels['runs:provideHumanInput']['req']['reply']
+type ListRunsRequest = IPCChannels['runs:list']['req']
 
 export const runsIpc = {
-  list(cursor?: string) {
-    return window.ipc.invoke('runs:list', { cursor })
+  list(options: ListRunsRequest = {}) {
+    return window.ipc.invoke('runs:list', options)
   },
 
   fetch(runId: string) {
@@ -22,7 +23,7 @@ export const runsIpc = {
   },
 
   create(agentId: string) {
-    return window.ipc.invoke('runs:create', { agentId })
+    return window.ipc.invoke('runs:create', { agentId, runType: 'chat' })
   },
 
   createMessage(runId: string, message: UserMessageContent) {

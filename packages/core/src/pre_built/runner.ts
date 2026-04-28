@@ -58,6 +58,7 @@ async function runAgent(agentName: string): Promise<void> {
         // The agent file is expected to be in the agents directory with the same name
         const run = await createRun({
             agentId: agentName,
+            runType: "background",
         });
 
         // Build trigger message with user context

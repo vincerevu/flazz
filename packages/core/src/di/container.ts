@@ -1,4 +1,4 @@
-import { asClass, createContainer, InjectionMode } from "awilix";
+import { asClass, asValue, createContainer, InjectionMode } from "awilix";
 import { FSModelConfigRepo, IModelConfigRepo } from "../models/repo.js";
 import { FSModelCapabilityRepo, IModelCapabilityRepo } from "../models/capability-repo.js";
 import { FSMcpConfigRepo, IMcpConfigRepo } from "../mcp/repo.js";
@@ -56,6 +56,7 @@ const container = createContainer({
 
 container.register({
     idGenerator: asClass<IMonotonicallyIncreasingIdGenerator>(IdGen).singleton(),
+    workDir: asValue(WorkDir),
     messageQueue: asClass<IMessageQueue>(InMemoryMessageQueue).singleton(),
     bus: asClass<IBus>(InMemoryBus).singleton(),
     runsLock: asClass<IRunsLock>(InMemoryRunsLock).singleton(),
