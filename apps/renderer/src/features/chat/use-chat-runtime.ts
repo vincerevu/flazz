@@ -52,7 +52,7 @@ type RunRecord = {
   log: RunEventType[]
 }
 
-const STREAM_FLUSH_MS = 16
+const STREAM_FLUSH_MS = 32
 const getStreamingAssistantId = (runId: string) => `assistant-stream-${runId}`
 const getCompactionItemId = (compactionId: string) => `context-compaction-${compactionId}`
 const getAskHumanRequestMessageId = (toolCallId: string) => `ask-human-request-${toolCallId}`
@@ -390,8 +390,9 @@ export function useChatRuntime({
 
   const syncStreamingAssistant = useCallback((targetRunId: string, content: string) => {
     if (targetRunId !== runIdRef.current) return
+    const nextContent = content.trim() ? content : ''
     startTransition(() => {
-      setCurrentAssistantMessage(content.trim() ? content : '')
+      setCurrentAssistantMessage((prev) => (prev === nextContent ? prev : nextContent))
     })
   }, [])
 
@@ -460,7 +461,10 @@ export function useChatRuntime({
 
   const loadRuns = useCallback(async () => {
     const requestId = ++loadRunsRequestIdRef.current
-    setRunsLoading(true)
+    const shouldShowLoadingState = runsRef.current.length === 0
+    if (shouldShowLoadingState) {
+      setRunsLoading(true)
+    }
     try {
       const firstPage: ListRunsResponseType = await runsIpc.list({ runType: 'chat' })
       if (loadRunsRequestIdRef.current !== requestId) return
@@ -478,7 +482,9 @@ export function useChatRuntime({
       }
 
       setRuns(filteredRuns)
-      setRunsLoading(false)
+      if (shouldShowLoadingState) {
+        setRunsLoading(false)
+      }
 
       if (!cursor) {
         return
@@ -498,7 +504,7 @@ export function useChatRuntime({
     } catch (err) {
       console.error('Failed to load runs:', err)
     } finally {
-      if (loadRunsRequestIdRef.current === requestId) {
+      if (shouldShowLoadingState && loadRunsRequestIdRef.current === requestId) {
         setRunsLoading(false)
       }
     }
@@ -599,18 +605,16 @@ export function useChatRuntime({
   }, [syncStreamingAssistant])
 
   const scheduleStreamingAssistantFlush = useCallback((targetRunId?: string | null) => {
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      if (streamFlushFrameRef.current !== null) return
-      streamFlushFrameRef.current = window.requestAnimationFrame(() => {
-        streamFlushFrameRef.current = null
-        flushStreamingAssistant(targetRunId)
-      })
-      return
-    }
-
-    if (streamFlushTimerRef.current) return
+    if (streamFlushTimerRef.current || streamFlushFrameRef.current !== null) return
     streamFlushTimerRef.current = setTimeout(() => {
       streamFlushTimerRef.current = null
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        streamFlushFrameRef.current = window.requestAnimationFrame(() => {
+          streamFlushFrameRef.current = null
+          flushStreamingAssistant(targetRunId)
+        })
+        return
+      }
       flushStreamingAssistant(targetRunId)
     }, STREAM_FLUSH_MS)
   }, [flushStreamingAssistant])

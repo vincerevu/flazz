@@ -36,6 +36,12 @@ function getEffectiveInputUsage(usage: LanguageModelUsage | null | undefined): n
   return usage.inputTokens ?? 0
 }
 
+function getEventTimestamp(event: { ts?: string } | null | undefined): number | null {
+  if (!event?.ts) return null
+  const timestamp = new Date(event.ts).getTime()
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
 export function getLatestContextCompactionItem(
   conversation: ConversationItem[],
 ): ContextCompactionItem | null {
@@ -108,20 +114,27 @@ export function deriveContextWindowState(args: {
     ?? (configContextLimit > 0 ? 'config' : 'unknown')
   const hasKnownContextLimit = budgetSource === 'config' || budgetSource === 'registry'
   const contextLimit = latestCompaction?.contextLimit ?? runtimeBudget?.contextLimit ?? configContextLimit
+  const runStatusTimestamp = getEventTimestamp(args.runStatus)
   const usageIsNewerThanCompaction = Boolean(
     args.usage
       && args.usageUpdatedAt
       && latestCompaction
       && args.usageUpdatedAt >= latestCompaction.timestamp,
   )
-  const usedTokens =
-    usageIsNewerThanCompaction
-      ? getEffectiveInputUsage(args.usage)
-      : latestCompaction?.status === 'completed'
-        ? (latestCompaction.estimatedTokensAfter ?? latestCompaction.estimatedTokensBefore)
-        : latestCompaction?.estimatedTokensBefore
-          ?? getEffectiveInputUsage(args.usage)
-          ?? 0
+  const runtimeBudgetIsNewerThanCompaction = Boolean(
+    runtimeBudget
+      && (!latestCompaction || (runStatusTimestamp != null && runStatusTimestamp >= latestCompaction.timestamp)),
+  )
+  const compactionTokens = latestCompaction?.status === 'completed'
+    ? (latestCompaction.estimatedTokensAfter ?? latestCompaction.estimatedTokensBefore)
+    : latestCompaction?.estimatedTokensBefore ?? 0
+  const usageTokens = !latestCompaction || usageIsNewerThanCompaction
+    ? getEffectiveInputUsage(args.usage)
+    : 0
+  const runtimeEstimatedTokens = runtimeBudgetIsNewerThanCompaction
+    ? runtimeBudget?.estimatedPromptTokens ?? 0
+    : 0
+  const usedTokens = Math.max(compactionTokens, usageTokens, runtimeEstimatedTokens)
   const percent = hasKnownContextLimit && contextLimit > 0
     ? Math.min(100, Math.max(0, Math.round((usedTokens / contextLimit) * 100)))
     : 0
