@@ -46,6 +46,18 @@ const streamdownComponents = {
   pre: MarkdownPreOverride,
 }
 
+function StreamingAssistantMessage({ content }: { content: string }) {
+  if (!content.trim()) return null
+
+  return (
+    <Message from="assistant">
+      <MessageContent>
+        <MessageResponse components={streamdownComponents} streaming>{content}</MessageResponse>
+      </MessageContent>
+    </Message>
+  )
+}
+
 interface ChatMainPanelProps {
   chatTabs: ChatTab[]
   activeChatTabId: string
@@ -319,7 +331,9 @@ export function ChatMainPanel({
                           />
                         ))}
 
-                        {isActive && isProcessing && (
+                        <StreamingAssistantMessage content={tabState.currentAssistantMessage} />
+
+                        {isActive && isProcessing && !tabState.currentAssistantMessage.trim() && (
                           <Message from="assistant">
                             <MessageContent>
                               <Shimmer duration={1}>{processingStatusText}</Shimmer>

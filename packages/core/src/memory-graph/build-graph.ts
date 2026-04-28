@@ -225,6 +225,7 @@ async function createNotesFromBatch(
     // Create a run for the note creation agent
     const run = await createRun({
         agentId: NOTE_CREATION_AGENT,
+        runType: "background",
     });
 
     // Build message with index and all files in the batch

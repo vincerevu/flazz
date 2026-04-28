@@ -96,6 +96,7 @@ function createRunFixture(options?: {
     id: 'run-1',
     createdAt: new Date().toISOString(),
     agentId: 'copilot',
+    runType: 'chat',
     log,
   };
 }

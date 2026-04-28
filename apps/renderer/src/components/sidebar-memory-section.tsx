@@ -42,7 +42,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { SidebarVoiceNoteButton } from "@/components/sidebar-voice-note-button"
 import type { TreeNode } from "@/features/memory/types"
 import { toast } from "@/lib/toast"
 
@@ -68,7 +67,6 @@ type SidebarMemorySectionProps = {
   actions: MemoryActions
   pendingFolderRenamePath?: string | null
   onPendingFolderRenameHandled?: (path: string | null) => void
-  onVoiceNoteCreated?: (path: string) => void
 }
 
 export function SidebarMemorySection({
@@ -79,7 +77,6 @@ export function SidebarMemorySection({
   actions,
   pendingFolderRenamePath,
   onPendingFolderRenameHandled,
-  onVoiceNoteCreated,
 }: SidebarMemorySectionProps) {
   const isExpanded = expandedPaths.size > 0
   const treeContainerRef = React.useRef<HTMLDivElement | null>(null)
@@ -156,7 +153,6 @@ export function SidebarMemorySection({
                 <TooltipContent side="bottom">{action.label}</TooltipContent>
               </Tooltip>
             ))}
-            <SidebarVoiceNoteButton onNoteCreated={onVoiceNoteCreated} />
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

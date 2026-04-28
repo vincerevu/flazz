@@ -24,7 +24,7 @@ export function registerRunsHandlers(handlers: Partial<InvokeHandlers>) {
     return runsCore.fetchRun(args.runId);
   };
   handlers['runs:list'] = async (_event, args) => {
-    return runsCore.listRuns(args.cursor);
+    return runsCore.listRuns(args.cursor, { runType: args.runType });
   };
   handlers['runs:delete'] = async (_event, args) => {
     await runsCore.deleteRun(args.runId);

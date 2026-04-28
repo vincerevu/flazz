@@ -55,6 +55,7 @@ type SidebarContentPanelProps = {
   onPendingFolderRenameHandled?: (path: string | null) => void
   onVoiceNoteCreated?: (path: string) => void
   runs?: SidebarRunListItem[]
+  runsLoading?: boolean
   currentRunId?: string | null
   processingRunIds?: Set<string>
   tasksActions?: SidebarTasksActions
@@ -72,6 +73,7 @@ export function SidebarContentPanel({
   onPendingFolderRenameHandled,
   onVoiceNoteCreated,
   runs = [],
+  runsLoading = false,
   currentRunId,
   processingRunIds,
   tasksActions,
@@ -108,6 +110,7 @@ export function SidebarContentPanel({
         {activeSection === "tasks" && (
           <SidebarChatSection
             runs={runs}
+            isLoading={runsLoading}
             currentRunId={currentRunId}
             processingRunIds={processingRunIds}
             actions={tasksActions}

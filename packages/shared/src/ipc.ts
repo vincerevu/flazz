@@ -297,6 +297,7 @@ const ipcSchemas = {
   'runs:list': {
     req: z.object({
       cursor: z.string().optional(),
+      runType: z.enum(['chat', 'background']).optional(),
     }),
     res: ListRunsResponse,
   },

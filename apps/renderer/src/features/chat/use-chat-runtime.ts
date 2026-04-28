@@ -357,8 +357,12 @@ export function useChatRuntime({
   onActiveTabRunIdChange,
 }: UseChatRuntimeParams) {
   const [runs, setRuns] = useState<ChatRunListItem[]>([])
+  const [runsLoading, setRunsLoading] = useState(true)
   const [conversation, setConversation] = useState<ConversationItem[]>([])
   const [currentAssistantMessage, setCurrentAssistantMessage] = useState('')
+  const currentAssistantMessageRef = useRef('')
+  const loadRunsRequestIdRef = useRef(0)
+  const runsRef = useRef<ChatRunListItem[]>([])
   const [modelUsage, setModelUsage] = useState<LanguageModelUsage | null>(null)
   const [modelUsageUpdatedAt, setModelUsageUpdatedAt] = useState<number | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
@@ -380,45 +384,14 @@ export function useChatRuntime({
   const [permissionResponses, setPermissionResponses] = useState<Map<string, PermissionResponse>>(new Map())
 
   const removeStreamingAssistant = useCallback((targetRunId: string) => {
-    const streamingId = getStreamingAssistantId(targetRunId)
-    setConversation((prev) => {
-      const next = prev.filter((item) => !(item.id === streamingId && 'role' in item && item.role === 'assistant'))
-      return next.length === prev.length ? prev : next
-    })
+    if (targetRunId !== runIdRef.current) return
+    setCurrentAssistantMessage('')
   }, [])
 
   const syncStreamingAssistant = useCallback((targetRunId: string, content: string) => {
-    const streamingId = getStreamingAssistantId(targetRunId)
+    if (targetRunId !== runIdRef.current) return
     startTransition(() => {
-      setConversation((prev) => {
-        const index = prev.findIndex((item) => item.id === streamingId && 'role' in item && item.role === 'assistant')
-        const trimmed = content.trim()
-
-        if (!trimmed) {
-          if (index === -1) return prev
-          const next = [...prev]
-          next.splice(index, 1)
-          return next
-        }
-
-        if (index !== -1) {
-          const existing = prev[index]
-          if (!('role' in existing) || existing.role !== 'assistant') return prev
-          if (existing.content === content && existing.streaming) return prev
-          const next = [...prev]
-          next[index] = { ...existing, content, streaming: true }
-          return next
-        }
-
-        return [...prev, {
-          id: streamingId,
-          role: 'assistant',
-          content,
-          timestamp: Date.now(),
-          streaming: true,
-        }]
-      })
-      setCurrentAssistantMessage('')
+      setCurrentAssistantMessage(content.trim() ? content : '')
     })
   }, [])
 
@@ -435,11 +408,17 @@ export function useChatRuntime({
 
     const streamingId = getStreamingAssistantId(resolvedRunId)
     setConversation((prev) => {
-      const index = prev.findIndex((item) => item.id === streamingId && 'role' in item && item.role === 'assistant')
-      const existing = index >= 0 ? prev[index] : null
-      const content = finalContent ?? (existing && 'role' in existing && existing.role === 'assistant' ? existing.content : '')
+      const existingDraftIndex = prev.findIndex((item) => item.id === streamingId && 'role' in item && item.role === 'assistant')
+      const existingDraft = existingDraftIndex >= 0 ? prev[existingDraftIndex] : null
+      const bufferedContent = streamingBuffersRef.current.get(resolvedRunId)?.assistant ?? ''
+      const content = finalContent
+        ?? bufferedContent
+        ?? currentAssistantMessageRef.current
+        ?? (existingDraft && 'role' in existingDraft && existingDraft.role === 'assistant' ? existingDraft.content : '')
       const nextId = draftMessageId ?? `assistant-${Date.now()}`
-      const base = index >= 0 ? [...prev.slice(0, index), ...prev.slice(index + 1)] : prev
+      const base = existingDraftIndex >= 0
+        ? [...prev.slice(0, existingDraftIndex), ...prev.slice(existingDraftIndex + 1)]
+        : prev
       const normalizedContent = content.trim()
 
       if (!normalizedContent) return base
@@ -449,7 +428,7 @@ export function useChatRuntime({
         id: nextId,
         role: 'assistant',
         content,
-        timestamp: existing && 'timestamp' in existing ? existing.timestamp : Date.now(),
+        timestamp: existingDraft && 'timestamp' in existingDraft ? existingDraft.timestamp : Date.now(),
       }
 
       if (existingCommittedIndex !== -1) {
@@ -468,21 +447,60 @@ export function useChatRuntime({
   }, [runId])
 
   useEffect(() => {
+    currentAssistantMessageRef.current = currentAssistantMessage
+  }, [currentAssistantMessage])
+
+  useEffect(() => {
+    runsRef.current = runs
+  }, [runs])
+
+  useEffect(() => {
     processingRunIdsRef.current = processingRunIds
   }, [processingRunIds])
 
   const loadRuns = useCallback(async () => {
+    const requestId = ++loadRunsRequestIdRef.current
+    setRunsLoading(true)
     try {
-      const allRuns: ChatRunListItem[] = []
-      let cursor: string | undefined = undefined
-      do {
-        const result: ListRunsResponseType = await runsIpc.list(cursor)
+      const firstPage: ListRunsResponseType = await runsIpc.list({ runType: 'chat' })
+      if (loadRunsRequestIdRef.current !== requestId) return
+
+      const allRuns: ChatRunListItem[] = [...firstPage.runs]
+      let filteredRuns = allRuns.filter((run) => run.agentId === agentId)
+      let cursor = firstPage.nextCursor
+
+      while (cursor && filteredRuns.length === 0) {
+        const result: ListRunsResponseType = await runsIpc.list({ cursor, runType: 'chat' })
+        if (loadRunsRequestIdRef.current !== requestId) return
         allRuns.push(...result.runs)
+        filteredRuns = allRuns.filter((run) => run.agentId === agentId)
         cursor = result.nextCursor
-      } while (cursor)
-      setRuns(allRuns.filter((run) => run.agentId === agentId))
+      }
+
+      setRuns(filteredRuns)
+      setRunsLoading(false)
+
+      if (!cursor) {
+        return
+      }
+
+      filteredRuns = allRuns.filter((run) => run.agentId === agentId)
+      setRuns(filteredRuns)
+
+      while (cursor) {
+        const result: ListRunsResponseType = await runsIpc.list({ cursor, runType: 'chat' })
+        if (loadRunsRequestIdRef.current !== requestId) return
+        allRuns.push(...result.runs)
+        filteredRuns = allRuns.filter((run) => run.agentId === agentId)
+        setRuns(filteredRuns)
+        cursor = result.nextCursor
+      }
     } catch (err) {
       console.error('Failed to load runs:', err)
+    } finally {
+      if (loadRunsRequestIdRef.current === requestId) {
+        setRunsLoading(false)
+      }
     }
   }, [agentId])
 
@@ -630,7 +648,9 @@ export function useChatRuntime({
           next.delete(event.runId)
           return next
         })
-        void loadRuns()
+        if (event.runId === runIdRef.current || runsRef.current.some((run) => run.id === event.runId)) {
+          void loadRuns()
+        }
         if (isActiveRun) {
           cancelStreamingAssistantFlush()
           flushStreamingAssistant(event.runId)
@@ -1245,6 +1265,7 @@ export function useChatRuntime({
 
   return {
     runs,
+    runsLoading,
     loadRuns,
     runId,
     conversation,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { ExternalLink, Trash2 } from 'lucide-react'
+import { ExternalLink, Loader2, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -63,6 +63,7 @@ function formatRunTime(ts: string): string {
 
 type SidebarChatSectionProps = {
   runs: SidebarRunListItem[]
+  isLoading?: boolean
   currentRunId?: string | null
   processingRunIds?: Set<string>
   actions?: SidebarTasksActions
@@ -70,6 +71,7 @@ type SidebarChatSectionProps = {
 
 export function SidebarChatSection({
   runs,
+  isLoading = false,
   currentRunId,
   processingRunIds,
   actions,
@@ -79,7 +81,13 @@ export function SidebarChatSection({
   return (
     <SidebarGroup className="flex flex-1 flex-col overflow-hidden">
       <SidebarGroupContent className="flex-1 overflow-y-auto">
-        {runs.length > 0 && (
+        {isLoading && (
+          <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            <span>Loading chats...</span>
+          </div>
+        )}
+        {!isLoading && runs.length > 0 && (
           <>
             <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
               Chat history
@@ -139,7 +147,7 @@ export function SidebarChatSection({
             </SidebarMenu>
           </>
         )}
-        {runs.length === 0 && (
+        {!isLoading && runs.length === 0 && (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             No chats yet.
           </div>

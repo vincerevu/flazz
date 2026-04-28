@@ -1,7 +1,37 @@
 import type * as React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { AiOutlineThunderbolt } from 'react-icons/ai'
+import { GoOrganization, GoProject } from 'react-icons/go'
+import { IoMdBook } from 'react-icons/io'
+import { IoMicOutline } from 'react-icons/io5'
+import { MdOutlineTopic, MdOutlineWorkOutline } from 'react-icons/md'
+import { TiWarningOutline } from 'react-icons/ti'
+import {
+  BookOpen,
+  Brain,
+  Check,
+  ChevronDown,
+  Briefcase,
+  CalendarDays,
+  Code2,
+  Database,
+  Folder,
+  Globe2,
+  Heart,
+  Mail,
+  MessageCircle,
+  Mic,
+  Rocket,
+  Search,
+  Shield,
+  Sparkles,
+  UserRound,
+  Wallet,
+  X,
+} from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import type { GraphTopicIconKey } from '@/features/memory/utils/graph-node-topics'
 
 export type GraphNode = {
   id: string
@@ -11,6 +41,7 @@ export type GraphNode = {
   group: string
   color: string
   stroke: string
+  iconKey: GraphTopicIconKey
 }
 
 export type GraphEdge = {
@@ -47,12 +78,63 @@ const FLOAT_BASE = 3.5
 const FLOAT_VARIANCE = 2
 const FLOAT_SPEED_BASE = 0.0006
 const FLOAT_SPEED_VARIANCE = 0.00025
+const REPULSION_CELL_SIZE = 180
+const NEIGHBOR_CELL_RANGE = 1
+const MOTION_ACTIVE_WINDOW_MS = 1800
+const MINIMAP_EDGE_LIMIT = 280
+
+const graphIconMap: Record<GraphTopicIconKey, React.ComponentType<{ className?: string }>> = {
+  user: UserRound,
+  folder: Folder,
+  skill: AiOutlineThunderbolt,
+  knowledge: IoMdBook,
+  organization: GoOrganization,
+  project: GoProject,
+  topic: MdOutlineTopic,
+  voice: IoMicOutline,
+  work: MdOutlineWorkOutline,
+  brain: Brain,
+  briefcase: Briefcase,
+  code: Code2,
+  book: BookOpen,
+  message: MessageCircle,
+  calendar: CalendarDays,
+  database: Database,
+  mail: Mail,
+  mic: Mic,
+  shield: Shield,
+  rocket: Rocket,
+  heart: Heart,
+  banknote: Wallet,
+  globe: Globe2,
+  sparkles: Sparkles,
+}
+
+graphIconMap.brain = TiWarningOutline
+
+function toTitleCase(value: string) {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function topicTintFromHsl(color: string) {
+  const match = color.match(/hsl\((\d+)\s+(\d+)%\s+(\d+)%\)/i)
+  if (!match) {
+    return 'rgba(24, 24, 36, 0.94)'
+  }
+  const [, hue, sat] = match
+  return `hsla(${hue} ${sat}% 18% / 0.96)`
+}
 
 export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const positionsRef = useRef<Map<string, NodePosition>>(new Map())
   const motionSeedsRef = useRef<Map<string, { phase: number; amplitude: number; speed: number }>>(new Map())
   const motionTimeRef = useRef(0)
+  const interactionUntilRef = useRef(0)
   const draggingRef = useRef<{
     id: string
     offsetX: number
@@ -65,14 +147,16 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
     originX: number
     originY: number
   } | null>(null)
+  const minimapDraggingRef = useRef(false)
   const hasCenteredRef = useRef(false)
   const [viewport, setViewport] = useState({ width: 1, height: 1 })
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(0.6)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
-  const [, forceRender] = useState(0)
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
+  const [renderTick, setRenderTick] = useState(0)
+  const [motionActive, setMotionActive] = useState(true)
 
   const edgeList = useMemo(
     () => edges.filter((edge) => edge.source !== edge.target),
@@ -90,7 +174,7 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
       if (grouped.has(group)) return
       grouped.set(group, {
         group,
-        label: group === 'root' ? 'knowledge' : group,
+        label: group === 'root' ? 'Knowledge' : toTitleCase(group),
         color: node.color,
         stroke: node.stroke,
       })
@@ -154,6 +238,18 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
     }
   }, [pan.x, pan.y, zoom])
 
+  const centerViewportOnGraphPoint = useCallback((graphX: number, graphY: number) => {
+    setPan({
+      x: viewport.width / 2 - graphX * zoom,
+      y: viewport.height / 2 - graphY * zoom,
+    })
+  }, [viewport.height, viewport.width, zoom])
+
+  const wakeMotion = useCallback((durationMs: number = MOTION_ACTIVE_WINDOW_MS) => {
+    interactionUntilRef.current = performance.now() + durationMs
+    setMotionActive(true)
+  }, [])
+
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -176,6 +272,8 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
       positionsRef.current = new Map()
       return
     }
+
+    wakeMotion()
 
     const nextPositions = new Map<string, NodePosition>()
     const count = nodes.length
@@ -212,32 +310,58 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
 
       ids.forEach((id) => forces.set(id, { x: 0, y: 0 }))
 
-      for (let i = 0; i < ids.length; i += 1) {
-        const idA = ids[i]
-        const posA = positions.get(idA)
-        if (!posA) continue
-        for (let j = i + 1; j < ids.length; j += 1) {
-          const idB = ids[j]
-          const posB = positions.get(idB)
-          if (!posB) continue
-          const dx = posB.x - posA.x
-          const dy = posB.y - posA.y
-          const distance = Math.max(MIN_DISTANCE, Math.hypot(dx, dy))
-          const force = REPULSION / (distance * distance)
-          const fx = (force * dx) / distance
-          const fy = (force * dy) / distance
-          const forceA = forces.get(idA)
-          const forceB = forces.get(idB)
-          if (forceA) {
-            forceA.x -= fx
-            forceA.y -= fy
-          }
-          if (forceB) {
-            forceB.x += fx
-            forceB.y += fy
+      const spatialGrid = new Map<string, string[]>()
+      ids.forEach((id) => {
+        const pos = positions.get(id)
+        if (!pos) return
+        const cellX = Math.floor(pos.x / REPULSION_CELL_SIZE)
+        const cellY = Math.floor(pos.y / REPULSION_CELL_SIZE)
+        const key = `${cellX}:${cellY}`
+        const bucket = spatialGrid.get(key)
+        if (bucket) {
+          bucket.push(id)
+        } else {
+          spatialGrid.set(key, [id])
+        }
+      })
+
+      spatialGrid.forEach((bucket, key) => {
+        const [cellX, cellY] = key.split(':').map(Number)
+        for (let dxCell = -NEIGHBOR_CELL_RANGE; dxCell <= NEIGHBOR_CELL_RANGE; dxCell += 1) {
+          for (let dyCell = -NEIGHBOR_CELL_RANGE; dyCell <= NEIGHBOR_CELL_RANGE; dyCell += 1) {
+            const neighborKey = `${cellX + dxCell}:${cellY + dyCell}`
+            const neighborBucket = spatialGrid.get(neighborKey)
+            if (!neighborBucket) continue
+
+            for (const idA of bucket) {
+              const posA = positions.get(idA)
+              if (!posA) continue
+
+              for (const idB of neighborBucket) {
+                if (idA >= idB) continue
+                const posB = positions.get(idB)
+                if (!posB) continue
+                const dx = posB.x - posA.x
+                const dy = posB.y - posA.y
+                const distance = Math.max(MIN_DISTANCE, Math.hypot(dx, dy))
+                const force = REPULSION / (distance * distance)
+                const fx = (force * dx) / distance
+                const fy = (force * dy) / distance
+                const forceA = forces.get(idA)
+                const forceB = forces.get(idB)
+                if (forceA) {
+                  forceA.x -= fx
+                  forceA.y -= fy
+                }
+                if (forceB) {
+                  forceB.x += fx
+                  forceB.y += fy
+                }
+              }
+            }
           }
         }
-      }
+      })
 
       edgeList.forEach((edge) => {
         const posA = positions.get(edge.source)
@@ -290,7 +414,7 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
         pos.y += pos.vy
       })
 
-      forceRender((prev) => prev + 1)
+      setRenderTick((prev) => prev + 1)
 
       if (step < SIMULATION_STEPS) {
         rafId = requestAnimationFrame(simulate)
@@ -302,7 +426,7 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
       active = false
       if (rafId) cancelAnimationFrame(rafId)
     }
-  }, [nodes, edgeList, groupCenters, nodeGroupMap])
+  }, [edgeList, groupCenters, nodeGroupMap, nodes, wakeMotion])
 
   useEffect(() => {
     if (nodes.length === 0) return
@@ -310,11 +434,24 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
     let lastTime = performance.now()
 
     const animate = (time: number) => {
+      const now = performance.now()
+      const shouldAnimate =
+        draggingRef.current !== null ||
+        panningRef.current !== null ||
+        minimapDraggingRef.current ||
+        hoveredNodeId !== null ||
+        now < interactionUntilRef.current
+
+      if (!shouldAnimate) {
+        setMotionActive(false)
+        return
+      }
+
       const delta = time - lastTime
       if (delta >= 32) {
         motionTimeRef.current += delta
         lastTime = time
-        forceRender((prev) => prev + 1)
+        setRenderTick((prev) => prev + 1)
       }
       rafId = requestAnimationFrame(animate)
     }
@@ -323,11 +460,12 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
     }
-  }, [nodes.length])
+  }, [hoveredNodeId, motionActive, nodes.length])
 
   const handlePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
     event.preventDefault()
+    wakeMotion()
     event.currentTarget.setPointerCapture(event.pointerId)
     panningRef.current = {
       startX: event.clientX,
@@ -346,13 +484,14 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
         pos.x = point.x - dragging.offsetX
         pos.y = point.y - dragging.offsetY
         dragging.moved = true
-        forceRender((prev) => prev + 1)
+        setRenderTick((prev) => prev + 1)
       }
       return
     }
 
     const panning = panningRef.current
     if (panning) {
+      wakeMotion()
       setPan({
         x: panning.originX + (event.clientX - panning.startX),
         y: panning.originY + (event.clientY - panning.startY),
@@ -373,6 +512,7 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
 
   const handleWheel = (event: React.WheelEvent) => {
     event.preventDefault()
+    wakeMotion()
     const rawDelta = event.deltaY
     const normalizedDelta = event.deltaMode === 1
       ? rawDelta * 16
@@ -405,6 +545,7 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
   const startDragNode = (event: React.PointerEvent, nodeId: string) => {
     event.stopPropagation()
     event.preventDefault()
+    wakeMotion()
     event.currentTarget.setPointerCapture(event.pointerId)
     const point = getGraphPoint(event)
     const pos = positionsRef.current.get(nodeId)
@@ -417,24 +558,6 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
       moved: false,
     }
   }
-
-  const displayPositions = new Map<string, { x: number; y: number }>()
-  nodes.forEach((node) => {
-    const pos = positionsRef.current.get(node.id)
-    if (!pos) return
-    const isDragging = draggingRef.current?.id === node.id
-    displayPositions.set(node.id, getDisplayPosition(node.id, pos, isDragging))
-  })
-  const activeNodeId = hoveredNodeId ?? draggingRef.current?.id ?? null
-  const connectedNodes = useMemo(() => {
-    if (!activeNodeId) return null
-    const set = new Set([activeNodeId])
-    edgeList.forEach((edge) => {
-      if (edge.source === activeNodeId) set.add(edge.target)
-      if (edge.target === activeNodeId) set.add(edge.source)
-    })
-    return set
-  }, [activeNodeId, edgeList])
 
   const searchMatchingNodes = useMemo(() => {
     if (!searchQuery.trim()) return null
@@ -453,6 +576,99 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
     return { matches: withConnections, directMatches }
   }, [searchQuery, nodes, edgeList])
 
+  const nodeById = useMemo(() => {
+    const map = new Map<string, GraphNode>()
+    nodes.forEach((node) => map.set(node.id, node))
+    return map
+  }, [nodes])
+  const displayPositions = useMemo(() => {
+    const map = new Map<string, { x: number; y: number }>()
+    nodes.forEach((node) => {
+      const pos = positionsRef.current.get(node.id)
+      if (!pos) return
+      const isDragging = draggingRef.current?.id === node.id
+      map.set(node.id, getDisplayPosition(node.id, pos, isDragging))
+    })
+    return map
+  }, [getDisplayPosition, nodes, renderTick])
+  const activeNodeId = hoveredNodeId ?? draggingRef.current?.id ?? null
+  const hasSelectedGroups = selectedGroups.size > 0
+  const activeNodeColor = activeNodeId ? nodeById.get(activeNodeId)?.color ?? null : null
+  const connectedNodes = useMemo(() => {
+    if (!activeNodeId) return null
+    const set = new Set([activeNodeId])
+    edgeList.forEach((edge) => {
+      if (edge.source === activeNodeId) set.add(edge.target)
+      if (edge.target === activeNodeId) set.add(edge.source)
+    })
+    return set
+  }, [activeNodeId, edgeList])
+  const selectedGroupLabels = useMemo(() => (
+    Array.from(selectedGroups)
+      .map((group) => legendItems.find((item) => item.group === group)?.label ?? group)
+      .join(', ')
+  ), [legendItems, selectedGroups])
+  const uniqueNodeColors = useMemo(
+    () => Array.from(new Set(nodes.map((node) => node.color))),
+    [nodes],
+  )
+  const minimapEdges = useMemo(() => {
+    const step = edgeList.length > MINIMAP_EDGE_LIMIT
+      ? Math.ceil(edgeList.length / MINIMAP_EDGE_LIMIT)
+      : 1
+    return edgeList.filter((_, index) => index % step === 0)
+  }, [edgeList])
+
+  const minimapData = useMemo(() => {
+    if (nodes.length === 0 || displayPositions.size === 0) return null
+
+    const MINIMAP_WIDTH = 184
+    const MINIMAP_HEIGHT = 124
+    const MINIMAP_PADDING = 12
+    const VIEWPORT_PADDING = 80
+
+    const points = Array.from(displayPositions.values())
+    const viewportLeft = -pan.x / zoom
+    const viewportTop = -pan.y / zoom
+    const viewportRight = viewportLeft + viewport.width / zoom
+    const viewportBottom = viewportTop + viewport.height / zoom
+
+    const minX = Math.min(...points.map((point) => point.x), viewportLeft) - VIEWPORT_PADDING
+    const maxX = Math.max(...points.map((point) => point.x), viewportRight) + VIEWPORT_PADDING
+    const minY = Math.min(...points.map((point) => point.y), viewportTop) - VIEWPORT_PADDING
+    const maxY = Math.max(...points.map((point) => point.y), viewportBottom) + VIEWPORT_PADDING
+
+    const graphWidth = Math.max(1, maxX - minX)
+    const graphHeight = Math.max(1, maxY - minY)
+    const scale = Math.min(
+      (MINIMAP_WIDTH - MINIMAP_PADDING * 2) / graphWidth,
+      (MINIMAP_HEIGHT - MINIMAP_PADDING * 2) / graphHeight,
+    )
+    const offsetX = (MINIMAP_WIDTH - graphWidth * scale) / 2
+    const offsetY = (MINIMAP_HEIGHT - graphHeight * scale) / 2
+
+    const project = (x: number, y: number) => ({
+      x: offsetX + (x - minX) * scale,
+      y: offsetY + (y - minY) * scale,
+    })
+    const toGraphPoint = (x: number, y: number) => ({
+      x: minX + (x - offsetX) / scale,
+      y: minY + (y - offsetY) / scale,
+    })
+
+    return {
+      width: MINIMAP_WIDTH,
+      height: MINIMAP_HEIGHT,
+      project,
+      toGraphPoint,
+      viewportRect: {
+        ...project(viewportLeft, viewportTop),
+        width: (viewport.width / zoom) * scale,
+        height: (viewport.height / zoom) * scale,
+      },
+    }
+  }, [displayPositions, nodes.length, pan.x, pan.y, viewport.height, viewport.width, zoom])
+
   return (
     <div ref={containerRef} className="graph-view relative h-full w-full">
       {error ? (
@@ -467,37 +683,97 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
         </div>
       ) : null}
 
-      {legendItems.length > 0 ? (
-        <div
-          className="absolute right-3 top-3 z-20 rounded-md border border-border/80 bg-background/90 px-3 py-2 text-xs text-foreground shadow-sm backdrop-blur"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <div className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">
-            Folders
-          </div>
-          <div className="grid gap-1">
-            {legendItems.map((item) => {
-              const isSelected = selectedGroup === item.group
-              return (
+      <div
+        className="absolute left-3 right-3 top-3 z-20"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search nodes..."
+              className="h-10 border-border/70 bg-background/88 pl-9 pr-20 shadow-lg backdrop-blur"
+            />
+            <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
+              {searchMatchingNodes ? (
+                <span className="text-xs text-muted-foreground">
+                  {searchMatchingNodes.directMatches.size}
+                </span>
+              ) : null}
+              {searchQuery ? (
                 <button
-                  key={item.group}
-                  onClick={() => setSelectedGroup(isSelected ? null : item.group)}
-                  className={`flex items-center gap-2 rounded px-1.5 py-1 text-left transition-colors hover:bg-foreground/10 ${
-                    isSelected ? 'bg-foreground/15' : ''
-                  }`}
+                  onClick={() => setSearchQuery('')}
+                  className="text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <span
-                    className="inline-flex h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: item.color, boxShadow: `0 0 0 1px ${item.stroke}` }}
-                  />
-                  <span className="truncate">{item.label}</span>
-                  <X className={`ml-auto size-3 ${isSelected ? 'text-muted-foreground' : 'invisible'}`} />
+                  <X className="size-4" />
                 </button>
-              )
-            })}
+              ) : null}
+            </div>
           </div>
+
+          {legendItems.length > 0 ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="inline-flex h-10 w-[260px] shrink-0 items-center justify-between rounded-lg border border-border/70 bg-background/88 px-3 text-sm text-foreground shadow-lg backdrop-blur transition-colors hover:bg-foreground/6">
+                  <span className="truncate text-left">
+                    {hasSelectedGroups ? selectedGroupLabels : 'All types'}
+                  </span>
+                  <ChevronDown className="ml-2 size-4 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-2">
+                <div className="grid gap-1">
+                  <button
+                    onClick={() => setSelectedGroups(new Set())}
+                    className={`flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-foreground/8 ${
+                      !hasSelectedGroups ? 'bg-foreground/8 text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
+                    <span className="inline-flex h-4 w-4 items-center justify-center">
+                      {!hasSelectedGroups ? <Check className="size-4" /> : null}
+                    </span>
+                    <span>All types</span>
+                  </button>
+                  {legendItems.map((item) => {
+                    const isSelected = selectedGroups.has(item.group)
+                    return (
+                      <button
+                        key={item.group}
+                        onClick={() => {
+                          setSelectedGroups((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(item.group)) {
+                              next.delete(item.group)
+                            } else {
+                              next.add(item.group)
+                            }
+                            return next
+                          })
+                        }}
+                        className={`flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-foreground/8 ${
+                          isSelected ? 'bg-foreground/8 text-foreground' : 'text-muted-foreground'
+                        }`}
+                      >
+                        <span className="inline-flex h-4 w-4 items-center justify-center">
+                          {isSelected ? <Check className="size-4" style={{ color: item.stroke }} /> : null}
+                        </span>
+                        <span
+                          className="inline-flex h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: item.color, boxShadow: `0 0 0 1px ${item.stroke}` }}
+                        />
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       <svg
         className="h-full w-full touch-none"
@@ -512,7 +788,7 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
       >
         <rect width={viewport.width} height={viewport.height} fill="transparent" />
         <defs>
-          {Array.from(new Set(nodes.map((n) => n.color))).map((color) => (
+          {uniqueNodeColors.map((color) => (
             <filter
               key={color}
               id={`glow-${color.replace('#', '')}`}
@@ -542,12 +818,12 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
             const isSearchEdge = searchMatchingNodes
               ? searchMatchingNodes.matches.has(edge.source) && searchMatchingNodes.matches.has(edge.target)
               : false
-            const isGroupEdge = selectedGroup
-              ? sourceGroup === selectedGroup && targetGroup === selectedGroup
+            const isGroupEdge = hasSelectedGroups
+              ? selectedGroups.has(sourceGroup) && selectedGroups.has(targetGroup)
               : false
             let strokeOpacity = 0.4
             let strokeWidth = 1
-            if (selectedGroup) {
+            if (hasSelectedGroups) {
               strokeOpacity = isGroupEdge ? 0.6 : 0.05
               strokeWidth = isGroupEdge ? 1.5 : 1
             } else if (searchMatchingNodes) {
@@ -557,8 +833,7 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
               strokeOpacity = isActiveEdge ? 0.8 : 0.1
               strokeWidth = isActiveEdge ? 2 : 1
             }
-            const activeNode = activeNodeId ? nodes.find((n) => n.id === activeNodeId) : null
-            const stroke = isActiveEdge && activeNode ? activeNode.color : '#333'
+            const stroke = isActiveEdge && activeNodeColor ? activeNodeColor : '#333'
             const dx = target.x - source.x
             const dy = target.y - source.y
             const dr = Math.sqrt(dx * dx + dy * dy) * 1.5
@@ -579,14 +854,15 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
           {nodes.map((node) => {
             const pos = displayPositions.get(node.id)
             if (!pos) return null
+            const Icon = graphIconMap[node.iconKey]
             const nodeGroup = node.group || 'root'
             const isConnected = connectedNodes ? connectedNodes.has(node.id) : true
             const isSearchMatch = searchMatchingNodes ? searchMatchingNodes.matches.has(node.id) : true
             const isDirectMatch = searchMatchingNodes ? searchMatchingNodes.directMatches.has(node.id) : false
-            const isGroupMatch = selectedGroup ? nodeGroup === selectedGroup : true
-            const isPrimary = activeNodeId === node.id || isDirectMatch || (selectedGroup && isGroupMatch)
+            const isGroupMatch = hasSelectedGroups ? selectedGroups.has(nodeGroup) : true
+            const isPrimary = activeNodeId === node.id || isDirectMatch || (hasSelectedGroups && isGroupMatch)
             let nodeOpacity = 1
-            if (selectedGroup) {
+            if (hasSelectedGroups) {
               nodeOpacity = isGroupMatch ? 1 : 0.1
             } else if (searchMatchingNodes) {
               if (isDirectMatch) {
@@ -605,33 +881,58 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
                 key={node.id}
                 transform={`translate(${pos.x} ${pos.y})`}
                 className="cursor-pointer"
-                onPointerEnter={() => setHoveredNodeId(node.id)}
-                onPointerLeave={() => setHoveredNodeId(null)}
+                onPointerEnter={() => {
+                  wakeMotion()
+                  setHoveredNodeId(node.id)
+                }}
+                onPointerLeave={() => {
+                  wakeMotion(350)
+                  setHoveredNodeId(null)
+                }}
                 onPointerDown={(event) => startDragNode(event, node.id)}
                 style={{ transition: 'opacity 0.2s' }}
                 opacity={nodeOpacity}
               >
                 <circle
-                  r={30}
+                  r={34}
                   fill={node.color}
-                  opacity={isPrimary ? 0.4 : 0}
+                  opacity={isPrimary ? 0.22 : 0.08}
                   style={{ transition: 'opacity 0.2s' }}
                 />
                 <circle
-                  r={node.radius}
-                  fill={node.color}
-                  stroke={isDirectMatch ? '#fff' : '#0a0a0a'}
-                  strokeWidth={isDirectMatch ? 3 : 2}
+                  r={node.radius + 7}
+                  fill={topicTintFromHsl(node.color)}
+                  stroke={node.stroke}
+                  strokeWidth={isPrimary || isDirectMatch ? 2.5 : 1.5}
                   filter={isPrimary ? `url(#${glowFilterId})` : undefined}
                   style={{ transition: 'filter 0.2s, stroke 0.2s, stroke-width 0.2s' }}
                 />
+                <foreignObject
+                  x={-(node.radius + 1)}
+                  y={-(node.radius + 1)}
+                  width={(node.radius + 1) * 2}
+                  height={(node.radius + 1) * 2}
+                  style={{ overflow: 'visible', pointerEvents: 'none' }}
+                >
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Icon
+                      className=""
+                      style={{
+                        width: Math.max(14, node.radius * 1.15),
+                        height: Math.max(14, node.radius * 1.15),
+                        color: node.stroke,
+                      }}
+                    />
+                  </div>
+                </foreignObject>
                 <text
-                  y={node.radius + 16}
+                  y={node.radius + 24}
                   textAnchor="middle"
                   className="text-[10px]"
                   style={{
-                    fill: '#9ca3af',
-                    fontWeight: 500,
+                    fill: '#cbd5e1',
+                    fontWeight: 600,
+                    letterSpacing: '0.01em',
                   }}
                 >
                   {node.label}
@@ -642,36 +943,97 @@ export function GraphView({ nodes, edges, error, onSelectNode }: GraphViewProps)
         </g>
       </svg>
 
-      <div
-        className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <div className="relative flex items-center">
-          <Search className="absolute left-3 size-4 text-muted-foreground" />
-          <Input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search nodes..."
-            className="w-64 pl-9 pr-20 shadow-lg backdrop-blur"
-          />
-          <div className="absolute right-3 flex items-center gap-2">
-            {searchMatchingNodes && (
-              <span className="text-xs text-muted-foreground">
-                {searchMatchingNodes.directMatches.size}
-              </span>
-            )}
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-4" />
-              </button>
-            )}
-          </div>
+      {minimapData ? (
+        <div className="absolute bottom-3 right-3 z-20 rounded-xl border border-border/70 bg-background/82 p-2 shadow-lg backdrop-blur">
+          <svg
+            width={minimapData.width}
+            height={minimapData.height}
+            className="block cursor-pointer"
+            onPointerDown={(event) => {
+              wakeMotion()
+              minimapDraggingRef.current = true
+              const rect = event.currentTarget.getBoundingClientRect()
+              const point = minimapData.toGraphPoint(
+                event.clientX - rect.left,
+                event.clientY - rect.top,
+              )
+              centerViewportOnGraphPoint(point.x, point.y)
+              event.currentTarget.setPointerCapture(event.pointerId)
+            }}
+            onPointerMove={(event) => {
+              if (!minimapDraggingRef.current) return
+              wakeMotion()
+              const rect = event.currentTarget.getBoundingClientRect()
+              const point = minimapData.toGraphPoint(
+                event.clientX - rect.left,
+                event.clientY - rect.top,
+              )
+              centerViewportOnGraphPoint(point.x, point.y)
+            }}
+            onPointerUp={() => {
+              minimapDraggingRef.current = false
+            }}
+            onPointerLeave={() => {
+              minimapDraggingRef.current = false
+            }}
+          >
+            <rect
+              x={0}
+              y={0}
+              width={minimapData.width}
+              height={minimapData.height}
+              rx={10}
+              fill="rgba(9, 12, 18, 0.88)"
+            />
+
+            {minimapEdges.map((edge, index) => {
+              const source = displayPositions.get(edge.source)
+              const target = displayPositions.get(edge.target)
+              if (!source || !target) return null
+              const start = minimapData.project(source.x, source.y)
+              const end = minimapData.project(target.x, target.y)
+              return (
+                <line
+                  key={`minimap-${edge.source}-${edge.target}-${index}`}
+                  x1={start.x}
+                  y1={start.y}
+                  x2={end.x}
+                  y2={end.y}
+                  stroke="rgba(148, 163, 184, 0.18)"
+                  strokeWidth={1}
+                />
+              )
+            })}
+
+            {nodes.map((node) => {
+              const pos = displayPositions.get(node.id)
+              if (!pos) return null
+              const point = minimapData.project(pos.x, pos.y)
+              return (
+                <circle
+                  key={`minimap-node-${node.id}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={2.8}
+                  fill={node.stroke}
+                  opacity={0.95}
+                />
+              )
+            })}
+
+            <rect
+              x={minimapData.viewportRect.x}
+              y={minimapData.viewportRect.y}
+              width={minimapData.viewportRect.width}
+              height={minimapData.viewportRect.height}
+              rx={8}
+              fill="rgba(255, 255, 255, 0.08)"
+            />
+
+          </svg>
         </div>
-      </div>
+      ) : null}
+
     </div>
   )
 }

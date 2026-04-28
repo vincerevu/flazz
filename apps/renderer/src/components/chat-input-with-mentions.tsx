@@ -1,3 +1,4 @@
+// @refresh reset
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LanguageModelUsage } from 'ai'
 import z from 'zod'
@@ -401,6 +402,7 @@ function ChatInputInner({
         </button>
         <ChatModelSelector onRuntimeConfigChange={setRuntimeConfig} />
         <div className="flex-1" />
+        <>
         <ChatContextIndicator
           conversation={conversation}
           usage={modelUsage}
@@ -445,6 +447,7 @@ function ChatInputInner({
             </Button>
           )}
         </div>
+        </>
       </div>
     </div>
   )

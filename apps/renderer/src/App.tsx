@@ -45,6 +45,8 @@ import { useWorkspaceSidebarProps } from '@/features/app/hooks/use-workspace-sid
 import { useAppHeaderProps } from '@/features/app/hooks/use-app-header-props'
 import { uploadImageToWorkspace } from '@/features/memory/lib/workspace-image-upload'
 
+const LAST_ACTIVE_CHAT_RUN_STORAGE_KEY = 'flazz:last-active-chat-run-id'
+
 function App() {
   type ShortcutPane = 'left' | 'right'
   const { resolvedTheme } = useTheme()
@@ -175,6 +177,7 @@ function App() {
   // --- Chat State ---
   const chatRuntimeSnapshotRef = useRef<ChatTabViewState>(createEmptyChatTabViewState())
   const activeTabRunIdChangeRef = useRef<(runId: string | null) => void>(() => {})
+  const attemptedChatRestoreRef = useRef(false)
   const [agentId] = useState<string>('copilot')
   const [presetMessage, setPresetMessage] = useState<string | undefined>(undefined)
 
@@ -247,6 +250,7 @@ function App() {
 
   const {
     runs,
+    runsLoading,
     loadRuns,
     runId,
     conversation,
@@ -276,6 +280,16 @@ function App() {
   useEffect(() => {
     chatRuntimeSnapshotRef.current = chatRuntimeSnapshot
   }, [chatRuntimeSnapshot])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!runId) return
+    try {
+      window.localStorage.setItem(LAST_ACTIVE_CHAT_RUN_STORAGE_KEY, runId)
+    } catch {
+      // Ignore persistence errors.
+    }
+  }, [runId])
 
   const {
     chatDraftsRef,
@@ -310,6 +324,47 @@ function App() {
   useEffect(() => {
     activeTabRunIdChangeRef.current = replaceActiveTabRunId
   }, [replaceActiveTabRunId])
+
+  useEffect(() => {
+    if (attemptedChatRestoreRef.current) return
+    if (runsLoading) return
+
+    const hasLiveChatState = Boolean(runId || conversation.length > 0 || currentAssistantMessage.trim())
+    if (hasLiveChatState) {
+      attemptedChatRestoreRef.current = true
+      return
+    }
+
+    if (chatTabs.length !== 1 || chatTabs[0]?.runId) {
+      attemptedChatRestoreRef.current = true
+      return
+    }
+
+    attemptedChatRestoreRef.current = true
+
+    if (typeof window === 'undefined') return
+
+    try {
+      const lastRunId = window.localStorage.getItem(LAST_ACTIVE_CHAT_RUN_STORAGE_KEY)
+      if (!lastRunId) return
+      const matchingRun = runs.find((item) => item.id === lastRunId)
+      if (!matchingRun) return
+      replaceTabRunId(activeChatTabId, lastRunId)
+      void loadRun(lastRunId)
+    } catch {
+      // Ignore restore errors and leave a fresh chat open.
+    }
+  }, [
+    activeChatTabId,
+    chatTabs,
+    conversation.length,
+    currentAssistantMessage,
+    loadRun,
+    replaceTabRunId,
+    runId,
+    runs,
+    runsLoading,
+  ])
 
   const handleNewChat = useCallback(() => {
       if (activeFileTabId) {
@@ -501,6 +556,7 @@ function App() {
     setPendingFolderRenamePath,
     handleVoiceNoteCreated,
     runs,
+    runsLoading,
     runId,
     processingRunIds,
     openNewChatTab,

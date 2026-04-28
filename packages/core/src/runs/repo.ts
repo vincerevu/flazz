@@ -7,10 +7,15 @@ import fs from "fs";
 import readline from "readline";
 import { Run, RunEvent, StartEvent, CreateRunOptions, ListRunsResponse, MessageEvent } from "@flazz/shared";
 
+function resolveRunType(agentId: string, runType?: z.infer<typeof Run>["runType"]): z.infer<typeof Run>["runType"] {
+    if (runType) return runType;
+    return agentId === "copilot" ? "chat" : "background";
+}
+
 export interface IRunsRepo {
     create(options: z.infer<typeof CreateRunOptions>): Promise<z.infer<typeof Run>>;
     fetch(id: string): Promise<z.infer<typeof Run>>;
-    list(cursor?: string): Promise<z.infer<typeof ListRunsResponse>>;
+    list(cursor?: string, filters?: { runType?: z.infer<typeof Run>["runType"] }): Promise<z.infer<typeof ListRunsResponse>>;
     appendEvents(runId: string, events: z.infer<typeof RunEvent>[]): Promise<void>;
     delete(id: string): Promise<void>;
 }
@@ -30,14 +35,18 @@ function cleanContentForTitle(content: string): string {
 
 export class FSRunsRepo implements IRunsRepo {
     private idGenerator: IMonotonicallyIncreasingIdGenerator;
+    private workDir: string;
     constructor({
         idGenerator,
+        workDir = WorkDir,
     }: {
         idGenerator: IMonotonicallyIncreasingIdGenerator;
+        workDir?: string;
     }) {
         this.idGenerator = idGenerator;
+        this.workDir = workDir;
         // ensure runs directory exists
-        fsp.mkdir(path.join(WorkDir, 'runs'), { recursive: true });
+        fsp.mkdir(path.join(this.workDir, 'runs'), { recursive: true });
     }
 
     private extractTitle(events: z.infer<typeof RunEvent>[]): string | undefined {
@@ -64,6 +73,23 @@ export class FSRunsRepo implements IRunsRepo {
             }
         }
         return undefined;
+    }
+
+    private async readRunStart(filePath: string): Promise<z.infer<typeof StartEvent> | null> {
+        let handle: fsp.FileHandle | undefined;
+        try {
+            handle = await fsp.open(filePath, 'r');
+            const buffer = Buffer.alloc(4096);
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+            const chunk = buffer.subarray(0, bytesRead).toString('utf8');
+            const firstLine = chunk.split(/\r?\n/).find((line) => line.trim());
+            if (!firstLine) return null;
+            return StartEvent.parse(JSON.parse(firstLine));
+        } catch {
+            return null;
+        } finally {
+            await handle?.close().catch(() => undefined);
+        }
     }
 
     /**
@@ -152,7 +178,7 @@ export class FSRunsRepo implements IRunsRepo {
 
     async appendEvents(runId: string, events: z.infer<typeof RunEvent>[]): Promise<void> {
         await fsp.appendFile(
-            path.join(WorkDir, 'runs', `${runId}.jsonl`),
+            path.join(this.workDir, 'runs', `${runId}.jsonl`),
             events.map(event => JSON.stringify(event)).join("\n") + "\n"
         );
     }
@@ -164,6 +190,7 @@ export class FSRunsRepo implements IRunsRepo {
             type: "start",
             runId,
             agentName: options.agentId,
+            runType: options.runType,
             subflow: [],
             ts,
         };
@@ -172,12 +199,13 @@ export class FSRunsRepo implements IRunsRepo {
             id: runId,
             createdAt: ts,
             agentId: options.agentId,
+            runType: options.runType,
             log: [start],
         };
     }
 
     async fetch(id: string): Promise<z.infer<typeof Run>> {
-        const contents = await fsp.readFile(path.join(WorkDir, 'runs', `${id}.jsonl`), 'utf8');
+        const contents = await fsp.readFile(path.join(this.workDir, 'runs', `${id}.jsonl`), 'utf8');
         const parsedEvents: z.infer<typeof RunEvent>[] = [];
         for (const line of contents.split('\n')) {
             const trimmed = line.trim();
@@ -202,12 +230,13 @@ export class FSRunsRepo implements IRunsRepo {
             title,
             createdAt: startEvent.ts!,
             agentId: startEvent.agentName,
+            runType: resolveRunType(startEvent.agentName, startEvent.runType),
             log: events,
         };
     }
 
-    async list(cursor?: string): Promise<z.infer<typeof ListRunsResponse>> {
-        const runsDir = path.join(WorkDir, 'runs');
+    async list(cursor?: string, filters: { runType?: z.infer<typeof Run>["runType"] } = {}): Promise<z.infer<typeof ListRunsResponse>> {
+        const runsDir = path.join(this.workDir, 'runs');
         const PAGE_SIZE = 20;
 
         let files: string[] = [];
@@ -238,13 +267,29 @@ export class FSRunsRepo implements IRunsRepo {
             }
         }
 
-        const selected = files.slice(startIndex, startIndex + PAGE_SIZE);
         const runs: z.infer<typeof ListRunsResponse>['runs'] = [];
+        let nextIndex = startIndex;
 
-        for (const name of selected) {
+        for (; nextIndex < files.length && runs.length < PAGE_SIZE; nextIndex++) {
+            const name = files[nextIndex];
             const runId = name.slice(0, -'.jsonl'.length);
-            const metadata = await this.readRunMetadata(path.join(runsDir, name));
+            const filePath = path.join(runsDir, name);
+            if (filters.runType) {
+                const start = await this.readRunStart(filePath);
+                if (!start) {
+                    continue;
+                }
+                const runType = resolveRunType(start.agentName, start.runType);
+                if (runType !== filters.runType) {
+                    continue;
+                }
+            }
+            const metadata = await this.readRunMetadata(filePath);
             if (!metadata) {
+                continue;
+            }
+            const runType = resolveRunType(metadata.start.agentName, metadata.start.runType);
+            if (filters.runType && runType !== filters.runType) {
                 continue;
             }
             runs.push({
@@ -252,12 +297,13 @@ export class FSRunsRepo implements IRunsRepo {
                 title: metadata.title,
                 createdAt: metadata.start.ts!,
                 agentId: metadata.start.agentName,
+                runType,
             });
         }
 
-        const hasMore = startIndex + PAGE_SIZE < files.length;
-        const nextCursor = hasMore && selected.length > 0
-            ? selected[selected.length - 1]
+        const hasMore = nextIndex < files.length;
+        const nextCursor = hasMore && nextIndex > startIndex
+            ? files[nextIndex - 1]
             : undefined;
 
         return {
@@ -267,7 +313,7 @@ export class FSRunsRepo implements IRunsRepo {
     }
 
     async delete(id: string): Promise<void> {
-        const filePath = path.join(WorkDir, 'runs', `${id}.jsonl`);
+        const filePath = path.join(this.workDir, 'runs', `${id}.jsonl`);
         await fsp.unlink(filePath);
     }
 }
