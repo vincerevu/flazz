@@ -152,7 +152,6 @@ function findTextOverlaps(shapes) {
     for (let j = i + 1; j < textShapes.length; j += 1) {
       const a = textShapes[i];
       const b = textShapes[j];
-      if (Math.abs(a.order - b.order) > 6) continue;
 
       const overlap = intersectionArea(a, b);
       if (overlap <= 0.02) continue;
@@ -174,6 +173,29 @@ function findTextOverlaps(shapes) {
   }
 
   return issues;
+}
+
+function findFooterIntrusions(shapes, slideSize) {
+  const footerTop = Math.max(0, slideSize.heightIn - 0.55);
+  const reservedBadgeLeft = Math.max(0, slideSize.widthIn - 0.8);
+
+  return shapes
+    .filter((shape) => !isNumericBadge(shape))
+    .filter((shape) => shape.yIn + shape.hIn > footerTop)
+    .filter((shape) => shape.xIn + shape.wIn > 0.45)
+    .map((shape) => ({
+      type: shape.xIn + shape.wIn > reservedBadgeLeft ? "page-badge-overlap-risk" : "footer-overlap-risk",
+      shape: shape.name,
+      shapeType: shape.type,
+      textPreview: previewText(shape.text),
+      boundsIn: {
+        x: Number(shape.xIn.toFixed(3)),
+        y: Number(shape.yIn.toFixed(3)),
+        w: Number(shape.wIn.toFixed(3)),
+        h: Number(shape.hIn.toFixed(3)),
+      },
+      message: "Content enters the reserved footer/page-number zone. Move it upward, reduce rows, or split the slide.",
+    }));
 }
 
 function findDenseTextShapes(shapes) {
@@ -215,6 +237,84 @@ function findDenseTextShapes(shapes) {
         h: Number(shape.hIn.toFixed(3)),
       },
     }));
+}
+
+function findTinyWrappedTextShapes(shapes) {
+  return shapes
+    .filter((shape) => shape.type === "sp")
+    .filter((shape) => shape.wIn <= 0.72 || shape.hIn <= 0.72)
+    .map((shape) => {
+      const text = normalizeWhitespace(shape.text);
+      const compact = text.replace(/\s+/g, "");
+      const lines = text.split("\n").filter(Boolean);
+      return { shape, text, compact, lines };
+    })
+    .filter(({ text, compact, lines }) => {
+      if (!text) return false;
+      if (isNumericBadge({ text: compact, wIn: 0.4, hIn: 0.25 })) return false;
+      if (lines.length >= 2 && compact.length >= 4) return true;
+      if (compact.length >= 5 && /^[\d-/]+$/.test(compact)) return true;
+      return false;
+    })
+    .map(({ shape, text, lines }) => ({
+      type: "tiny-wrapped-text",
+      shape: shape.name,
+      shapeType: shape.type,
+      textPreview: previewText(text),
+      lineCount: lines.length,
+      boundsIn: {
+        x: Number(shape.xIn.toFixed(3)),
+        y: Number(shape.yIn.toFixed(3)),
+        w: Number(shape.wIn.toFixed(3)),
+        h: Number(shape.hIn.toFixed(3)),
+      },
+      message: "A small marker/circle appears to contain wrapped text. Use a short index inside the marker and place dates or labels in a separate wider text box.",
+    }));
+}
+
+function findPlainSlideIssues(shapes) {
+  const visibleTextShapes = shapes
+    .filter((shape) => !isLikelyDecorativeText(shape))
+    .filter((shape) => normalizeWhitespace(shape.text).length > 0);
+  const textLength = visibleTextShapes
+    .reduce((sum, shape) => sum + normalizeWhitespace(shape.text).length, 0);
+  const mediaCount = shapes.filter((shape) => shape.type === "pic" || shape.type === "graphicFrame").length;
+  const visualShapeCount = shapes
+    .filter((shape) => !isLikelyDecorativeText(shape))
+    .filter((shape) => {
+      if (shape.type === "pic" || shape.type === "graphicFrame") return true;
+      if (!normalizeWhitespace(shape.text)) return true;
+      return shape.wIn >= 0.65 && shape.hIn >= 0.35 && normalizeWhitespace(shape.text).length <= 90;
+    }).length;
+  const issues = [];
+
+  if (textLength >= 520 && mediaCount === 0) {
+    issues.push({
+      type: "text-heavy-slide",
+      textLength,
+      visualShapeCount,
+      message: "Slide has heavy text and no media/chart frame. Convert content into stats, comparison, hierarchy, roadmap, or media structure.",
+    });
+  }
+
+  if (textLength >= 220 && visualShapeCount <= 3) {
+    issues.push({
+      type: "plain-slide",
+      textLength,
+      visualShapeCount,
+      message: "Slide has too few visual groups for its text load. Add a native helper pattern or reduce text.",
+    });
+  }
+
+  if (visibleTextShapes.length >= 7 && mediaCount === 0) {
+    issues.push({
+      type: "too-many-text-boxes",
+      textBoxCount: visibleTextShapes.length,
+      message: "Slide uses many separate text boxes without a strong visual anchor.",
+    });
+  }
+
+  return issues;
 }
 
 function collectPlaceholderMatches(text) {
@@ -274,7 +374,10 @@ async function main() {
     const layoutIssues = [
       ...findOutOfBoundsShapes(shapes, slideSize),
       ...findTextOverlaps(shapes),
+      ...findFooterIntrusions(shapes, slideSize),
       ...findDenseTextShapes(shapes),
+      ...findTinyWrappedTextShapes(shapes),
+      ...findPlainSlideIssues(shapes),
     ];
 
     slides.push({
@@ -356,6 +459,14 @@ async function main() {
           console.log(`  ${issue.textPreviews[1]}`);
         } else if (issue.type === "dense-text") {
           console.log(`- Dense text: ${issue.shape} (${issue.lineCount} lines, density ${issue.charDensity}) -> ${issue.textPreview}`);
+        } else if (issue.type === "tiny-wrapped-text") {
+          console.log(`- Tiny wrapped text: ${issue.shape} ${JSON.stringify(issue.boundsIn)} -> ${issue.message}`);
+        } else if (issue.type === "footer-overlap-risk" || issue.type === "page-badge-overlap-risk") {
+          console.log(`- ${issue.type}: ${issue.shape} ${JSON.stringify(issue.boundsIn)} -> ${issue.message}`);
+        } else if (issue.type === "text-heavy-slide" || issue.type === "plain-slide") {
+          console.log(`- ${issue.type}: ${issue.message} (${issue.textLength} chars, ${issue.visualShapeCount} visual groups)`);
+        } else if (issue.type === "too-many-text-boxes") {
+          console.log(`- Too many text boxes: ${issue.textBoxCount}. ${issue.message}`);
         }
       }
     }

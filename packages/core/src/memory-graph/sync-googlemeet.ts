@@ -8,12 +8,16 @@ import { composioAccountsRepo } from "../composio/repo.js";
 import { serviceLogger, type ServiceRunContext } from "../services/service_logger.js";
 import { limitEventItems } from "./limit-event-items.js";
 import { triggerGraphBuilderNow } from "./build-graph.js";
+import { createPrismaClient } from "../storage/prisma.js";
+import { applySqliteMigrations } from "../storage/sqlite-migrations.js";
 
 const SYNC_DIR = path.join(WorkDir, "googlemeet_sync");
-const STATE_FILE = path.join(WorkDir, "googlemeet_sync_state.json");
+const STATE_KEY = "memory-graph:googlemeet:sync-state";
 const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const LOOKBACK_DAYS = 30;
 const MAX_BATCH_SIZE = 20;
+const prisma = createPrismaClient();
+let sqliteReady: Promise<void> | null = null;
 
 type SyncState = {
   syncedMeetings?: Record<string, string>;
@@ -124,19 +128,30 @@ function ensureDir(dirPath: string) {
   }
 }
 
-function loadState(): SyncState {
-  if (!fs.existsSync(STATE_FILE)) {
-    return { syncedMeetings: {} };
-  }
+function ensureSqliteReady(): Promise<void> {
+  sqliteReady ??= applySqliteMigrations({ prisma });
+  return sqliteReady;
+}
+
+async function loadState(): Promise<SyncState> {
+  await ensureSqliteReady();
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, "utf-8")) as SyncState;
+    const row = await prisma.appKv.findUnique({ where: { key: STATE_KEY } });
+    if (!row) return { syncedMeetings: {} };
+    return JSON.parse(row.valueJson) as SyncState;
   } catch {
     return { syncedMeetings: {} };
   }
 }
 
-function saveState(state: SyncState) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf8");
+async function saveState(state: SyncState): Promise<void> {
+  await ensureSqliteReady();
+  const valueJson = JSON.stringify(state);
+  await prisma.appKv.upsert({
+    where: { key: STATE_KEY },
+    create: { key: STATE_KEY, valueJson },
+    update: { valueJson },
+  });
 }
 
 function hashPayload(value: unknown) {
@@ -418,13 +433,13 @@ async function buildMeetingSource(
 async function syncGoogleMeet() {
   ensureDir(SYNC_DIR);
 
-  const account = composioAccountsRepo.getAccount("googlemeet");
+  const account = await composioAccountsRepo.getAccount("googlemeet");
   if (!account || account.status !== "ACTIVE") {
     console.log("[GoogleMeet] Google Meet not connected via Composio. Skipping sync.");
     return;
   }
 
-  const state = loadState();
+  const state = await loadState();
   const syncedMeetings = { ...(state.syncedMeetings ?? {}) };
   const lookbackCutoff = new Date();
   lookbackCutoff.setDate(lookbackCutoff.getDate() - LOOKBACK_DAYS);
@@ -511,7 +526,7 @@ async function syncGoogleMeet() {
 
   state.syncedMeetings = syncedMeetings;
   state.lastCheckTime = new Date().toISOString();
-  saveState(state);
+  await saveState(state);
 
   if (!runContext) {
     console.log("[GoogleMeet] No new or updated meeting transcripts.");
@@ -546,7 +561,7 @@ async function syncGoogleMeet() {
 }
 
 async function runOnce() {
-  if (!composioAccountsRepo.isConnected("googlemeet")) {
+  if (!(await composioAccountsRepo.isConnected("googlemeet"))) {
     console.log("[GoogleMeet] Google Meet not connected via Composio. Sleeping...");
     return;
   }

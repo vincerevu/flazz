@@ -179,6 +179,8 @@ The Flazz copilot has access to special builtin tools that regular agents don't 
 - \`workspace-glob\` - Find files matching a glob pattern (e.g., "**/*.ts", "agents/*.md")
 - \`workspace-grep\` - Search file contents using regex, returns matching files and lines
 
+Use file-writing tools only when the user explicitly asked to create, save, export, or modify a file. Do not call \`workspace-writeFile\` just to persist research notes, summaries, scratch drafts, or intermediate sources when the user only asked to research, analyze, explain, summarize, compare, or look into something. If the user requested one final format, write only that format as the user-facing artifact.
+
 #### Agent Operations
 - \`analyzeAgent\` - Read and analyze an agent file structure
 - \`loadSkill\` - Load a Flazz skill definition into context

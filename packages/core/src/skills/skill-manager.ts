@@ -1,6 +1,10 @@
 import { type Skill, type SkillConfig, type ISkillRepo } from './types.js';
 import { scanSkillContent, formatScanReport } from './skill-scanner.js';
 
+const VIETNAMESE_DIACRITIC_RE =
+  /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/;
+const TEXT_FILE_RE = /\.(md|markdown|txt|json|yaml|yml|ts|tsx|js|jsx|mjs|cjs|py|sh|bash|zsh)$/i;
+
 export class SkillManager {
   private config: SkillConfig = {
     maxNameLength: 64,
@@ -37,6 +41,11 @@ export class SkillManager {
       return { success: false, error: contentError };
     }
 
+    const languageError = this.validateEnglishOnly(content);
+    if (languageError) {
+      return { success: false, error: languageError };
+    }
+
     // Security scan
     const scanResult = scanSkillContent(content);
     if (!scanResult.allowed) {
@@ -68,6 +77,11 @@ export class SkillManager {
     const contentError = this.validateContent(content);
     if (contentError) {
       return { success: false, error: contentError };
+    }
+
+    const languageError = this.validateEnglishOnly(content);
+    if (languageError) {
+      return { success: false, error: languageError };
     }
 
     // Security scan
@@ -156,6 +170,13 @@ export class SkillManager {
         success: false,
         error: `File content is ${bytes.toLocaleString()} bytes (limit: ${this.config.maxFileBytes.toLocaleString()} bytes).`,
       };
+    }
+
+    if (TEXT_FILE_RE.test(filePath)) {
+      const languageError = this.validateEnglishOnly(content);
+      if (languageError) {
+        return { success: false, error: languageError };
+      }
     }
 
     // Security scan for code files
@@ -290,5 +311,16 @@ export class SkillManager {
     }
 
     return null;
+  }
+
+  private validateEnglishOnly(content: string): string | null {
+    if (!VIETNAMESE_DIACRITIC_RE.test(content)) {
+      return null;
+    }
+
+    return (
+      'Skill content must be written in English only. ' +
+      'Translate instructions, descriptions, triggers, examples, pitfalls, and verification steps into English before saving.'
+    );
   }
 }

@@ -373,7 +373,7 @@ async function buildGraphWithFiles(
 
             // Save state after each successful batch
             // This ensures partial progress is saved even if later batches fail
-            saveState(state);
+            await saveState(state);
 
 // Commit memory note changes to version history
             try {
@@ -401,7 +401,7 @@ async function buildGraphWithFiles(
 
     // Update state with last build time and save
     state.lastBuildTime = new Date().toISOString();
-    saveState(state);
+    await saveState(state);
 
     console.log(`Memory graph build complete. Processed ${processedFiles.length} files.`);
     return { processedFiles, notesCreated, notesModified, hadError };
@@ -411,7 +411,7 @@ export async function buildGraph(sourceDir: string): Promise<void> {
     console.log(`[buildGraph] Starting build for directory: ${sourceDir}`);
 
     // Load current state
-    const state = loadState();
+    const state = await loadState();
     const previouslyProcessedCount = Object.keys(state.processedFiles).length;
     console.log(`[buildGraph] State loaded. Previously processed: ${previouslyProcessedCount} files`);
 
@@ -432,7 +432,7 @@ export async function buildGraph(sourceDir: string): Promise<void> {
  */
 async function processVoiceMemosForMemory(): Promise<boolean> {
     console.log(`[GraphBuilder] Starting voice memo processing...`);
-    const state = loadState();
+    const state = await loadState();
 
     // Get unprocessed voice memos from memory/Voice Memos/
     const unprocessedFiles = getUnprocessedVoiceMemos(state);
@@ -527,7 +527,7 @@ async function processVoiceMemosForMemory(): Promise<boolean> {
             }
 
             // Save state after each batch
-            saveState(state);
+            await saveState(state);
 
         // Commit memory note changes to version history
             try {
@@ -552,7 +552,7 @@ async function processVoiceMemosForMemory(): Promise<boolean> {
 
     // Update last build time
     state.lastBuildTime = new Date().toISOString();
-    saveState(state);
+    await saveState(state);
 
     await serviceLogger.log({
         type: 'run_complete',
@@ -591,7 +591,7 @@ async function processAllSources(): Promise<void> {
         console.error('[GraphBuilder] Error processing voice memos:', error);
     }
 
-    const state = loadState();
+    const state = await loadState();
     const folderChanges: { folder: string; sourceDir: string; files: string[] }[] = [];
     const countsByFolder: Record<string, number> = {};
     const allFiles: string[] = [];
@@ -695,9 +695,9 @@ async function processAllSources(): Promise<void> {
  * Reset the memory graph state - forces reprocessing of all files on next run
  * Useful for debugging or when you want to rebuild everything from scratch
  */
-export function resetGraphState(): void {
+export async function resetGraphState(): Promise<void> {
     console.log('Resetting memory graph state...');
-    resetState();
+    await resetState();
     console.log('State reset complete. All files will be reprocessed on next build.');
 }
 

@@ -190,8 +190,11 @@ slide.addShape(pres.shapes.RECTANGLE, { fill: { color: "1a1a2e" } });
 |----------|-------------|--------------|
 | **Chinese** | Microsoft YaHei | — |
 | **English** | Arial | Georgia, Calibri, Cambria, Trebuchet MS |
+| **Diacritic-heavy Latin languages** | Segoe UI | Arial, Aptos, Calibri, Tahoma, Cambria |
 
 - For mixed Chinese-English content: use Microsoft YaHei for Chinese, the chosen font for English
+- For diacritic-heavy Latin decks, prefer Segoe UI or Arial for body text. Use Cambria only for spacious headings, and give headings extra text-box height because tone marks need more vertical room.
+- Avoid decorative or uncommon heading fonts in diacritic-heavy decks unless they are bundled and verified on the user's machine. Fonts such as Georgia, Playfair Display, DM Serif Display, Merriweather, Garamond, Palatino, and Impact can fall back differently across PowerPoint/Google Slides and make accents look vertically uneven.
 - Prefer system fonts for cross-platform compatibility
 - Titles and body text can use different font pairings (e.g. Georgia + Calibri)
 
@@ -199,6 +202,9 @@ slide.addShape(pres.shapes.RECTANGLE, { fill: { color: "1a1a2e" } });
 
 | Header Font | Body Font |
 |-------------|-----------|
+| Segoe UI | Segoe UI |
+| Arial | Arial |
+| Cambria | Calibri |
 | Georgia | Calibri |
 | Arial Black | Arial |
 | Calibri | Calibri Light |
@@ -208,7 +214,7 @@ slide.addShape(pres.shapes.RECTANGLE, { fill: { color: "1a1a2e" } });
 | Palatino | Garamond |
 | Consolas | Calibri |
 
-**Choose an interesting font pairing** — don't default to Arial for everything. Pick a header font with personality and pair it with a clean body font.
+**Choose an interesting font pairing** — but for diacritic-heavy decks, prioritize diacritic stability over novelty. Use Segoe UI / Segoe UI, Arial / Arial, or Cambria / Calibri before decorative serif pairings.
 
 ### No Bold for Body Text
 
@@ -392,6 +398,37 @@ Based on 10" x 5.625" slide dimensions:
 | Element group gap | 0.3" ~ 0.5" |
 | Page safe margin | 0.4" ~ 0.6" |
 | Major block gap | 0.5" ~ 0.8" |
+
+### Safe Frame Rules
+
+All generated slides must respect the 16:9 canvas size: 10" x 5.625".
+
+Use these safe zones unless intentionally making a cover or full-bleed image:
+
+| Zone | Safe Coordinate |
+|------|-----------------|
+| Left page margin | `x >= 0.45` |
+| Right page edge | `x + w <= 9.35` |
+| Title zone | `y = 0.35` to `1.15` |
+| Content top | `y >= 1.25` |
+| Content bottom | `y + h <= 4.85` |
+| Footer/page badge zone | avoid `y > 4.95`; page number owns bottom-right |
+
+Do not place banners, callouts, rows, or cards across the footer zone. If a
+fifth item or callout would land below `y=4.85`, split the content into a second
+slide or switch to a denser structured helper.
+
+Before compiling, check every repeated item layout:
+
+```javascript
+const rowH = (contentH - gap * (items.length - 1)) / items.length;
+if (rowH < 0.58) {
+  // too crowded: split slide or reduce item count
+}
+```
+
+Never hand-place five or more vertical rows by incrementing `y` without a
+calculated content frame. This is the most common cause of bottom overlap.
 
 ### Quick Selection Guide
 

@@ -32,7 +32,7 @@ if (started) app.quit();
 
 app.setName("Flazz");
 if (process.platform === "win32") {
-  app.setAppUserModelId("Flazz");
+  app.setAppUserModelId("com.flazz.app");
 }
 
 // Global error handlers to prevent app crashes

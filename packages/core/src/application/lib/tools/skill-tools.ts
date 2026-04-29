@@ -31,6 +31,10 @@ export const skillTools = {
       'If you used a skill and hit issues not covered by it, patch it immediately.\n\n' +
       'After difficult/iterative tasks, offer to save as a skill. ' +
       'Skip for simple one-offs. Confirm with user before creating/deleting.\n\n' +
+      'Language policy: write SKILL.md and supporting instruction/reference files in English only. ' +
+      'Store an exact non-English quote only when the user explicitly asks for that wording to be remembered. ' +
+      'Do not create or update a skill merely because the user asked to research, analyze, explain, compare, summarize, or look into something. ' +
+      'Skill creation/update is for reusable procedures, explicit user requests to remember a procedure, or confirmed learning after a difficult recurring workflow.\n\n' +
       'Good skills: trigger conditions, numbered steps with exact commands, ' +
       'pitfalls section, verification steps.',
     inputSchema: z.object({
@@ -330,7 +334,7 @@ export const skillTools = {
       }
 
       if (action === 'list_candidates') {
-        const candidates = runLearningService.listCandidates();
+        const candidates = await runLearningService.listCandidates();
         return {
           success: true,
           candidates,
@@ -341,7 +345,7 @@ export const skillTools = {
       if (action === 'stats') {
         return {
           success: true,
-          stats: runLearningService.getLearningStats(),
+          stats: await runLearningService.getLearningStats(),
         };
       }
 
@@ -357,7 +361,7 @@ export const skillTools = {
       }
 
       if (action === 'reject_candidate') {
-        return runLearningService.rejectCandidate(signature);
+        return await runLearningService.rejectCandidate(signature);
       }
 
       return {

@@ -42,6 +42,8 @@ You determine the optimal layout based on the content provided. The most effecti
 
 ### 3. Thank You / Contact Layout
 - "Thank You" or closing message as the centerpiece
+- This layout must be a standalone final slide, not a footer/callout added to a
+  content slide
 - Contact info, QR code, or social links below
 - Best for: Conference talks, keynotes, external presentations
 - Example structure:
@@ -136,6 +138,6 @@ Only bypass the helper for centered thank-you layouts or intentionally custom vi
 1. **Analyze**: Understand the closing content — takeaways, CTA, contact info, or thank-you message
 2. **Choose Layout**: Select the most appropriate layout based on content type
 3. **Normalize takeaways**: Split dense text into short takeaway rows before coding. Prefer `{ title, body }[]` for recap rows.
-4. **Write Slide**: Use slide-making-skill. Use `addSummaryRows()` or `addBulletList()` for structured row layouts. Use shapes for decorative elements. **MUST include page number badge.**
+4. **Write Slide**: Use slide-making-skill. Use `addSummaryRows()` or `addBulletList()` for structured row layouts. Use shapes for decorative elements. **MUST include page number badge.** If the closing is a thank-you message, create a dedicated final slide with the thank-you text centered or hero-sized.
 5. **Validate source**: Run `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs" slides/slide-XX.js` before preview. If it fails, split dense bullets and add missing `breakLine: true`.
 6. **Verify**: Generate preview with slide-specific filename (`slide-XX-preview.pptx` where XX is slide index). Extract text with `node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" slide-XX-preview.pptx`, verify all content is present, no placeholder text remains, and page number badge is included. Fix issues until it meets standards.

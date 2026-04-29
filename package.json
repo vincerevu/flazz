@@ -21,7 +21,7 @@
     "check": "run-s lint typecheck",
     "typecheck": "run-s deps && npm-run-all typecheck:*",
     "typecheck:shared": "cd packages/shared && tsc --noEmit",
-    "typecheck:core": "cd packages/core && tsc --noEmit",
+    "typecheck:core": "cd packages/core && npm run prisma:generate && tsc --noEmit",
     "typecheck:main": "cd apps/main && tsc --noEmit",
     "typecheck:renderer": "cd apps/renderer && tsc --noEmit",
     "typecheck:preload": "cd apps/preload && tsc --noEmit",

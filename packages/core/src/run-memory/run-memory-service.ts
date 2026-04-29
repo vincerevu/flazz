@@ -2,15 +2,16 @@ import { RunMemorySummary } from "@flazz/shared";
 import { z } from "zod";
 import { Run } from "@flazz/shared";
 import { distillRunMemory } from "./run-memory-distiller.js";
-import { RunMemoryRepo } from "./run-memory-repo.js";
+import type { IRunMemoryRepo } from "./run-memory-repo.js";
 import type { GraphSignalService } from "../memory-graph/graph-signal-service.js";
 
 type RunRecord = z.infer<typeof Run>;
+type RunMemoryRecord = ReturnType<typeof distillRunMemory>;
 type RunMemorySummary = z.infer<typeof RunMemorySummary>;
 type RunMemoryPromoter = {
   promote(
-    record: ReturnType<typeof distillRunMemory>,
-    allRecords: ReturnType<RunMemoryRepo["list"]>
+    record: RunMemoryRecord,
+    allRecords: RunMemoryRecord[]
   ): {
     path: string;
     created: boolean;
@@ -44,33 +45,32 @@ function normalizeWords(input: string): string[] {
 
 export class RunMemoryService {
   constructor(
-    private repo: RunMemoryRepo,
+    private repo: IRunMemoryRepo,
     private promoter?: RunMemoryPromoter,
     private graphSignalService?: Pick<GraphSignalService, "ingestRunMemoryRecord">
   ) {}
 
-  recordRun(run: RunRecord): void {
+  async recordRun(run: RunRecord): Promise<void> {
     if (!shouldRecordRunMemory(run)) {
       return;
     }
 
     const record = distillRunMemory(run);
-    this.repo.upsert(record);
-    this.promoter?.promote(record, this.repo.list());
-    this.graphSignalService?.ingestRunMemoryRecord(record);
+    await this.repo.upsert(record);
+    this.promoter?.promote(record, await this.repo.list());
+    await this.graphSignalService?.ingestRunMemoryRecord(record);
   }
 
-  list(limit = 20): RunMemorySummary[] {
-    return this.repo.list().slice(0, limit).map((record) => ({
+  async list(limit = 20): Promise<RunMemorySummary[]> {
+    return (await this.repo.list()).slice(0, limit).map((record) => ({
       ...record,
       preview: record.summary.slice(0, 220),
     }));
   }
 
-  search(query: string, limit = 5): RunMemorySummary[] {
+  async search(query: string, limit = 5): Promise<RunMemorySummary[]> {
     const queryWords = normalizeWords(query);
-    const results = this.repo
-      .list()
+    const results = (await this.repo.list())
       .map((record) => {
         const haystacks = [
           record.summary,

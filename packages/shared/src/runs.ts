@@ -255,6 +255,18 @@ export const Run = z.object({
     log: z.array(RunEvent),
 });
 
+export const RunConversationMessage = z.object({
+    id: z.string(),
+    runId: z.string(),
+    message: Message,
+    createdAt: z.iso.datetime(),
+});
+
+export const RunConversation = Run.omit({ log: true }).extend({
+    messages: z.array(RunConversationMessage),
+    auxiliaryEvents: z.array(RunEvent),
+});
+
 export const ListRunsResponse = z.object({
     runs: z.array(Run.pick({
         id: true,

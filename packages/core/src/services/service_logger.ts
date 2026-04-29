@@ -1,19 +1,18 @@
-import fs from "fs";
-import fsp from "fs/promises";
-import path from "path";
 import crypto from "crypto";
-import { WorkDir } from "../config/config.js";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { IdGen } from "../application/lib/id-gen.js";
+import { WorkDir } from "../config/config.js";
 import type { ServiceEventType } from "@flazz/shared";
 import { serviceBus } from "./service_bus.js";
+import { createPrismaClient, type FlazzPrismaClient, type PrismaStorageOptions } from "../storage/prisma.js";
+import { applySqliteMigrations } from "../storage/sqlite-migrations.js";
 
 type ServiceNameType = ServiceEventType["service"];
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 type ServiceEventInput = DistributiveOmit<ServiceEventType, "ts">;
-
-const LOG_DIR = path.join(WorkDir, "logs");
-const LOG_FILE = path.join(LOG_DIR, "services.jsonl");
-const MAX_LOG_BYTES = 10 * 1024 * 1024;
+const LEGACY_IMPORT_MARKER_KEY = "legacy_import:service_logs";
+const LEGACY_LOG_RELATIVE_PATH = path.join("logs", "services.jsonl");
 
 export type ServiceRunContext = {
     runId: string;
@@ -22,55 +21,26 @@ export type ServiceRunContext = {
     startedAt: number;
 };
 
-function safeTimestampForFile(ts: string): string {
-    return ts.replace(/[:.]/g, "-");
-}
-
 export class ServiceLogger {
     private idGen = new IdGen();
-    private stream: fs.WriteStream | null = null;
-    private currentSize = 0;
-    private initialized = false;
+    private readonly prisma: FlazzPrismaClient;
+    private readonly storage?: PrismaStorageOptions;
+    private ready: Promise<void> | null = null;
     private writeQueue: Promise<void> = Promise.resolve();
 
-    private async ensureReady(): Promise<void> {
-        if (this.initialized) return;
-        await fsp.mkdir(LOG_DIR, { recursive: true });
-        try {
-            const stats = await fsp.stat(LOG_FILE);
-            this.currentSize = stats.size;
-        } catch {
-            this.currentSize = 0;
-        }
-        this.stream = fs.createWriteStream(LOG_FILE, { flags: "a", encoding: "utf8" });
-        this.initialized = true;
+    constructor(options: { prisma?: FlazzPrismaClient; storage?: PrismaStorageOptions } = {}) {
+        this.storage = options.storage;
+        this.prisma = options.prisma ?? createPrismaClient(options.storage);
     }
 
-    private async rotateIfNeeded(nextBytes: number): Promise<void> {
-        if (this.currentSize + nextBytes <= MAX_LOG_BYTES) return;
-        if (this.stream) {
-            const stream = this.stream;
-            this.stream = null;
-            await new Promise<void>((resolve) => {
-                let settled = false;
-                const done = () => {
-                    if (settled) return;
-                    settled = true;
-                    resolve();
-                };
-                stream.once("error", done);
-                stream.end(done);
-            });
-        }
-        const ts = safeTimestampForFile(new Date().toISOString());
-        const rotatedPath = path.join(LOG_DIR, `services.${ts}.jsonl`);
-        try {
-            await fsp.rename(LOG_FILE, rotatedPath);
-        } catch {
-            // Ignore if file doesn't exist or rename fails
-        }
-        this.currentSize = 0;
-        this.stream = fs.createWriteStream(LOG_FILE, { flags: "a", encoding: "utf8" });
+    private ensureReady(): Promise<void> {
+        this.ready ??= this.initialize();
+        return this.ready;
+    }
+
+    private async initialize(): Promise<void> {
+        await applySqliteMigrations({ prisma: this.prisma, storage: this.storage });
+        await this.importLegacyLogsOnce();
     }
 
     async log(event: ServiceEventInput & { correlationId?: string; [key: string]: unknown }): Promise<void> {
@@ -78,18 +48,26 @@ export class ServiceLogger {
             ...event,
             ts: new Date().toISOString(),
         } as ServiceEventType & { correlationId?: string; [key: string]: unknown };
-        const line = JSON.stringify(payload) + "\n";
-        const bytes = Buffer.byteLength(line, "utf8");
 
         this.writeQueue = this.writeQueue.then(async () => {
             await this.ensureReady();
-            await this.rotateIfNeeded(bytes);
-            this.stream?.write(line);
-            this.currentSize += bytes;
+            await this.prisma.serviceLogEvent.create({
+                data: {
+                    id: await this.idGen.next(),
+                    service: payload.service,
+                    type: payload.type,
+                    level: "level" in payload && typeof payload.level === "string" ? payload.level : null,
+                    runId: "runId" in payload && typeof payload.runId === "string" ? payload.runId : null,
+                    correlationId: typeof payload.correlationId === "string" ? payload.correlationId : null,
+                    ts: new Date(payload.ts),
+                    message: "message" in payload && typeof payload.message === "string" ? payload.message : null,
+                    dataJson: JSON.stringify(payload),
+                },
+            });
             try {
                 await serviceBus.publish(payload);
             } catch {
-                // Ignore publish errors to avoid blocking log writes
+                // Ignore publish errors to avoid blocking log writes.
             }
         });
 
@@ -117,6 +95,72 @@ export class ServiceLogger {
             config: opts.config,
         });
         return { runId, correlationId, service: opts.service, startedAt };
+    }
+
+    private async importLegacyLogsOnce(): Promise<void> {
+        const marker = await this.prisma.appKv.findUnique({ where: { key: LEGACY_IMPORT_MARKER_KEY } });
+        if (marker) {
+            return;
+        }
+
+        try {
+            const legacyPath = this.legacyLogPath();
+            if (!legacyPath) {
+                return;
+            }
+            const raw = await fs.readFile(legacyPath, "utf8").catch((error: NodeJS.ErrnoException) => {
+                if (error.code === "ENOENT") return null;
+                throw error;
+            });
+            if (!raw) {
+                return;
+            }
+
+            const rows = raw
+                .split(/\r?\n/)
+                .filter((line) => line.trim().length > 0)
+                .flatMap((line) => {
+                    try {
+                        const payload = JSON.parse(line) as Record<string, unknown>;
+                        const ts = typeof payload.ts === "string" ? new Date(payload.ts) : new Date();
+                        if (Number.isNaN(ts.getTime())) {
+                            return [];
+                        }
+                        return [{
+                            id: crypto.createHash("sha1").update(line).digest("hex"),
+                            service: String(payload.service ?? "unknown"),
+                            type: String(payload.type ?? "event"),
+                            level: typeof payload.level === "string" ? payload.level : null,
+                            runId: typeof payload.runId === "string" ? payload.runId : null,
+                            correlationId: typeof payload.correlationId === "string" ? payload.correlationId : null,
+                            ts,
+                            message: typeof payload.message === "string" ? payload.message : null,
+                            dataJson: JSON.stringify(payload),
+                        }];
+                    } catch {
+                        return [];
+                    }
+                });
+
+            for (let index = 0; index < rows.length; index += 500) {
+                await this.prisma.serviceLogEvent.createMany({
+                    data: rows.slice(index, index + 500),
+                });
+            }
+        } catch (error) {
+            console.error("[ServiceLogger] Failed to import legacy logs:", error);
+        } finally {
+            await this.prisma.appKv.upsert({
+                where: { key: LEGACY_IMPORT_MARKER_KEY },
+                create: { key: LEGACY_IMPORT_MARKER_KEY, valueJson: JSON.stringify({ importedAt: new Date().toISOString() }) },
+                update: { valueJson: JSON.stringify({ importedAt: new Date().toISOString() }) },
+            });
+        }
+    }
+
+    private legacyLogPath(): string | null {
+        if (this.storage?.databaseUrl && !this.storage.workDir) return null;
+        return path.join(this.storage?.workDir ?? WorkDir, LEGACY_LOG_RELATIVE_PATH);
     }
 }
 

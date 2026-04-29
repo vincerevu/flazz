@@ -25,6 +25,7 @@ import {
   registerAppHandlers,
   registerSkillsHandlers,
   registerRunMemoryHandlers,
+  registerPresentationHandlers,
 } from './ipc/index.js';
 import { getWindowState } from './ipc/app.js';
 
@@ -319,6 +320,7 @@ export function setupIpcHandlers() {
   registerMemoryHandlers(handlers);
   registerSkillsHandlers(handlers);
   registerRunMemoryHandlers(handlers);
+  registerPresentationHandlers(handlers);
 
   handlers['services:triggerGraphSync'] = async (_event, args) => {
     const [graphResult, gmailResult, googleMeetResult] = await Promise.all([

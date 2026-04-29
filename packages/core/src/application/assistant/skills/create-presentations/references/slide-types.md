@@ -394,6 +394,8 @@ Use `scripts/pptx-media-helpers.cjs` when an image showcase also needs a side te
 
 - **Use for**: Wrap-up + action
 - **Content**: Key takeaways, CTA/next steps, contact/QR, thank-you
+- **Thank-you rule**: A thank-you message must be a standalone final closing slide. Never attach it as a
+  footer, bottom callout, or decorative text on a content slide.
 
 ### Layout Options
 

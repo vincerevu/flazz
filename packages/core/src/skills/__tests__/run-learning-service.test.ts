@@ -6,6 +6,7 @@ import path from 'node:path';
 import { Run as RunSchema } from '@flazz/shared';
 import { z } from 'zod';
 import { LearningStateRepo } from '../learning-state-repo.js';
+import { SkillManager } from '../skill-manager.js';
 import { SkillRepo } from '../skill-repo.js';
 import {
   buildRunSignature,
@@ -211,45 +212,46 @@ test('parseLearningDecisionPayload tolerates think tags and fenced json', () => 
   });
 });
 
-test('LearningStateRepo tracks candidate promotion and failure stats', () => {
+test('LearningStateRepo tracks candidate promotion and failure stats', async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-learning-'));
+  const repo = new LearningStateRepo(tempDir);
   try {
-    const repo = new LearningStateRepo(tempDir);
-    const candidate = repo.bumpCandidate('sig-1', 'run-1', 'deploy-workflow');
+    const candidate = await repo.bumpCandidate('sig-1', 'run-1', 'deploy-workflow');
     assert.equal(candidate.occurrences, 1);
 
-    repo.updateCandidateDraft('sig-1', {
+    await repo.updateCandidateDraft('sig-1', {
       proposedCategory: 'devops',
       proposedDescription: 'Deploy app changes safely',
       draftContent: '---\nname: deploy-workflow\ndescription: Deploy app changes safely\n---\n## Steps\n- Do it',
     });
-    repo.recordSkillFailure('deploy-workflow');
-    repo.recordSkillUpdated('deploy-workflow');
-    repo.markCandidatePromoted('sig-1', 'deploy-workflow');
+    await repo.recordSkillFailure('deploy-workflow');
+    await repo.recordSkillUpdated('deploy-workflow');
+    await repo.markCandidatePromoted('sig-1', 'deploy-workflow');
 
-    const state = repo.getState();
+    const state = await repo.getState();
     assert.equal(state.candidates['sig-1']?.status, 'promoted');
     assert.equal(state.skills['deploy-workflow']?.failureCount, 1);
     assert.ok(state.skills['deploy-workflow']?.lastUpdatedAt);
     assert.ok((state.candidates['sig-1']?.confidence ?? 0) > 0.5);
   } finally {
+    await repo.dispose();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
-test('rejected candidates return to pending and gain confidence only after recurrence', () => {
+test('rejected candidates return to pending and gain confidence only after recurrence', async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-learning-'));
+  const repo = new LearningStateRepo(tempDir);
   try {
-    const repo = new LearningStateRepo(tempDir);
-    repo.bumpCandidate('sig-2', 'run-1', 'triage-workflow', {
+    await repo.bumpCandidate('sig-2', 'run-1', 'triage-workflow', {
       intentFingerprint: 'triage-issues',
       toolSequenceFingerprint: 'workspace-search-workspace-readFile',
       explicitUserReuseSignal: true,
       complexityScore: 0.6,
       recurrenceScore: 0.22,
     });
-    repo.rejectCandidate('sig-2');
-    const retried = repo.bumpCandidate('sig-2', 'run-2', 'triage-workflow', {
+    await repo.rejectCandidate('sig-2');
+    const retried = await repo.bumpCandidate('sig-2', 'run-2', 'triage-workflow', {
       intentFingerprint: 'triage-issues',
       toolSequenceFingerprint: 'workspace-search-workspace-readFile',
       explicitUserReuseSignal: true,
@@ -261,22 +263,23 @@ test('rejected candidates return to pending and gain confidence only after recur
     assert.equal(retried.occurrences, 2);
     assert.ok(retried.confidence >= 0.5);
   } finally {
+    await repo.dispose();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
-test('LearningStateRepo can find related candidates by recurrence fingerprints', () => {
+test('LearningStateRepo can find related candidates by recurrence fingerprints', async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-learning-'));
+  const repo = new LearningStateRepo(tempDir);
   try {
-    const repo = new LearningStateRepo(tempDir);
-    repo.bumpCandidate('sig-a', 'run-1', 'deploy-workflow', {
+    await repo.bumpCandidate('sig-a', 'run-1', 'deploy-workflow', {
       intentFingerprint: 'deploy-workflow',
       toolSequenceFingerprint: 'workspace-readFile-workspace-writeFile',
       relatedSkillName: 'deploy-workflow',
       complexityScore: 0.7,
       recurrenceScore: 0.2,
     });
-    repo.bumpCandidate('sig-b', 'run-2', 'deploy-checklist', {
+    await repo.bumpCandidate('sig-b', 'run-2', 'deploy-checklist', {
       intentFingerprint: 'deploy-workflow',
       toolSequenceFingerprint: 'workspace-readFile-workspace-writeFile',
       relatedSkillName: 'deploy-workflow',
@@ -284,7 +287,7 @@ test('LearningStateRepo can find related candidates by recurrence fingerprints',
       recurrenceScore: 0.44,
     });
 
-    const related = repo.findRelatedCandidates({
+    const related = await repo.findRelatedCandidates({
       intentFingerprint: 'deploy-workflow',
       toolSequenceFingerprint: 'workspace-readFile-workspace-writeFile',
       relatedSkillName: 'deploy-workflow',
@@ -292,6 +295,7 @@ test('LearningStateRepo can find related candidates by recurrence fingerprints',
 
     assert.equal(related.length, 2);
   } finally {
+    await repo.dispose();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -325,6 +329,29 @@ test('SkillRepo persists revisions for create and update flows', async () => {
     assert.equal(revisions.length, 2);
     assert.equal(revisions[0]?.reason, 'update');
     assert.equal(revisions[1]?.reason, 'create');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('SkillManager rejects non-English skill content', async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'flazz-skill-language-'));
+  try {
+    const manager = new SkillManager(new SkillRepo(tempDir));
+    const result = await manager.create(
+      'daily-check',
+      [
+        '---',
+        'name: daily-check',
+        'description: Kiểm tra công việc hằng ngày',
+        '---',
+        '## Steps',
+        '- Kiểm tra email mới',
+      ].join('\n'),
+    );
+
+    assert.equal(result.success, false);
+    assert.match(result.error ?? '', /English only/);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

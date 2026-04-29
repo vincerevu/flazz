@@ -7,7 +7,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function toStringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+  if (typeof value === "string" && value.trim().length > 0) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
 }
 
 function toStringArray(value: unknown): string[] | undefined {

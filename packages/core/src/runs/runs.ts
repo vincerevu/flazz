@@ -1,7 +1,7 @@
 import z from "zod";
 import container from "../di/container.js";
 import { IMessageQueue, UserMessageContentType } from "../application/lib/message-queue.js";
-import { AskHumanResponseEvent, ToolPermissionRequestEvent, ToolPermissionResponseEvent, CreateRunOptions, Run, ListRunsResponse, ToolPermissionAuthorizePayload, AskHumanResponsePayload } from "@flazz/shared";
+import { AskHumanResponseEvent, ToolPermissionRequestEvent, ToolPermissionResponseEvent, CreateRunOptions, Run, RunConversation, ListRunsResponse, ToolPermissionAuthorizePayload, AskHumanResponsePayload } from "@flazz/shared";
 import { IRunsRepo } from "./repo.js";
 import { IAgentRuntime } from "../agents/runtime.js";
 import { IBus } from "../application/lib/bus.js";
@@ -121,6 +121,11 @@ export async function deleteRun(runId: string): Promise<void> {
 export async function fetchRun(runId: string): Promise<z.infer<typeof Run>> {
     const repo = container.resolve<IRunsRepo>('runsRepo');
     return repo.fetch(runId);
+}
+
+export async function fetchRunConversation(runId: string): Promise<z.infer<typeof RunConversation>> {
+    const repo = container.resolve<IRunsRepo>('runsRepo');
+    return repo.fetchConversation(runId);
 }
 
 export async function listRuns(

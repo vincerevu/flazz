@@ -30,6 +30,6 @@ export interface ComposioAdapter {
     }>;
     syncConnection(toolkitSlug: string, connectedAccountId: string): Promise<{ status: string }>;
     disconnect(toolkitSlug: string): Promise<{ success: boolean }>;
-    listConnected(): { toolkits: string[] };
+    listConnected(): Promise<{ toolkits: string[] }>;
     executeAction(actionSlug: string, toolkitSlug: string, input: Record<string, unknown>): Promise<{ success: boolean; data: unknown; error?: string }>;
 }

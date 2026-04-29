@@ -79,13 +79,13 @@ Process new items and use the user context above to identify yourself when draft
         await waitForRunCompletion(run.id);
 
         // Update last run time
-        setLastRunTime(agentName, new Date());
+        await setLastRunTime(agentName, new Date());
 
         console.log(`[PreBuilt] Agent ${agentName} completed successfully`);
     } catch (error) {
         console.error(`[PreBuilt] Error running agent ${agentName}:`, error);
         // Still update last run time to prevent rapid retries on persistent errors
-        setLastRunTime(agentName, new Date());
+        await setLastRunTime(agentName, new Date());
     }
 }
 
@@ -95,7 +95,7 @@ Process new items and use the user context above to identify yourself when draft
 async function checkAndRunAgents(): Promise<void> {
     for (const agentName of PREBUILT_AGENTS) {
         try {
-            if (shouldRunAgent(agentName)) {
+            if (await shouldRunAgent(agentName)) {
                 await runAgent(agentName);
             }
         } catch (error) {
@@ -161,9 +161,9 @@ export async function triggerAgent(agentName: string): Promise<void> {
 /**
  * Get status of all pre-built agents
  */
-export function getStatus(): Record<string, { enabled: boolean; intervalMs: number; lastRun: string | null }> {
+export async function getStatus(): Promise<Record<string, { enabled: boolean; intervalMs: number; lastRun: string | null }>> {
     const config = loadConfig();
-    const state = loadState();
+    const state = await loadState();
     const status: Record<string, { enabled: boolean; intervalMs: number; lastRun: string | null }> = {};
 
     for (const agentName of PREBUILT_AGENTS) {

@@ -238,7 +238,7 @@ async function enrichGoogleMeetReadResult(
     return item;
   }
 
-  const account = composioAccountsRepo.getAccount("googlemeet");
+  const account = await composioAccountsRepo.getAccount("googlemeet");
   if (!account || account.status !== "ACTIVE") {
     return item;
   }
@@ -327,7 +327,7 @@ async function enrichGoogleMeetReadResult(
   };
 }
 
-export function ingestNormalizedGraphSignals(
+export async function ingestNormalizedGraphSignals(
   app: string,
   resourceType: IntegrationResourceType,
   items: unknown[],
@@ -335,7 +335,7 @@ export function ingestNormalizedGraphSignals(
 ) {
   for (const item of items) {
     try {
-      signalService.ingestNormalizedItem(app, resourceType, item);
+      await signalService.ingestNormalizedItem(app, resourceType, item);
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown graph signal error";
       console.warn(`[Integrations] Failed to ingest graph signal for ${app}:${resourceType}: ${message}`);
@@ -343,14 +343,14 @@ export function ingestNormalizedGraphSignals(
   }
 }
 
-function recordGraphSyncRead(
+async function recordGraphSyncRead(
   app: string,
   resourceType: IntegrationResourceType,
   itemCount: number,
   syncService: Pick<typeof graphSyncService, "recordRead"> = graphSyncService,
 ) {
   try {
-    syncService.recordRead(app, resourceType, itemCount);
+    await syncService.recordRead(app, resourceType, itemCount);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown graph sync error";
     console.warn(`[Integrations] Failed to record graph sync read for ${app}:${resourceType}: ${message}`);
@@ -538,7 +538,7 @@ async function executeNormalizedOperation(
     return integrationError("not_configured", "Composio is not configured.");
   }
 
-  const account = composioAccountsRepo.getAccount(app);
+  const account = await composioAccountsRepo.getAccount(app);
   if (!account || account.status !== "ACTIVE") {
     return integrationError("not_connected", `${app} is not connected.`);
   }
@@ -612,14 +612,14 @@ async function buildCollectionResult(
   if (budgeted.downgraded) {
     console.warn(`[Integrations] Downgraded ${app} collection result to ${budgeted.mode} due to budget policy`);
   }
-  recordGraphSyncRead(app, resourceType, budgeted.items.length);
-  ingestNormalizedGraphSignals(app, resourceType, budgeted.items);
+  await recordGraphSyncRead(app, resourceType, budgeted.items.length);
+  await ingestNormalizedGraphSignals(app, resourceType, budgeted.items);
   return budgeted;
 }
 
 export const integrationService = {
-  listProviders() {
-    const connected = composioAccountsRepo.getConnectedToolkits();
+  async listProviders() {
+    const connected = await composioAccountsRepo.getConnectedToolkits();
     return providerMapper.listStatuses(connected);
   },
 
@@ -746,8 +746,8 @@ export const integrationService = {
       : baseFirst;
     const item = normalizeResource(input.app, operation.resourceType, first);
     if (item) {
-      recordGraphSyncRead(input.app, operation.resourceType, 1);
-      ingestNormalizedGraphSignals(input.app, operation.resourceType, [item]);
+      await recordGraphSyncRead(input.app, operation.resourceType, 1);
+      await ingestNormalizedGraphSignals(input.app, operation.resourceType, [item]);
     }
     return {
       success: true,
@@ -776,8 +776,8 @@ export const integrationService = {
       : baseFirst;
     const normalized = normalizeResource(input.app, operation.resourceType, first);
     if (normalized) {
-      recordGraphSyncRead(input.app, operation.resourceType, 1);
-      ingestNormalizedGraphSignals(input.app, operation.resourceType, [normalized]);
+      await recordGraphSyncRead(input.app, operation.resourceType, 1);
+      await ingestNormalizedGraphSignals(input.app, operation.resourceType, [normalized]);
     }
     return {
       success: true,
@@ -805,8 +805,8 @@ export const integrationService = {
       : baseFirst;
     const normalized = normalizeResource(input.app, operation.resourceType, first);
     if (normalized) {
-      recordGraphSyncRead(input.app, operation.resourceType, 1);
-      ingestNormalizedGraphSignals(input.app, operation.resourceType, [normalized]);
+      await recordGraphSyncRead(input.app, operation.resourceType, 1);
+      await ingestNormalizedGraphSignals(input.app, operation.resourceType, [normalized]);
     }
     return {
       success: true,
@@ -834,8 +834,8 @@ export const integrationService = {
       : baseFirst;
     const normalized = normalizeResource(input.app, operation.resourceType, first);
     if (normalized) {
-      recordGraphSyncRead(input.app, operation.resourceType, 1);
-      ingestNormalizedGraphSignals(input.app, operation.resourceType, [normalized]);
+      await recordGraphSyncRead(input.app, operation.resourceType, 1);
+      await ingestNormalizedGraphSignals(input.app, operation.resourceType, [normalized]);
     }
     return {
       success: true,
@@ -854,7 +854,7 @@ export const integrationService = {
       return integrationError("write_confirmation_required", policy.error);
     }
     const idempotencyPayload = { app: input.app, capability: "reply", itemId: input.itemId, content: input.content };
-    if (integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
+    if (await integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
       return integrationError("duplicate_write_prevented", `Duplicate reply prevented for ${input.app}:${input.itemId}.`);
     }
     const operation = await executeNormalizedOperation(input.app, "reply", {
@@ -865,7 +865,7 @@ export const integrationService = {
     if (!operation.success) {
       return operation;
     }
-    integrationIdempotencyRepo.record(idempotencyPayload);
+    await integrationIdempotencyRepo.record(idempotencyPayload);
     return {
       success: true,
       app: input.app,
@@ -883,7 +883,7 @@ export const integrationService = {
       return integrationError("write_confirmation_required", policy.error);
     }
     const idempotencyPayload = { app: input.app, capability: "create", title: input.title ?? "", content: input.content ?? "" };
-    if (integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
+    if (await integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
       return integrationError("duplicate_write_prevented", `Duplicate create prevented for ${input.app}.`);
     }
     const operation = await executeNormalizedOperation(input.app, "create", {
@@ -894,7 +894,7 @@ export const integrationService = {
     if (!operation.success) {
       return operation;
     }
-    integrationIdempotencyRepo.record(idempotencyPayload);
+    await integrationIdempotencyRepo.record(idempotencyPayload);
     return {
       success: true,
       app: input.app,
@@ -912,7 +912,7 @@ export const integrationService = {
       return integrationError("write_confirmation_required", policy.error);
     }
     const idempotencyPayload = { app: input.app, capability: "update", itemId: input.itemId, title: input.title ?? "", content: input.content ?? "" };
-    if (integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
+    if (await integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
       return integrationError("duplicate_write_prevented", `Duplicate update prevented for ${input.app}:${input.itemId}.`);
     }
     const operation = await executeNormalizedOperation(input.app, "update", {
@@ -924,7 +924,7 @@ export const integrationService = {
     if (!operation.success) {
       return operation;
     }
-    integrationIdempotencyRepo.record(idempotencyPayload);
+    await integrationIdempotencyRepo.record(idempotencyPayload);
     return {
       success: true,
       app: input.app,
@@ -942,7 +942,7 @@ export const integrationService = {
       return integrationError("write_confirmation_required", policy.error);
     }
     const idempotencyPayload = { app: input.app, capability: "comment", itemId: input.itemId, content: input.content };
-    if (integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
+    if (await integrationIdempotencyRepo.wasRecentlySeen(idempotencyPayload)) {
       return integrationError("duplicate_write_prevented", `Duplicate comment prevented for ${input.app}:${input.itemId}.`);
     }
     const operation = await executeNormalizedOperation(input.app, "comment", {
@@ -953,7 +953,7 @@ export const integrationService = {
     if (!operation.success) {
       return operation;
     }
-    integrationIdempotencyRepo.record(idempotencyPayload);
+    await integrationIdempotencyRepo.record(idempotencyPayload);
     return {
       success: true,
       app: input.app,

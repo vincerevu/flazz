@@ -14,14 +14,14 @@ node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output.ppt
 
 Check for missing content, typos, wrong order.
 
-Check for language consistency. A Vietnamese deck must not contain accidental English or Chinese fragments in visible slide text. An English deck must not contain accidental Vietnamese or Chinese fragments. Mixed-language source material must be normalized into the deck language unless the user explicitly requested bilingual/multilingual slides.
+Check for language consistency. A localized deck must not contain accidental fragments from another language in visible slide text. Mixed-language source material must be normalized into the deck language unless the user explicitly requested bilingual/multilingual slides.
 
 Common failure examples:
 
-- `Ôm /亲吻 chào tạm biệt`
-- `Vỗ vai / high-five`
-- `Chạm Touch Không An Toàn`
-- English labels such as `Best practices`, `Use cases`, or `Summary` inside an otherwise Vietnamese deck
+- A local-language phrase followed by a slash translation in another language
+- A gesture label that mixes a local-language phrase with an English term
+- A heading that mixes local-language words with untranslated English words
+- English labels such as `Best practices`, `Use cases`, or `Summary` inside an otherwise non-English deck
 
 **Check for leftover placeholder text:**
 
@@ -40,6 +40,11 @@ Typical layout issue types:
 - `out-of-bounds`
 - `overlap`
 - `dense-text`
+- `footer-overlap-risk`
+- `page-badge-overlap-risk`
+- `plain-slide`
+- `text-heavy-slide`
+- `too-many-text-boxes`
 
 If any placeholder residue or layout issue appears, fix the source slide module before declaring success.
 
@@ -47,12 +52,61 @@ If any placeholder residue or layout issue appears, fix the source slide module 
 
 Treat `out-of-bounds`, `overlap`, and `dense-text` as structural layout failures, not as minor styling defects.
 
+Also treat `footer-overlap-risk` and `page-badge-overlap-risk` as hard failures.
+They usually mean a bottom banner, final row, or callout is covering the page
+number or clipping content near the bottom edge.
+
 Fix them in this order:
 
 1. Shorten copy so each bullet, row, or card carries only one idea
 2. Reduce the number of columns or switch to a more suitable layout family
 3. Split the content into two slides if the frame is still crowded
 4. Use `fit: "shrink"` only for titles or very short labels
+
+### Common Screenshot-Level Failures
+
+If a bottom callout overlaps the last list item or page number:
+
+- move the callout above `y=4.45` or delete it
+- reduce the item count
+- split the final item to a new slide
+- never let a content shape cross `y + h > 4.85`
+- if the bottom callout is thank-you text, remove it from
+  the content slide and create a standalone final closing slide
+
+If a 5-row vertical list extends past the slide:
+
+- calculate row height from a fixed content frame
+- use `addSummaryRows()` or `addBoxGrid()` instead of manual `y += ...`
+- split into two slides if row height falls below 0.58"
+- do not add a bottom callout/footer under a 5-row vertical list; reserve space
+  first or split the final row
+
+If dates or years wrap inside circular markers:
+
+- keep the marker text to a short index only, such as `1`, `2`, or `3`
+- place dates like `1947`, `1848`, or `1930-1933` in a separate wider text box
+- never use a 0.4"-0.6" circle as the text container for a year/date range
+
+If diacritic-heavy text looks vertically uneven or clipped:
+
+- switch heading/body fonts to `Segoe UI`, `Arial`, `Aptos`, `Calibri`, `Tahoma`, or `Cambria`
+- avoid `Georgia`, `Playfair Display`, `DM Serif Display`, `Merriweather`, `Garamond`, `Palatino`, and `Impact` unless the output is visually verified
+- increase title and label text-box height by roughly 10-20%
+- do not use tiny text boxes for short labels with tone marks
+
+If stat-card numbers look uneven:
+
+- keep `value` metric-led: `85%`, `10 groups`, `1939-1945`
+- do not put phrase-like labels such as `Nomadic 30%` or `Mongolian language` in `value`
+- split the card into `value`, `label`, and `detail`; the helper aligns numeric value and short unit separately
+
+If a relation/cycle map overlaps the title:
+
+- move the diagram down only if it still fits the bottom safe frame
+- reduce radius or node count
+- use `centerW >= 1.8`, `centerH >= 0.85`, and keep center title under 28 characters
+- never let map nodes enter the title zone (`y < 1.2`)
 
 Do not "solve" a crowded comparison table by shrinking all body text. If a slide has 4 text-heavy columns, examples in the right-most column, or rows wrapping in multiple places, the correct fix is usually to:
 
@@ -96,7 +150,7 @@ Check for missing content, placeholder text, missing page number badge.
 - **Don't generate monolithic deck scripts** — one file with many `pres.addSlide()` calls bypasses per-slide validation and usually regresses quality
 - **Don't define local bullet helpers** — `addBullets()` and `addTwoColBullets()` usually type fake bullets; use `addBulletList()` or structured layout helpers
 - **Don't mix languages** — lock the deck to one primary language and translate visible text into it
-- **Don't use slash glosses** — avoid visible text like `ôm / hug`, `an toàn / safe`, or `ôm /亲吻`; use one term in the deck language
+- **Don't use slash glosses** — avoid visible text that mixes a local-language term with a slash translation; use one term in the deck language
 - **Don't cluster icons** — use at most one icon/emoji per row, card, title, or label; never write icon strings like `👶👧👦👨`
 - **Don't hand-space numbered rows** — use `addSummaryRows()` with `rowHeight` or a layout `h` so titles and descriptions cannot overlap
 - **Don't forget text box padding** — when aligning lines or shapes with text edges, set `margin: 0` on the text box or offset the shape to account for padding

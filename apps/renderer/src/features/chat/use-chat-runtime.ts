@@ -1,7 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LanguageModelUsage, ToolUIPart } from 'ai'
 import z from 'zod'
-import { AskHumanRequestEvent, ListRunsResponse, RunEvent, RunStatusEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
+import { AskHumanRequestEvent, ListRunsResponse, RunConversation, RunEvent, RunStatusEvent, ToolPermissionRequestEvent } from '@flazz/shared/src/runs.js'
 import type { PromptInputMessage, FileMention } from '@/components/ai-elements/prompt-input'
 import type { StagedAttachment } from '@/components/chat-input-with-mentions'
 import {
@@ -21,6 +21,7 @@ import { workspaceIpc } from '@/services/workspace-ipc'
 
 type RunEventType = z.infer<typeof RunEvent>
 type ListRunsResponseType = z.infer<typeof ListRunsResponse>
+type RunConversationType = z.infer<typeof RunConversation>
 
 export type ChatRunListItem = {
   id: string
@@ -52,7 +53,26 @@ type RunRecord = {
   log: RunEventType[]
 }
 
-const STREAM_FLUSH_MS = 16
+const conversationResponseToRunRecord = (run: RunConversationType): RunRecord => {
+  const messageEvents: RunEventType[] = run.messages.map((message) => ({
+    type: 'message',
+    runId: message.runId,
+    subflow: [],
+    ts: message.createdAt,
+    messageId: message.id,
+    message: message.message,
+  }))
+
+  return {
+    log: [...run.auxiliaryEvents, ...messageEvents].sort((a, b) => {
+      const aTime = a.ts ? new Date(a.ts).getTime() : 0
+      const bTime = b.ts ? new Date(b.ts).getTime() : 0
+      return aTime - bTime
+    }),
+  }
+}
+
+const STREAM_FLUSH_MS = 32
 const getStreamingAssistantId = (runId: string) => `assistant-stream-${runId}`
 const getCompactionItemId = (compactionId: string) => `context-compaction-${compactionId}`
 const getAskHumanRequestMessageId = (toolCallId: string) => `ask-human-request-${toolCallId}`
@@ -148,15 +168,21 @@ const hydrateRunConversation = (run: RunRecord) => {
             if (msg.role === 'assistant') {
               for (const part of contentParts) {
                 if (part.type === 'tool-call' && part.toolCallId && part.toolName) {
-                  const toolCall: ToolCall = {
-                    id: part.toolCallId,
-                    name: part.toolName,
-                    input: normalizeToolInput(part.arguments),
-                    status: 'pending',
-                    timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
+                  const existingTool = toolCallMap.get(part.toolCallId)
+                  if (existingTool) {
+                    existingTool.name = part.toolName
+                    existingTool.input = normalizeToolInput(part.arguments)
+                  } else {
+                    const toolCall: ToolCall = {
+                      id: part.toolCallId,
+                      name: part.toolName,
+                      input: normalizeToolInput(part.arguments),
+                      status: 'pending',
+                      timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
+                    }
+                    toolCallMap.set(toolCall.id, toolCall)
+                    items.push(toolCall)
                   }
-                  toolCallMap.set(toolCall.id, toolCall)
-                  items.push(toolCall)
                 }
               }
             }
@@ -198,6 +224,17 @@ const hydrateRunConversation = (run: RunRecord) => {
         if (existingTool) {
           existingTool.result = event.result
           existingTool.status = 'completed'
+        } else {
+          const toolCall: ToolCall = {
+            id: event.toolCallId || `tool-${Date.now()}-${Math.random()}`,
+            name: event.toolName,
+            input: {},
+            result: event.result as ToolUIPart['output'],
+            status: 'completed',
+            timestamp: event.ts ? new Date(event.ts).getTime() : Date.now(),
+          }
+          toolCallMap.set(toolCall.id, toolCall)
+          items.push(toolCall)
         }
         break
       }
@@ -390,8 +427,9 @@ export function useChatRuntime({
 
   const syncStreamingAssistant = useCallback((targetRunId: string, content: string) => {
     if (targetRunId !== runIdRef.current) return
+    const nextContent = content.trim() ? content : ''
     startTransition(() => {
-      setCurrentAssistantMessage(content.trim() ? content : '')
+      setCurrentAssistantMessage((prev) => (prev === nextContent ? prev : nextContent))
     })
   }, [])
 
@@ -460,7 +498,10 @@ export function useChatRuntime({
 
   const loadRuns = useCallback(async () => {
     const requestId = ++loadRunsRequestIdRef.current
-    setRunsLoading(true)
+    const shouldShowLoadingState = runsRef.current.length === 0
+    if (shouldShowLoadingState) {
+      setRunsLoading(true)
+    }
     try {
       const firstPage: ListRunsResponseType = await runsIpc.list({ runType: 'chat' })
       if (loadRunsRequestIdRef.current !== requestId) return
@@ -478,7 +519,9 @@ export function useChatRuntime({
       }
 
       setRuns(filteredRuns)
-      setRunsLoading(false)
+      if (shouldShowLoadingState) {
+        setRunsLoading(false)
+      }
 
       if (!cursor) {
         return
@@ -498,7 +541,7 @@ export function useChatRuntime({
     } catch (err) {
       console.error('Failed to load runs:', err)
     } finally {
-      if (loadRunsRequestIdRef.current === requestId) {
+      if (shouldShowLoadingState && loadRunsRequestIdRef.current === requestId) {
         setRunsLoading(false)
       }
     }
@@ -533,9 +576,10 @@ export function useChatRuntime({
   const loadRun = useCallback(async (id: string) => {
     const requestId = (loadRunRequestIdRef.current += 1)
     try {
-      const run = await runsIpc.fetch(id) as RunRecord
+      const runConversation = await runsIpc.fetchConversation(id) as RunConversationType
       if (loadRunRequestIdRef.current !== requestId) return
 
+      const run = conversationResponseToRunRecord(runConversation)
       const parsed = hydrateRunConversation(run)
       if (loadRunRequestIdRef.current !== requestId) return
 
@@ -599,18 +643,16 @@ export function useChatRuntime({
   }, [syncStreamingAssistant])
 
   const scheduleStreamingAssistantFlush = useCallback((targetRunId?: string | null) => {
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      if (streamFlushFrameRef.current !== null) return
-      streamFlushFrameRef.current = window.requestAnimationFrame(() => {
-        streamFlushFrameRef.current = null
-        flushStreamingAssistant(targetRunId)
-      })
-      return
-    }
-
-    if (streamFlushTimerRef.current) return
+    if (streamFlushTimerRef.current || streamFlushFrameRef.current !== null) return
     streamFlushTimerRef.current = setTimeout(() => {
       streamFlushTimerRef.current = null
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        streamFlushFrameRef.current = window.requestAnimationFrame(() => {
+          streamFlushFrameRef.current = null
+          flushStreamingAssistant(targetRunId)
+        })
+        return
+      }
       flushStreamingAssistant(targetRunId)
     }, STREAM_FLUSH_MS)
   }, [flushStreamingAssistant])

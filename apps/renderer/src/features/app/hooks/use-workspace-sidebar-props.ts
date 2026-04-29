@@ -48,7 +48,7 @@ export function useWorkspaceSidebarProps({
   pendingFolderRenamePath,
   setPendingFolderRenamePath,
   handleVoiceNoteCreated,
-  runs,
+  runs = [],
   runsLoading = false,
   runId,
   processingRunIds,

@@ -9,10 +9,11 @@ export class SkillRepo implements ISkillRepo {
   private skillsDir: string;
   private readonly VALID_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
   private readonly ALLOWED_SUBDIRS = ['references', 'templates', 'scripts', 'assets'];
-  private readonly revisionRepo = new SkillRevisionRepo();
+  private readonly revisionRepo: SkillRevisionRepo;
 
   constructor(workspacePath: string) {
     this.skillsDir = path.join(workspacePath, 'memory', 'Skills');
+    this.revisionRepo = new SkillRevisionRepo({ storage: { workDir: workspacePath } });
   }
 
   async ensureSkillsDir(): Promise<void> {

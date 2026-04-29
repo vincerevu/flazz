@@ -146,6 +146,12 @@ export const getProcessingStatusText = (state: ChatTabViewState): string => {
   )
   if (runningCompaction) return 'Compacting context...'
 
+  if (state.currentAssistantMessage.trim()) return 'Receiving response...'
+
+  if (state.runStatus?.phase === 'checking-context') return 'Thinking...'
+
+  if (state.runStatus?.message) return state.runStatus.message
+
   const activeTool = [...state.conversation].reverse().find(
     (item): item is ToolCall => isToolCall(item) && (item.status === 'pending' || item.status === 'running')
   )
@@ -154,12 +160,6 @@ export const getProcessingStatusText = (state: ChatTabViewState): string => {
       ? `Preparing ${activeTool.name}...`
       : `Running ${activeTool.name}...`
   }
-
-  if (state.currentAssistantMessage.trim()) return 'Receiving response...'
-
-  if (state.runStatus?.phase === 'checking-context') return 'Thinking...'
-
-  if (state.runStatus?.message) return state.runStatus.message
 
   return 'Thinking...'
 }
@@ -205,12 +205,21 @@ export const summarizeConversationTurn = (
 
 export const groupConversationRenderBlocks = (
   items: ConversationItem[],
+  options: { keepActiveTurnUngrouped?: boolean } = {},
 ): ConversationRenderBlock[] => {
   const blocks: ConversationRenderBlock[] = []
   let currentTurn: ConversationItem[] = []
 
   const flushTurn = () => {
     if (currentTurn.length === 0) return
+
+    if (options.keepActiveTurnUngrouped || currentTurn.some((item) => isActiveAuxiliaryItem(item))) {
+      for (const item of currentTurn) {
+        blocks.push({ kind: 'item', key: item.id, item })
+      }
+      currentTurn = []
+      return
+    }
 
     const lastVisibleAssistantIndex = (() => {
       for (let index = currentTurn.length - 1; index >= 0; index -= 1) {

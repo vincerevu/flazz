@@ -13,6 +13,8 @@ import { buildRepairEvidence } from "./repair-evidence.js";
 const CANDIDATE_SCORE_THRESHOLD = 0.38;
 const PROMOTION_SCORE_THRESHOLD = 0.78;
 const PROMOTION_OCCURRENCE_THRESHOLD = 2;
+const VIETNAMESE_DIACRITIC_RE =
+  /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/;
 
 const LearningDecision = z.discriminatedUnion("action", [
   z.object({
@@ -454,13 +456,13 @@ function findBestRelatedWorkspaceSkill(
   return best;
 }
 
-function computeRecurrenceScore(
+async function computeRecurrenceScore(
   stateRepo: LearningStateRepo,
   signature: string,
   signals: RunLearningSignals,
   relatedSkillName?: string
-): number {
-  const related = stateRepo.findRelatedCandidates({
+): Promise<number> {
+  const related = await stateRepo.findRelatedCandidates({
     signature,
     intentFingerprint: signals.intentFingerprint,
     toolSequenceFingerprint: signals.toolSequenceFingerprint,
@@ -547,6 +549,10 @@ export function normalizeLearningDecision(input: {
   return decision;
 }
 
+function skillContentLooksEnglish(content: string): boolean {
+  return !VIETNAMESE_DIACRITIC_RE.test(content);
+}
+
 function buildPrompt(input: {
   run: RunRecord;
   signals: RunLearningSignals;
@@ -571,6 +577,7 @@ function buildPrompt(input: {
     "Prefer update when the run appears to refine, repair, or extend a workspace skill, even if that skill was not explicitly loaded during the run.",
     "Prefer create for reusable, multi-step workflows with clear repeated intent or structure.",
     "Do not create skills for one-off answers, pure writing tasks, or simple lookups.",
+    "Do not create skills merely because the user asked to research, analyze, explain, compare, summarize, audit, or look into a topic.",
     `A new skill may only be promoted now if promoteNow=${promoteNow}. If promoteNow is false, you may still return action=create to draft a candidate skill, but only if the workflow is genuinely reusable.`,
     "If there is a strong related workspace skill candidate, prefer action=update unless the run clearly defines a separate reusable workflow.",
     "Return strict JSON only.",
@@ -580,6 +587,7 @@ function buildPrompt(input: {
     '{ "action": "update", "targetSkill": string, "content": string, "rationale"?: string }',
     "For create/update, content must be a full SKILL.md with YAML frontmatter then markdown body.",
     "Use frontmatter keys: name, description, category, tags, version, author.",
+    "Write SKILL.md content in English only. Store an exact non-English quote only when the user explicitly asks for that wording to be remembered.",
     "Body sections should include When to Use, Steps, Pitfalls, Verification.",
     "",
     `Agent: ${run.agentId}`,
@@ -617,16 +625,16 @@ export class RunLearningService {
     const loadedSkills = getLoadedSkills(run);
     const signals = deriveRunLearningSignals(run);
     for (const skill of loadedSkills) {
-      this.stateRepo.recordSkillUsage(skill.name, skill.source);
+      await this.stateRepo.recordSkillUsage(skill.name, skill.source);
     }
 
     if (runHasFailureSignal(run)) {
       for (const skill of loadedSkills) {
         if (skill.source === "workspace") {
-          this.stateRepo.recordSkillFailure(skill.name);
+          await this.stateRepo.recordSkillFailure(skill.name);
           const failure = classifyRunFailure(run);
           const evidence = buildRepairEvidence(run, skill.name, failure);
-          this.stateRepo.recordRepairCandidate({
+          await this.stateRepo.recordRepairCandidate({
             skillName: skill.name,
             runId: run.id,
             failureCategory: failure.category,
@@ -665,7 +673,7 @@ export class RunLearningService {
         workspaceSkills
       );
       const signature = buildRunSignature(run);
-      const recurrenceScore = computeRecurrenceScore(
+      const recurrenceScore = await computeRecurrenceScore(
         this.stateRepo,
         signature,
         signals,
@@ -686,7 +694,7 @@ export class RunLearningService {
 
       this.processedRunIds.add(run.id);
 
-      const observedCandidate = this.stateRepo.bumpCandidate(signature, run.id, undefined, {
+      const observedCandidate = await this.stateRepo.bumpCandidate(signature, run.id, undefined, {
         relatedSkillName: relatedWorkspaceSkill?.name,
         intentFingerprint: signals.intentFingerprint,
         toolSequenceFingerprint: signals.toolSequenceFingerprint,
@@ -748,7 +756,7 @@ export class RunLearningService {
     }
   }
 
-  listCandidates(): Array<{
+  async listCandidates(): Promise<Array<{
     signature: string;
     status: "pending" | "promoted" | "rejected";
     confidence: number;
@@ -769,12 +777,12 @@ export class RunLearningService {
     explicitUserReuseSignal: boolean;
     complexityScore: number;
     recurrenceScore: number;
-  }> {
+  }>> {
     return this.stateRepo.listCandidates();
   }
 
   async promoteCandidate(signature: string): Promise<{ success: boolean; error?: string; skillName?: string }> {
-    const candidate = this.stateRepo.getCandidate(signature);
+    const candidate = await this.stateRepo.getCandidate(signature);
     if (!candidate) {
       return { success: false, error: `Candidate '${signature}' not found.` };
     }
@@ -789,7 +797,7 @@ export class RunLearningService {
 
     const existing = await this.skillManager.get(candidate.proposedSkillName);
     if (existing) {
-      this.stateRepo.markCandidatePromoted(signature, existing.name);
+      await this.stateRepo.markCandidatePromoted(signature, existing.name);
       return { success: true, skillName: existing.name };
     }
 
@@ -802,26 +810,26 @@ export class RunLearningService {
       return { success: false, error: result.error || "Failed to promote candidate." };
     }
 
-    this.stateRepo.markCandidatePromoted(signature, candidate.proposedSkillName);
-    this.stateRepo.recordSkillCreated(candidate.proposedSkillName, "workspace");
+    await this.stateRepo.markCandidatePromoted(signature, candidate.proposedSkillName);
+    await this.stateRepo.recordSkillCreated(candidate.proposedSkillName, "workspace");
     return { success: true, skillName: candidate.proposedSkillName };
   }
 
-  rejectCandidate(signature: string): { success: boolean; error?: string } {
-    const candidate = this.stateRepo.getCandidate(signature);
+  async rejectCandidate(signature: string): Promise<{ success: boolean; error?: string }> {
+    const candidate = await this.stateRepo.getCandidate(signature);
     if (!candidate) {
       return { success: false, error: `Candidate '${signature}' not found.` };
     }
 
-    this.stateRepo.rejectCandidate(signature);
+    await this.stateRepo.rejectCandidate(signature);
     return { success: true };
   }
 
-  listRepairCandidates() {
+  async listRepairCandidates() {
     return this.stateRepo.listRepairCandidates();
   }
 
-  getLearningStats(): {
+  async getLearningStats(): Promise<{
     candidateCount: number;
     pendingCandidateCount: number;
     promotedCandidateCount: number;
@@ -830,8 +838,8 @@ export class RunLearningService {
     repairCandidateCount: number;
     highConfidenceCandidateCount: number;
     averageCandidateConfidence: number;
-  } {
-    const state = this.stateRepo.getState();
+  }> {
+    const state = await this.stateRepo.getState();
     const candidates = Object.values(state.candidates);
     const averageCandidateConfidence =
       candidates.length > 0
@@ -866,7 +874,7 @@ export class RunLearningService {
     }
   ): Promise<void> {
     if (decision.action === "none") {
-      this.stateRepo.updateCandidateDraft(signature, {
+      await this.stateRepo.updateCandidateDraft(signature, {
         rationale: decision.rationale,
         relatedSkillName: context.relatedWorkspaceSkill?.name,
         explicitUserReuseSignal: context.signals.explicitUserReuseSignal,
@@ -878,7 +886,33 @@ export class RunLearningService {
     }
 
     if (decision.action === "update") {
+      if (!skillContentLooksEnglish(decision.content)) {
+        console.warn(`[SkillLearning] Rejected update for run ${run.id}: generated skill content is not English.`);
+        await this.stateRepo.updateCandidateDraft(signature, {
+          rationale: "Generated skill content was rejected because it was not English.",
+          relatedSkillName: context.relatedWorkspaceSkill?.name,
+          explicitUserReuseSignal: context.signals.explicitUserReuseSignal,
+          complexityScore: context.signals.complexityScore,
+          recurrenceScore: context.recurrenceScore,
+        });
+        return;
+      }
       await this.updateExistingSkill(run, decision);
+      return;
+    }
+
+    if (!skillContentLooksEnglish(decision.content)) {
+      console.warn(`[SkillLearning] Rejected create for run ${run.id}: generated skill content is not English.`);
+      await this.stateRepo.updateCandidateDraft(signature, {
+        proposedSkillName: slugifySkillName(decision.name),
+        proposedCategory: decision.category,
+        proposedDescription: decision.description,
+        rationale: "Generated skill draft was rejected because it was not English.",
+        relatedSkillName: context.relatedWorkspaceSkill?.name,
+        explicitUserReuseSignal: context.signals.explicitUserReuseSignal,
+        complexityScore: context.signals.complexityScore,
+        recurrenceScore: context.recurrenceScore,
+      });
       return;
     }
 
@@ -901,7 +935,7 @@ export class RunLearningService {
       return;
     }
 
-    this.stateRepo.recordSkillUpdated(existing.name);
+    await this.stateRepo.recordSkillUpdated(existing.name);
     console.log(
       `[SkillLearning] Updated skill '${existing.name}' from run ${run.id}${decision.rationale ? ` (${decision.rationale})` : ""}`
     );
@@ -942,8 +976,8 @@ export class RunLearningService {
     }
 
     const candidate =
-      this.stateRepo.getCandidate(signature) ??
-      this.stateRepo.bumpCandidate(signature, run.id, name, {
+      (await this.stateRepo.getCandidate(signature)) ??
+      (await this.stateRepo.bumpCandidate(signature, run.id, name, {
         relatedSkillName: context.relatedWorkspaceSkill?.name,
         intentFingerprint: context.signals.intentFingerprint,
         toolSequenceFingerprint: context.signals.toolSequenceFingerprint,
@@ -951,8 +985,8 @@ export class RunLearningService {
         explicitUserReuseSignal: context.signals.explicitUserReuseSignal,
         complexityScore: context.signals.complexityScore,
         recurrenceScore: context.recurrenceScore,
-      });
-    this.stateRepo.updateCandidateDraft(signature, {
+      }));
+    await this.stateRepo.updateCandidateDraft(signature, {
       proposedSkillName: name,
       proposedCategory: decision.category,
       proposedDescription: decision.description,
@@ -982,8 +1016,8 @@ export class RunLearningService {
       return;
     }
 
-    this.stateRepo.markCandidatePromoted(signature, name);
-    this.stateRepo.recordSkillCreated(name, "workspace");
+    await this.stateRepo.markCandidatePromoted(signature, name);
+    await this.stateRepo.recordSkillCreated(name, "workspace");
     console.log(
       `[SkillLearning] Created skill '${name}' from run ${run.id}${decision.rationale ? ` (${decision.rationale})` : ""}`
     );

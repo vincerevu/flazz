@@ -92,7 +92,7 @@ export class DefaultComposioAdapter implements ComposioAdapter {
         try {
             console.log(`[Composio] Initiating connection for ${toolkitSlug}...`);
 
-            if (composioAccountsRepo.isConnected(toolkitSlug)) {
+            if (await composioAccountsRepo.isConnected(toolkitSlug)) {
                 return { success: true };
             }
 
@@ -163,13 +163,13 @@ export class DefaultComposioAdapter implements ComposioAdapter {
                 createdAt: new Date().toISOString(),
                 lastUpdatedAt: new Date().toISOString(),
             };
-            composioAccountsRepo.saveAccount(account);
+            await composioAccountsRepo.saveAccount(account);
 
             let cleanupTimeout: NodeJS.Timeout | undefined = undefined;
             const { server } = await createAuthServer(8081, async () => {
                 try {
                     const accountStatus = await composioClient.getConnectedAccount(connectedAccountId);
-                    composioAccountsRepo.updateAccountStatus(toolkitSlug, accountStatus.status);
+                    await composioAccountsRepo.updateAccountStatus(toolkitSlug, accountStatus.status);
 
                     if (accountStatus.status === 'ACTIVE') {
                         this.emitComposioEvent({ toolkitSlug, success: true });
@@ -229,7 +229,7 @@ export class DefaultComposioAdapter implements ComposioAdapter {
         isConnected: boolean;
         status?: string;
     }> {
-        const account = composioAccountsRepo.getAccount(toolkitSlug);
+        const account = await composioAccountsRepo.getAccount(toolkitSlug);
         if (!account) {
             return { isConnected: false };
         }
@@ -245,7 +245,7 @@ export class DefaultComposioAdapter implements ComposioAdapter {
     ): Promise<{ status: string }> {
         try {
             const accountStatus = await composioClient.getConnectedAccount(connectedAccountId);
-            composioAccountsRepo.updateAccountStatus(toolkitSlug, accountStatus.status);
+            await composioAccountsRepo.updateAccountStatus(toolkitSlug, accountStatus.status);
             return { status: accountStatus.status };
         } catch (error) {
             console.error('[Composio] Failed to sync connection:', error);
@@ -255,21 +255,21 @@ export class DefaultComposioAdapter implements ComposioAdapter {
 
     async disconnect(toolkitSlug: string): Promise<{ success: boolean }> {
         try {
-            const account = composioAccountsRepo.getAccount(toolkitSlug);
+            const account = await composioAccountsRepo.getAccount(toolkitSlug);
             if (account) {
                 await composioClient.deleteConnectedAccount(account.id);
-                composioAccountsRepo.deleteAccount(toolkitSlug);
+                await composioAccountsRepo.deleteAccount(toolkitSlug);
             }
             return { success: true };
         } catch (error) {
             console.error('[Composio] Disconnect failed:', error);
-            composioAccountsRepo.deleteAccount(toolkitSlug);
+            await composioAccountsRepo.deleteAccount(toolkitSlug);
             return { success: true };
         }
     }
 
-    listConnected(): { toolkits: string[] } {
-        return { toolkits: composioAccountsRepo.getConnectedToolkits() };
+    async listConnected(): Promise<{ toolkits: string[] }> {
+        return { toolkits: await composioAccountsRepo.getConnectedToolkits() };
     }
 
     async executeAction(
@@ -278,7 +278,7 @@ export class DefaultComposioAdapter implements ComposioAdapter {
         input: Record<string, unknown>
     ): Promise<{ success: boolean; data: unknown; error?: string }> {
         try {
-            const account = composioAccountsRepo.getAccount(toolkitSlug);
+            const account = await composioAccountsRepo.getAccount(toolkitSlug);
             if (!account || account.status !== 'ACTIVE') {
                 return {
                     success: false,
@@ -357,7 +357,7 @@ export async function disconnect(toolkitSlug: string): Promise<{ success: boolea
     return defaultComposioAdapter.disconnect(toolkitSlug);
 }
 
-export function listConnected(): { toolkits: string[] } {
+export function listConnected(): Promise<{ toolkits: string[] }> {
     return defaultComposioAdapter.listConnected();
 }
 

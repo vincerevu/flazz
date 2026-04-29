@@ -83,7 +83,7 @@ const NEIGHBOR_CELL_RANGE = 1
 const MOTION_ACTIVE_WINDOW_MS = 1800
 const MINIMAP_EDGE_LIMIT = 280
 
-const graphIconMap: Record<GraphTopicIconKey, React.ComponentType<{ className?: string }>> = {
+const graphIconMap: Record<GraphTopicIconKey, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   user: UserRound,
   folder: Folder,
   skill: AiOutlineThunderbolt,

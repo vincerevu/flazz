@@ -51,7 +51,7 @@ export async function viewSkill(name: string) {
 }
 
 export async function listSkillCandidates() {
-  const candidates = runLearningService.listCandidates();
+  const candidates = await runLearningService.listCandidates();
   return {
     candidates,
     count: candidates.length,
@@ -63,15 +63,15 @@ export async function promoteSkillCandidate(signature: string) {
 }
 
 export async function rejectSkillCandidate(signature: string) {
-  return runLearningService.rejectCandidate(signature);
+  return await runLearningService.rejectCandidate(signature);
 }
 
 export async function getSkillLearningStats() {
-  return runLearningService.getLearningStats();
+  return await runLearningService.getLearningStats();
 }
 
 export async function listSkillRepairCandidates() {
-  const repairs = runLearningService.listRepairCandidates();
+  const repairs = await runLearningService.listRepairCandidates();
   return {
     repairs,
     count: repairs.length,

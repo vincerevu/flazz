@@ -28,7 +28,7 @@ describe('groupConversationRenderBlocks', () => {
     expect(blocks[2]).toMatchObject({ kind: 'item', key: 'assistant-1' })
   })
 
-  it('keeps active turns expanded by default', () => {
+  it('keeps active turns ungrouped until they finish', () => {
     const conversation = [
       makeUserMessage('user-1', 'Do the thing', 1000),
       makeToolCall('tool-1', 'workspace-readFile', 'running', 2000),
@@ -36,13 +36,9 @@ describe('groupConversationRenderBlocks', () => {
     ]
 
     const blocks = groupConversationRenderBlocks(conversation)
-    const turn = blocks[1]
 
-    expect(turn).toMatchObject({
-      kind: 'turn',
-      summary: 'Worked for 2s',
-      defaultOpen: true,
-    })
+    expect(blocks).toHaveLength(3)
+    expect(blocks[1]).toMatchObject({ kind: 'item', key: 'tool-1' })
     expect(blocks[2]).toMatchObject({ kind: 'item', key: 'assistant-1' })
   })
 
@@ -136,6 +132,20 @@ describe('groupConversationRenderBlocks', () => {
     expect(blocks[2]).toMatchObject({ kind: 'item', key: 'assistant-final' })
   })
 
+  it('keeps completed tool activity ungrouped while the run is still processing', () => {
+    const conversation = [
+      makeUserMessage('user-1', 'Create slides', 1000),
+      makeToolCall('tool-1', 'executeCommand', 'completed', 2000),
+      makeToolCall('tool-2', 'workspace-writeFile', 'completed', 4000),
+    ]
+
+    const blocks = groupConversationRenderBlocks(conversation, { keepActiveTurnUngrouped: true })
+
+    expect(blocks).toHaveLength(3)
+    expect(blocks.map((block) => block.key)).toEqual(['user-1', 'tool-1', 'tool-2'])
+    expect(blocks.every((block) => block.kind === 'item')).toBe(true)
+  })
+
   it('does not drop trailing activity after an interim assistant message', () => {
     const conversation = [
       makeUserMessage('user-1', 'Create slides', 1000),
@@ -146,18 +156,14 @@ describe('groupConversationRenderBlocks', () => {
 
     const blocks = groupConversationRenderBlocks(conversation)
 
-    expect(blocks).toHaveLength(2)
-    expect(blocks[1]).toMatchObject({
-      kind: 'turn',
-      summary: 'Worked for 2s',
-      defaultOpen: true,
-    })
-    if (blocks[1]?.kind !== 'turn') throw new Error('Expected grouped turn')
-    expect(blocks[1].items.map((item) => item.id)).toEqual([
+    expect(blocks).toHaveLength(4)
+    expect(blocks.map((block) => block.key)).toEqual([
+      'user-1',
       'tool-1',
       'assistant-plan',
       'tool-2',
     ])
+    expect(blocks.every((block) => block.kind === 'item')).toBe(true)
   })
 })
 

@@ -8,11 +8,16 @@ import { limitEventItems } from './limit-event-items.js';
 import { executeAction } from '../composio/client.js';
 import { composioAccountsRepo } from '../composio/repo.js';
 import { triggerGraphBuilderNow } from './build-graph.js';
+import { createPrismaClient } from '../storage/prisma.js';
+import { applySqliteMigrations } from '../storage/sqlite-migrations.js';
 
 const SYNC_DIR = path.join(WorkDir, 'gmail_sync');
+const COMPOSIO_STATE_KEY = 'memory-graph:gmail:composio-sync-state';
 const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const COMPOSIO_LOOKBACK_DAYS = 30;
 const nhm = new NodeHtmlMarkdown();
+const prisma = createPrismaClient();
+let sqliteReady: Promise<void> | null = null;
 
 type ComposioSyncState = {
     last_sync: string;
@@ -46,22 +51,34 @@ function interruptibleSleep(ms: number): Promise<void> {
     });
 }
 
-function loadComposioState(stateFile: string): ComposioSyncState | null {
-    if (fs.existsSync(stateFile)) {
-        try {
-            const data = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
-            if (data.last_sync) {
-                return { last_sync: data.last_sync };
-            }
-        } catch (e) {
-            console.error('[Gmail] Failed to load composio state:', e);
+function ensureSqliteReady(): Promise<void> {
+    sqliteReady ??= applySqliteMigrations({ prisma });
+    return sqliteReady;
+}
+
+async function loadComposioState(): Promise<ComposioSyncState | null> {
+    await ensureSqliteReady();
+    try {
+        const row = await prisma.appKv.findUnique({ where: { key: COMPOSIO_STATE_KEY } });
+        if (!row) return null;
+        const data = JSON.parse(row.valueJson);
+        if (data.last_sync) {
+            return { last_sync: data.last_sync };
         }
+    } catch (e) {
+        console.error('[Gmail] Failed to load composio state:', e);
     }
     return null;
 }
 
-function saveComposioState(stateFile: string, lastSync: string): void {
-    fs.writeFileSync(stateFile, JSON.stringify({ last_sync: lastSync }, null, 2));
+async function saveComposioState(lastSync: string): Promise<void> {
+    await ensureSqliteReady();
+    const valueJson = JSON.stringify({ last_sync: lastSync });
+    await prisma.appKv.upsert({
+        where: { key: COMPOSIO_STATE_KEY },
+        create: { key: COMPOSIO_STATE_KEY, valueJson },
+        update: { valueJson },
+    });
 }
 
 function tryParseDate(dateStr: string): Date | null {
@@ -216,18 +233,16 @@ async function processThreadComposio(connectedAccountId: string, threadId: strin
 }
 
 async function performSyncComposio() {
-    const STATE_FILE = path.join(SYNC_DIR, 'sync_state.json');
-
     if (!fs.existsSync(SYNC_DIR)) fs.mkdirSync(SYNC_DIR, { recursive: true });
 
-    const account = composioAccountsRepo.getAccount('gmail');
+    const account = await composioAccountsRepo.getAccount('gmail');
     if (!account || account.status !== 'ACTIVE') {
         console.log('[Gmail] Gmail not connected via Composio. Skipping sync.');
         return;
     }
 
     const connectedAccountId = account.id;
-    const state = loadComposioState(STATE_FILE);
+    const state = await loadComposioState();
     let afterEpochSeconds: number;
 
     if (state) {
@@ -324,7 +339,7 @@ async function performSyncComposio() {
                     if (!highWaterMark || new Date(newestInThread) > new Date(highWaterMark)) {
                         highWaterMark = newestInThread;
                     }
-                    saveComposioState(STATE_FILE, highWaterMark);
+                    await saveComposioState(highWaterMark);
                 }
             } catch (error) {
                 console.error(`[Gmail] Error processing thread ${threadId}, skipping:`, error);
@@ -368,7 +383,7 @@ async function performSyncComposio() {
 }
 
 async function runOnce() {
-    if (!composioAccountsRepo.isConnected('gmail')) {
+    if (!(await composioAccountsRepo.isConnected('gmail'))) {
         console.log('[Gmail] Gmail not connected via Composio. Sleeping...');
         return;
     }

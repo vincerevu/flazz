@@ -8,10 +8,18 @@ import {
     UserConfig,
     PREBUILT_AGENTS,
 } from './types.js';
+import { createPrismaClient } from '../storage/prisma.js';
+import { applySqliteMigrations } from '../storage/sqlite-migrations.js';
 
 const CONFIG_PATH = path.join(WorkDir, 'config', 'prebuilt.json');
-const STATE_PATH = path.join(WorkDir, 'pre-built', 'runner_state.json');
 const USER_CONFIG_PATH = path.join(WorkDir, 'config', 'user.json');
+const prisma = createPrismaClient();
+let sqliteReady: Promise<void> | null = null;
+
+function ensureSqliteReady(): Promise<void> {
+    sqliteReady ??= applySqliteMigrations({ prisma });
+    return sqliteReady;
+}
 
 function ensureDir(dirPath: string): void {
     if (!fs.existsSync(dirPath)) {
@@ -73,43 +81,61 @@ export function setAgentConfig(agentName: string, agentConfig: Partial<PreBuiltA
 
 // --- State Management ---
 
-export function loadState(): PreBuiltState {
-    try {
-        if (fs.existsSync(STATE_PATH)) {
-            const content = fs.readFileSync(STATE_PATH, 'utf-8');
-            const parsed = JSON.parse(content);
-            return PreBuiltState.parse(parsed);
-        }
-    } catch (error) {
-        console.error('[PreBuilt] Error loading state:', error);
+export async function loadState(): Promise<PreBuiltState> {
+    await ensureSqliteReady();
+    const rows = await prisma.preBuiltRunnerState.findMany({
+        orderBy: { agentName: 'asc' },
+    });
+    return PreBuiltState.parse({
+        lastRunTimes: Object.fromEntries(rows.map((row) => [row.agentName, row.lastRunAt])),
+    });
+}
+
+export async function saveState(state: PreBuiltState): Promise<void> {
+    await ensureSqliteReady();
+    const validated = PreBuiltState.parse(state);
+    const entries = Object.entries(validated.lastRunTimes);
+    if (entries.length === 0) {
+        await prisma.preBuiltRunnerState.deleteMany();
+        return;
     }
-    return { lastRunTimes: {} };
+    const now = new Date();
+    await prisma.$transaction([
+        prisma.preBuiltRunnerState.deleteMany({
+            where: { agentName: { notIn: entries.map(([agentName]) => agentName) } },
+        }),
+        ...entries.map(([agentName, lastRunAt]) =>
+            prisma.preBuiltRunnerState.upsert({
+                where: { agentName },
+                create: { agentName, lastRunAt, updatedAt: now },
+                update: { lastRunAt, updatedAt: now },
+            }),
+        ),
+    ]);
 }
 
-export function saveState(state: PreBuiltState): void {
-    ensureDir(path.dirname(STATE_PATH));
-    fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
-}
-
-export function getLastRunTime(agentName: string): Date | null {
-    const state = loadState();
+export async function getLastRunTime(agentName: string): Promise<Date | null> {
+    const state = await loadState();
     const timestamp = state.lastRunTimes[agentName];
     return timestamp ? new Date(timestamp) : null;
 }
 
-export function setLastRunTime(agentName: string, time: Date): void {
-    const state = loadState();
-    state.lastRunTimes[agentName] = time.toISOString();
-    saveState(state);
+export async function setLastRunTime(agentName: string, time: Date): Promise<void> {
+    await ensureSqliteReady();
+    await prisma.preBuiltRunnerState.upsert({
+        where: { agentName },
+        create: { agentName, lastRunAt: time.toISOString(), updatedAt: new Date() },
+        update: { lastRunAt: time.toISOString(), updatedAt: new Date() },
+    });
 }
 
-export function shouldRunAgent(agentName: string): boolean {
+export async function shouldRunAgent(agentName: string): Promise<boolean> {
     const config = getAgentConfig(agentName);
     if (!config.enabled) {
         return false;
     }
 
-    const lastRun = getLastRunTime(agentName);
+    const lastRun = await getLastRunTime(agentName);
     if (!lastRun) {
         return true; // Never run before
     }

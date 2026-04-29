@@ -1,7 +1,4 @@
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
-import { WorkDir } from "../config/config.js";
 import { getNoteCreationStrictness } from "../config/note_creation_config.js";
 import { Agent } from "@flazz/shared";
 import { RunEvent } from "@flazz/shared/dist/runs.js";
@@ -96,11 +93,14 @@ export class AgentRuntime implements IAgentRuntime {
         }
         const signal = this.abortRegistry.createForRun(runId);
         try {
-            await this.bus.publish({
+            const processingStartEvent: z.infer<typeof RunEvent> = {
                 runId,
                 type: "run-processing-start",
                 subflow: [],
-            });
+                ts: new Date().toISOString(),
+            };
+            await this.runsRepo.appendEvents(runId, [processingStartEvent]);
+            await this.bus.publish(processingStartEvent);
             while (true) {
                 // Check for abort before each iteration
                 if (signal.aborted) {
@@ -197,7 +197,7 @@ export class AgentRuntime implements IAgentRuntime {
                             ...compactionMetrics,
                         }));
                     }
-                    runMemoryService.recordRun(completedRun);
+                    await runMemoryService.recordRun(completedRun);
                     if (!signal.aborted) {
                         await runLearningService.learnFromRun(completedRun);
                     }
@@ -205,13 +205,20 @@ export class AgentRuntime implements IAgentRuntime {
             } catch (error) {
                 console.error(`[RunFinalization] Failed while finalizing run ${runId}:`, error);
             }
-            this.abortRegistry.cleanup(runId);
-            await this.runsLock.release(runId);
-            await this.bus.publish({
+            const processingEndEvent: z.infer<typeof RunEvent> = {
                 runId,
                 type: "run-processing-end",
                 subflow: [],
-            });
+                ts: new Date().toISOString(),
+            };
+            try {
+                await this.runsRepo.appendEvents(runId, [processingEndEvent]);
+            } catch (error) {
+                console.error(`[RunFinalization] Failed to persist run-processing-end for ${runId}:`, error);
+            }
+            this.abortRegistry.cleanup(runId);
+            await this.runsLock.release(runId);
+            await this.bus.publish(processingEndEvent);
         }
     }
 }
@@ -243,37 +250,6 @@ function categorizeCompactionError(error: unknown): "abort" | "provider" | "inva
         return "provider";
     }
     return "other";
-}
-
-export class RunLogger {
-    private logFile: string;
-    private fileHandle: fs.WriteStream;
-
-    ensureRunsDir() {
-        const runsDir = path.join(WorkDir, "runs");
-        if (!fs.existsSync(runsDir)) {
-            fs.mkdirSync(runsDir, { recursive: true });
-        }
-    }
-
-    constructor(runId: string) {
-        this.ensureRunsDir();
-        this.logFile = path.join(WorkDir, "runs", `${runId}.jsonl`);
-        this.fileHandle = fs.createWriteStream(this.logFile, {
-            flags: "a",
-            encoding: "utf8",
-        });
-    }
-
-    log(event: z.infer<typeof RunEvent>) {
-        if (event.type !== "llm-stream-event") {
-            this.fileHandle.write(JSON.stringify(event) + "\n");
-        }
-    }
-
-    close() {
-        this.fileHandle.close();
-    }
 }
 
 export async function loadAgent(id: string): Promise<z.infer<typeof Agent>> {

@@ -31,7 +31,7 @@ function collectStringLiterals(source) {
 }
 
 function hasVietnamese(text) {
-  return /[ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i.test(text);
+  return /[\u0103\u00e2\u0111\u00ea\u00f4\u01a1\u01b0\u00e1\u00e0\u1ea3\u00e3\u1ea1\u1eaf\u1eb1\u1eb3\u1eb5\u1eb7\u1ea5\u1ea7\u1ea9\u1eab\u1ead\u00e9\u00e8\u1ebb\u1ebd\u1eb9\u1ebf\u1ec1\u1ec3\u1ec5\u1ec7\u00ed\u00ec\u1ec9\u0129\u1ecb\u00f3\u00f2\u1ecf\u00f5\u1ecd\u1ed1\u1ed3\u1ed5\u1ed7\u1ed9\u1edb\u1edd\u1edf\u1ee1\u1ee3\u00fa\u00f9\u1ee7\u0169\u1ee5\u1ee9\u1eeb\u1eed\u1eef\u1ef1\u00fd\u1ef3\u1ef7\u1ef9\u1ef5]/i.test(text);
 }
 
 function hasCjk(text) {
@@ -39,7 +39,7 @@ function hasCjk(text) {
 }
 
 function hasSlashGloss(text) {
-  return /[A-Za-zÀ-ỹ\u3400-\u9FFF][^"'`\n]{0,36}\s\/\s[^"'`\n]{1,36}[A-Za-zÀ-ỹ\u3400-\u9FFF]/.test(text);
+  return /[A-Za-z\u00c0-\u1ef9\u3400-\u9FFF][^"'`\n]{0,36}\s\/\s[^"'`\n]{1,36}[A-Za-z\u00c0-\u1ef9\u3400-\u9FFF]/.test(text);
 }
 
 function countPictographicIcons(text) {
@@ -50,6 +50,19 @@ function countPictographicIcons(text) {
 function likelyEnglishLabelInVietnameseDeck(text) {
   const normalized = text.toLowerCase();
   return /\b(best practices|use cases|summary|overview|option [ab]|key takeaway|takeaways|workflow|safe touch|unsafe touch|high-five|design|content writing|code development|data analysis|research)\b/.test(normalized);
+}
+
+function collectFontFaces(source) {
+  const fonts = [];
+  const pattern = /\b(?:fontFace|titleFontFace|bodyFontFace|captionFontFace|labelFontFace|detailFontFace|valueFontFace|tagFontFace)\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g;
+  let match;
+
+  while ((match = pattern.exec(source)) !== null) {
+    const font = stripQuoted(match[1]).trim();
+    if (font) fonts.push(font);
+  }
+
+  return [...new Set(fonts)];
 }
 
 function validateLanguageConsistency(source, errors) {
@@ -73,6 +86,36 @@ function validateLanguageConsistency(source, errors) {
     }
     if (likelyEnglishLabelInVietnameseDeck(text)) {
       errors.push(`English label appears in a Vietnamese deck. Translate visible text: "${text.slice(0, 80)}"`);
+    }
+  }
+
+  const allowedVietnameseFonts = new Set([
+    'aptos',
+    'arial',
+    'calibri',
+    'cambria',
+    'segoe ui',
+    'tahoma',
+    'times new roman',
+  ]);
+  const riskyVietnameseFonts = new Set([
+    'dm serif display',
+    'garamond',
+    'georgia',
+    'impact',
+    'merriweather',
+    'palatino',
+    'playfair display',
+  ]);
+
+  for (const font of collectFontFaces(source)) {
+    const normalizedFont = font.toLowerCase();
+    if (riskyVietnameseFonts.has(normalizedFont)) {
+      errors.push(`Vietnamese deck uses risky font "${font}". Use Segoe UI, Arial, Aptos, Calibri, Tahoma, or Cambria unless visually verified.`);
+      continue;
+    }
+    if (!allowedVietnameseFonts.has(normalizedFont)) {
+      errors.push(`Vietnamese deck uses non-system or unverified font "${font}". Use a Vietnamese-safe system font.`);
     }
   }
 }
@@ -317,6 +360,12 @@ function collectStatCardSets(source) {
     sets.push(extractStatCards(arraySource));
   }
 
+  const contentModelStatCardsMatch = source.match(/\bstatCards\s*:\s*(\[[\s\S]*?\])/);
+  if (contentModelStatCardsMatch) {
+    const cards = extractStatCards(contentModelStatCardsMatch[1]);
+    if (cards.length) sets.push(cards);
+  }
+
   return sets;
 }
 
@@ -536,6 +585,8 @@ function collectSlideSpecMetadata(source) {
     title: getProp('title'),
     layoutFamily: getProp('layoutFamily'),
     layoutVariant: getProp('layoutVariant'),
+    visualPattern: getProp('visualPattern'),
+    sectionLayout: getProp('sectionLayout'),
     density: getProp('density'),
     language: getProp('language'),
     index: indexMatch ? Number(indexMatch[1]) : null,
@@ -569,6 +620,28 @@ function validateSlideSpec(source, errors) {
     'media',
   ]);
   const allowedDensities = new Set(['light', 'medium', 'dense']);
+  const allowedVisualPatterns = new Set([
+    'COLUMNS',
+    'BULLETS',
+    'ICONS',
+    'CYCLE',
+    'ARROWS',
+    'ARROW-VERTICAL',
+    'TIMELINE',
+    'PYRAMID',
+    'STAIRCASE',
+    'BOXES',
+    'COMPARE',
+    'BEFORE-AFTER',
+    'PROS-CONS',
+    'TABLE',
+    'CHART',
+    'STATS',
+    'QUOTE',
+    'CALLOUT',
+    'MEDIA',
+  ]);
+  const allowedSectionLayouts = new Set(['left', 'right', 'vertical', 'background']);
 
   if (!metadata?.title) {
     errors.push('Content slideSpec is missing title.');
@@ -596,6 +669,18 @@ function validateSlideSpec(source, errors) {
     errors.push('Content slideSpec is missing layoutVariant.');
   }
 
+  if (!metadata?.visualPattern) {
+    errors.push('Content slideSpec is missing visualPattern. Choose one XML layout pattern such as PYRAMID, TIMELINE, STATS, or CHART.');
+  } else if (!allowedVisualPatterns.has(metadata.visualPattern.toUpperCase())) {
+    errors.push(`Content slideSpec uses unknown visualPattern "${metadata.visualPattern}".`);
+  }
+
+  if (!metadata?.sectionLayout) {
+    errors.push('Content slideSpec is missing sectionLayout. Use left, right, vertical, or background to plan deck rhythm.');
+  } else if (!allowedSectionLayouts.has(metadata.sectionLayout)) {
+    errors.push(`Content slideSpec uses unknown sectionLayout "${metadata.sectionLayout}".`);
+  }
+
   if (!metadata?.density) {
     errors.push('Content slideSpec is missing density.');
   } else if (!allowedDensities.has(metadata.density)) {
@@ -603,6 +688,15 @@ function validateSlideSpec(source, errors) {
   }
 
   return metadata;
+}
+
+function validateThankYouPlacement(source, slideSpec, errors) {
+  if (slideSpec?.type !== 'content') return;
+  const strings = collectStringLiterals(source);
+  const hasThankYou = strings.some((text) => /\b(?:c\u1ea3m\s+\u01a1n|c\u00e1m\s+\u01a1n|thank\s+you|thanks)\b/i.test(text));
+  if (!hasThankYou) return;
+
+  errors.push('Thank-you text must be a standalone final Summary / Closing slide, not a footer or callout on a content slide.');
 }
 
 function validateModuleShape(source, filePath, errors) {
@@ -715,6 +809,10 @@ function validateSummaryRows(summaryRows, errors) {
     return;
   }
 
+  if (summaryRows.length > 4 && summaryRows.some((item) => item.body)) {
+    errors.push('Summary rows has more than four body-bearing rows. Split across two slides or remove the bottom callout/footer.');
+  }
+
   summaryRows.forEach((item, index) => {
     if (!item.title && !item.body) {
       errors.push(`Summary row ${index + 1} is empty.`);
@@ -739,6 +837,10 @@ function validateProcessSteps(steps, errors) {
   if (steps.length < 2) {
     errors.push('Process timeline needs at least two steps.');
     return;
+  }
+
+  if (steps.length > 5) {
+    errors.push('Process timeline has too many steps for one slide. Keep it to five or fewer, or split the process.');
   }
 
   steps.forEach((step, index) => {
@@ -830,6 +932,9 @@ function validateStatCards(cards, errors) {
     if (card.value && card.value.length > 18) {
       errors.push(`Stat card ${index + 1} value is too long. Keep the metric compact.`);
     }
+    if (card.value && /[A-Za-z\u00c0-\u1ef9]/.test(card.value) && !/^[+-]?\d+(?:[.,]\d+)?(?:\s?[%\u00d7x])?\s+[A-Za-z\u00c0-\u1ef9]{1,12}$/.test(card.value)) {
+      errors.push(`Stat card ${index + 1} value mixes prose with metric text. Keep value to a number/percent/date, and move words into label/detail.`);
+    }
     if (card.label && (card.label.length > 50 || countSentences(card.label) > 1)) {
       errors.push(`Stat card ${index + 1} label is too dense. Keep it short and single-idea.`);
     }
@@ -866,6 +971,10 @@ function validateHierarchyNodes(nodes, errors) {
   if (nodes.length < 2) {
     errors.push('Hierarchy layout needs at least two nodes.');
     return;
+  }
+
+  if (nodes.length > 5) {
+    errors.push('Hierarchy layout has too many nodes for one slide. Keep it to five or fewer, or split the hierarchy.');
   }
 
   nodes.forEach((node, index) => {
@@ -970,10 +1079,10 @@ function validateLayoutHelperRouting(spec, source, errors) {
   if (!spec?.layoutFamily) return;
 
   const familyPatterns = {
-    comparison: /addComparisonCards\s*\(/,
+    comparison: /addComparisonCards\s*\(|addDiagonalCompare\s*\(/,
     timeline: /addProcessTimeline\s*\(/,
     roadmap: /addRoadmap\s*\(/,
-    hierarchy: /addHierarchyStack\s*\(/,
+    hierarchy: /addHierarchyStack\s*\(|addLayeredStack\s*\(/,
     quadrant: /addQuadrantMatrix\s*\(/,
     relation: /addRelationMap\s*\(/,
     cycle: /addCycleDiagram\s*\(/,
@@ -981,14 +1090,110 @@ function validateLayoutHelperRouting(spec, source, errors) {
     staircase: /addStaircase\s*\(/,
     boxes: /addBoxGrid\s*\(/,
     data: /addBarChartWithTakeaways\s*\(/,
-    stats: /addStatCardGrid\s*\(/,
-    media: /addMixedMediaPanel\s*\(/,
-    'text-visual': /addBulletList\s*\(|addSummaryRows\s*\(|addMixedMediaPanel\s*\(/,
+    stats: /addStatCardGrid\s*\(|addMetricWall\s*\(/,
+    media: /addMixedMediaPanel\s*\(|addEvidenceMedia\s*\(|addHeroImageOverlay\s*\(/,
+    'text-visual': /addBulletList\s*\(|addSummaryRows\s*\(|addMixedMediaPanel\s*\(|addEditorialQuote\s*\(/,
   };
 
   const requiredPattern = familyPatterns[spec.layoutFamily];
   if (requiredPattern && !requiredPattern.test(source)) {
     errors.push(`layoutFamily "${spec.layoutFamily}" must render through its approved helper, not ad hoc addText positioning.`);
+  }
+}
+
+function numericProp(objectSource, name) {
+  const match = objectSource.match(new RegExp(`\\b${name}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
+  return match ? Number(match[1]) : null;
+}
+
+function collectInlineHelperLayoutObjects(source) {
+  const layouts = [];
+  const helpers = [
+    'addSummaryRows',
+    'addProcessTimeline',
+    'addComparisonCards',
+    'addBarChartWithTakeaways',
+    'addStatCardGrid',
+    'addMixedMediaPanel',
+    'addHierarchyStack',
+    'addQuadrantMatrix',
+    'addRoadmap',
+    'addBoxGrid',
+    'addPyramid',
+    'addStaircase',
+    'addMetricWall',
+    'addLayeredStack',
+    'addEvidenceMedia',
+    'addDiagonalCompare',
+  ];
+
+  for (const helper of helpers) {
+    const pattern = new RegExp(`${helper}\\(\\s*slide\\s*,[\\s\\S]*?,\\s*(\\{[\\s\\S]*?\\})\\s*,\\s*theme`, 'g');
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+      const objectSource = match[1];
+      layouts.push({
+        helper,
+        x: numericProp(objectSource, 'x'),
+        y: numericProp(objectSource, 'y'),
+        w: numericProp(objectSource, 'w'),
+        h: numericProp(objectSource, 'h'),
+      });
+    }
+  }
+
+  return layouts;
+}
+
+function collectInlineRadialLayoutObjects(source) {
+  const layouts = [];
+  const helpers = ['addRelationMap', 'addCycleDiagram'];
+
+  for (const helper of helpers) {
+    const pattern = new RegExp(`${helper}\\(\\s*slide\\s*,[\\s\\S]*?,\\s*(\\{[\\s\\S]*?\\})\\s*,\\s*theme`, 'g');
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+      const objectSource = match[1];
+      layouts.push({
+        helper,
+        cx: numericProp(objectSource, 'cx'),
+        cy: numericProp(objectSource, 'cy'),
+        radius: numericProp(objectSource, 'radius'),
+        nodeW: numericProp(objectSource, 'nodeW') ?? 1.55,
+        nodeH: numericProp(objectSource, 'nodeH') ?? 0.66,
+      });
+    }
+  }
+
+  return layouts;
+}
+
+function validateSafeFrame(source, errors) {
+  for (const layout of collectInlineHelperLayoutObjects(source)) {
+    if ([layout.x, layout.y, layout.w, layout.h].some((value) => typeof value !== 'number')) continue;
+    if (layout.x < 0.35) {
+      errors.push(`${layout.helper} layout starts too close to the left edge (x=${layout.x}). Use x >= 0.45 for content.`);
+    }
+    if (layout.x + layout.w > 9.45) {
+      errors.push(`${layout.helper} layout exceeds the right safe frame (x+w=${Number((layout.x + layout.w).toFixed(2))}). Keep x+w <= 9.35.`);
+    }
+    if (layout.y < 1.12) {
+      errors.push(`${layout.helper} layout enters the title zone (y=${layout.y}). Content helpers should start at y >= 1.25.`);
+    }
+    if (layout.y + layout.h > 4.9) {
+      errors.push(`${layout.helper} layout enters the footer/page-number zone (y+h=${Number((layout.y + layout.h).toFixed(2))}). Keep content y+h <= 4.85 or split the slide.`);
+    }
+  }
+
+  for (const layout of collectInlineRadialLayoutObjects(source)) {
+    if ([layout.cx, layout.cy, layout.radius].some((value) => typeof value !== 'number')) continue;
+    const left = layout.cx - layout.radius - layout.nodeW / 2;
+    const right = layout.cx + layout.radius + layout.nodeW / 2;
+    const top = layout.cy - layout.radius - layout.nodeH / 2;
+    const bottom = layout.cy + layout.radius + layout.nodeH / 2;
+    if (left < 0.45 || right > 9.35 || top < 1.2 || bottom > 4.85) {
+      errors.push(`${layout.helper} radial layout exceeds the safe content frame. Bounds are x=${Number(left.toFixed(2))}..${Number(right.toFixed(2))}, y=${Number(top.toFixed(2))}..${Number(bottom.toFixed(2))}. Reduce radius/node count or split the slide.`);
+    }
   }
 }
 
@@ -1137,8 +1342,10 @@ function validateSlide(filePath) {
   validateModuleShape(source, filePath, errors);
   validateThemeContract(source, errors);
   const slideSpec = validateSlideSpec(source, errors);
+  validateThankYouPlacement(source, slideSpec, errors);
   validateLanguageConsistency(source, errors);
   validateLayoutHelperRouting(slideSpec, source, errors);
+  validateSafeFrame(source, errors);
 
   const fakeBulletPatterns = [
     /\b[A-Za-z_$][\w$]*\.addText\(\s*(['"`])\s*[•✓]\s*\1\s*\+/g,
@@ -1260,6 +1467,8 @@ function validateSlide(filePath) {
     boxGridSets,
   }, errors);
 
+  const result = { filePath, slideSpec, errors };
+
   if (errors.length) {
     const relative = path.relative(process.cwd(), filePath) || filePath;
     console.error(`Slide structure validation failed for ${relative}`);
@@ -1267,10 +1476,92 @@ function validateSlide(filePath) {
       console.error(`- ${error}`);
     }
     process.exitCode = 1;
-    return;
+    return result;
   }
 
   console.log(`Slide structure validation passed for ${path.relative(process.cwd(), filePath) || filePath}`);
+  return result;
+}
+
+function findRepeatedRun(items, key) {
+  let previous = '';
+  let count = 0;
+
+  for (const item of items) {
+    const value = item.slideSpec?.[key] || '';
+    if (!value) {
+      previous = '';
+      count = 0;
+      continue;
+    }
+
+    if (value === previous) {
+      count += 1;
+    } else {
+      previous = value;
+      count = 1;
+    }
+
+    if (count >= 3) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+function validateDeckRhythm(results) {
+  const contentSlides = results
+    .filter((result) => result?.slideSpec?.type === 'content')
+    .sort((a, b) => (a.slideSpec.index || 0) - (b.slideSpec.index || 0));
+
+  if (contentSlides.length < 2) return;
+
+  const errors = [];
+  const distinctFamilies = new Set(contentSlides.map((result) => result.slideSpec.layoutFamily).filter(Boolean));
+  const distinctPatterns = new Set(contentSlides.map((result) => result.slideSpec.visualPattern?.toUpperCase()).filter(Boolean));
+  const bulletLikeCount = contentSlides.filter((result) => {
+    const family = result.slideSpec.layoutFamily;
+    const pattern = result.slideSpec.visualPattern?.toUpperCase();
+    return family === 'text-visual' || pattern === 'BULLETS';
+  }).length;
+  const familyRun = findRepeatedRun(contentSlides, 'layoutFamily');
+  const sectionRun = findRepeatedRun(contentSlides, 'sectionLayout');
+
+  if (contentSlides.length >= 15 && distinctFamilies.size < 6) {
+    errors.push(`Deck has ${contentSlides.length} content slides but only ${distinctFamilies.size} layout families. Use at least 6.`);
+  } else if (contentSlides.length >= 8 && distinctFamilies.size < 4) {
+    errors.push(`Deck has ${contentSlides.length} content slides but only ${distinctFamilies.size} layout families. Use at least 4.`);
+  }
+
+  if (contentSlides.length >= 15 && distinctPatterns.size < 6) {
+    errors.push(`Deck has ${contentSlides.length} content slides but only ${distinctPatterns.size} visual patterns. Use at least 6.`);
+  } else if (contentSlides.length >= 8 && distinctPatterns.size < 4) {
+    errors.push(`Deck has ${contentSlides.length} content slides but only ${distinctPatterns.size} visual patterns. Use at least 4.`);
+  }
+
+  if (contentSlides.length >= 4 && bulletLikeCount / contentSlides.length > 0.25) {
+    errors.push(`Bullet-like/text-visual slides are ${bulletLikeCount}/${contentSlides.length}. Keep them at or below 25% of content slides.`);
+  }
+
+  if (familyRun) {
+    errors.push(`Deck repeats layoutFamily "${familyRun}" for 3+ consecutive content slides.`);
+  }
+
+  if (sectionRun) {
+    errors.push(`Deck repeats sectionLayout "${sectionRun}" for 3+ consecutive content slides.`);
+  }
+
+  if (errors.length) {
+    console.error('Deck rhythm validation failed:');
+    for (const error of errors) {
+      console.error(`- ${error}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`Deck rhythm validation passed for ${contentSlides.length} content slides`);
 }
 
 const targets = process.argv.slice(2);
@@ -1279,6 +1570,8 @@ if (!targets.length) {
   process.exit(1);
 }
 
+const results = [];
 for (const target of targets) {
-  validateSlide(path.resolve(process.cwd(), target));
+  results.push(validateSlide(path.resolve(process.cwd(), target)));
 }
+validateDeckRhythm(results);

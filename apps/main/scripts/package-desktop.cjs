@@ -86,6 +86,13 @@ function stageApp(pkg) {
   fs.mkdirSync(stagedMainDir, { recursive: true });
   fs.copyFileSync(path.join(packageRoot, 'dist', 'main.cjs'), path.join(stagedMainDir, 'main.cjs'));
 
+  const stagedNativeDir = path.join(appStageRoot, 'build', 'Release');
+  fs.mkdirSync(stagedNativeDir, { recursive: true });
+  fs.copyFileSync(
+    path.join(mainRoot, 'build', 'Release', 'better_sqlite3.node'),
+    path.join(stagedNativeDir, 'better_sqlite3.node'),
+  );
+
   fs.cpSync(path.join(repoRoot, 'apps', 'preload', 'dist'), path.join(appStageRoot, 'preload', 'dist'), { recursive: true });
   fs.cpSync(path.join(repoRoot, 'apps', 'renderer', 'dist'), path.join(appStageRoot, 'renderer', 'dist'), { recursive: true });
 }

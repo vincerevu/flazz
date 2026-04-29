@@ -1,9 +1,8 @@
 import { BackgroundService } from '@flazz/core/dist/services/background_service.js'
 import { bus } from '@flazz/core/dist/runs/bus.js'
-import { app, BrowserWindow, Notification, nativeImage, nativeTheme } from 'electron'
+import { BrowserWindow, Notification } from 'electron'
 import { RunEvent } from '@flazz/shared'
 import z from 'zod'
-import path from 'node:path'
 import { shouldNotifyForRun } from './attention-state.js'
 import { emitNotificationActivated } from './ipc.js'
 
@@ -26,14 +25,6 @@ const INTERNAL_AGENT_NAMES = new Set([
 
 const runStates = new Map<string, NotificationRunState>()
 let unsubscribe: (() => void) | null = null
-
-function getNotificationIconPath(): string {
-  const iconName = nativeTheme.shouldUseDarkColors ? 'logo-white.png' : 'logo-black.png'
-  if (app.isPackaged) {
-    return path.join(app.getAppPath(), 'renderer', 'dist', iconName)
-  }
-  return path.join(app.getAppPath(), 'apps', 'renderer', 'public', iconName)
-}
 
 function decodeHtmlEntities(text: string): string {
   return text
@@ -103,11 +94,9 @@ function focusMainWindow(runId?: string) {
 
 function showNotification(title: string, body: string, runId: string) {
   if (!Notification.isSupported()) return
-  const icon = nativeImage.createFromPath(getNotificationIconPath())
   const notification = new Notification({
     title,
     body: sanitizeNotificationText(body),
-    icon: icon.isEmpty() ? undefined : icon,
     silent: false,
   })
   notification.on('click', () => {

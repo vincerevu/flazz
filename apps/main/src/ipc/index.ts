@@ -11,3 +11,4 @@ export { registerMemoryHandlers } from './memory.js';
 export { registerAppHandlers } from './app.js';
 export { registerSkillsHandlers } from './skills.js';
 export { registerRunMemoryHandlers } from './run-memory.js';
+export { registerPresentationHandlers } from './presentation.js';

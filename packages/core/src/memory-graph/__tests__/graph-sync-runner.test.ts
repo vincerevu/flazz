@@ -11,7 +11,7 @@ test("runGraphSyncIteration syncs all due connected apps across waves", async ()
   const appSuccesses: string[] = [];
 
   const deps: GraphSyncRunnerDeps = {
-      getConnectedToolkits: () => [
+      getConnectedToolkits: async () => [
         "github",
         "jira",
         "linear",
@@ -25,26 +25,26 @@ test("runGraphSyncIteration syncs all due connected apps across waves", async ()
         "gmail",
         "outlook",
       ],
-      getStatus: (source) => ({
+      getStatus: async (source) => ({
         source,
         shouldSync: source !== "linear",
         distillBudgetRemaining: 2,
-      }) as ReturnType<GraphSyncRunnerDeps["getStatus"]>,
-      getAppStatus: () => ({ inBackoff: false }) as ReturnType<GraphSyncRunnerDeps["getAppStatus"]>,
-      shouldBootstrapApp: () => true,
-      markBootstrapComplete: () => null,
-      writeReviewNote: (now = new Date()) => {
+      }) as Awaited<ReturnType<GraphSyncRunnerDeps["getStatus"]>>,
+      getAppStatus: async () => ({ inBackoff: false }) as Awaited<ReturnType<GraphSyncRunnerDeps["getAppStatus"]>>,
+      shouldBootstrapApp: async () => true,
+      markBootstrapComplete: async () => null,
+      writeReviewNote: async (now = new Date()) => {
         written.push(now.toISOString());
         return "review";
       },
-      observeItems: () => undefined,
-      shouldFollowUpDetail: () => true,
-      recordDetailFetch: () => null,
-      recordDistill: (source) => {
+      observeItems: async () => undefined,
+      shouldFollowUpDetail: async () => true,
+      recordDetailFetch: async () => null,
+      recordDistill: async (source) => {
         distills.push(source);
       },
-      recordAppFailure: () => null,
-      recordAppSuccess: (app) => {
+      recordAppFailure: async () => null,
+      recordAppSuccess: async (app) => {
         appSuccesses.push(app);
         return null;
       },
@@ -204,21 +204,21 @@ test("runGraphSyncIteration records failures without aborting other sources", as
   const failures: string[] = [];
 
   const deps: GraphSyncRunnerDeps = {
-      getConnectedToolkits: () => ["github", "gmail"],
-      getStatus: () => ({ shouldSync: true, distillBudgetRemaining: 1 }) as ReturnType<GraphSyncRunnerDeps["getStatus"]>,
-      getAppStatus: () => ({ inBackoff: false }) as ReturnType<GraphSyncRunnerDeps["getAppStatus"]>,
-      shouldBootstrapApp: () => false,
-      markBootstrapComplete: () => null,
-      writeReviewNote: () => "review",
-      observeItems: () => undefined,
-      shouldFollowUpDetail: () => false,
-      recordDetailFetch: () => null,
-      recordDistill: () => undefined,
-      recordAppFailure: (app, _resourceType, error) => {
+      getConnectedToolkits: async () => ["github", "gmail"],
+      getStatus: async () => ({ shouldSync: true, distillBudgetRemaining: 1 }) as Awaited<ReturnType<GraphSyncRunnerDeps["getStatus"]>>,
+      getAppStatus: async () => ({ inBackoff: false }) as Awaited<ReturnType<GraphSyncRunnerDeps["getAppStatus"]>>,
+      shouldBootstrapApp: async () => false,
+      markBootstrapComplete: async () => null,
+      writeReviewNote: async () => "review",
+      observeItems: async () => undefined,
+      shouldFollowUpDetail: async () => false,
+      recordDetailFetch: async () => null,
+      recordDistill: async () => undefined,
+      recordAppFailure: async (app, _resourceType, error) => {
         failures.push(`${app}:${error}`);
         return null;
       },
-      recordAppSuccess: () => null,
+      recordAppSuccess: async () => null,
       listItemsForSync: async (rawInput: unknown) => {
         const { app } = rawInput as { app: string };
         calls.push(app);
@@ -269,18 +269,18 @@ test("runGraphSyncIteration skips apps currently in backoff", async () => {
   const calls: string[] = [];
 
   const deps: GraphSyncRunnerDeps = {
-      getConnectedToolkits: () => ["github", "jira"],
-      getStatus: () => ({ shouldSync: true, distillBudgetRemaining: 2 }) as ReturnType<GraphSyncRunnerDeps["getStatus"]>,
-      getAppStatus: (app) => ({ inBackoff: app === "github" }) as ReturnType<GraphSyncRunnerDeps["getAppStatus"]>,
-      shouldBootstrapApp: () => false,
-      markBootstrapComplete: () => null,
-      writeReviewNote: () => "review",
-      observeItems: () => undefined,
-      shouldFollowUpDetail: () => false,
-      recordDetailFetch: () => null,
-      recordDistill: () => undefined,
-      recordAppFailure: () => null,
-      recordAppSuccess: () => null,
+      getConnectedToolkits: async () => ["github", "jira"],
+      getStatus: async () => ({ shouldSync: true, distillBudgetRemaining: 2 }) as Awaited<ReturnType<GraphSyncRunnerDeps["getStatus"]>>,
+      getAppStatus: async (app) => ({ inBackoff: app === "github" }) as Awaited<ReturnType<GraphSyncRunnerDeps["getAppStatus"]>>,
+      shouldBootstrapApp: async () => false,
+      markBootstrapComplete: async () => null,
+      writeReviewNote: async () => "review",
+      observeItems: async () => undefined,
+      shouldFollowUpDetail: async () => false,
+      recordDetailFetch: async () => null,
+      recordDistill: async () => undefined,
+      recordAppFailure: async () => null,
+      recordAppSuccess: async () => null,
       listItemsForSync: async (rawInput: unknown) => {
         const { app } = rawInput as { app: string };
         calls.push(app);
@@ -327,18 +327,18 @@ test("runGraphSyncIteration leaves email source idle in generic runner because g
   const fullCalls: string[] = [];
 
   const deps: GraphSyncRunnerDeps = {
-      getConnectedToolkits: () => ["gmail"],
-      getStatus: () => ({ shouldSync: false, distillBudgetRemaining: 4 }) as ReturnType<GraphSyncRunnerDeps["getStatus"]>,
-      getAppStatus: () => ({ inBackoff: false }) as ReturnType<GraphSyncRunnerDeps["getAppStatus"]>,
-      shouldBootstrapApp: () => true,
-      markBootstrapComplete: () => null,
-      writeReviewNote: () => "review",
-      observeItems: () => undefined,
-      shouldFollowUpDetail: () => true,
-      recordDetailFetch: () => null,
-      recordDistill: () => undefined,
-      recordAppFailure: () => null,
-      recordAppSuccess: () => null,
+      getConnectedToolkits: async () => ["gmail"],
+      getStatus: async () => ({ shouldSync: false, distillBudgetRemaining: 4 }) as Awaited<ReturnType<GraphSyncRunnerDeps["getStatus"]>>,
+      getAppStatus: async () => ({ inBackoff: false }) as Awaited<ReturnType<GraphSyncRunnerDeps["getAppStatus"]>>,
+      shouldBootstrapApp: async () => true,
+      markBootstrapComplete: async () => null,
+      writeReviewNote: async () => "review",
+      observeItems: async () => undefined,
+      shouldFollowUpDetail: async () => true,
+      recordDetailFetch: async () => null,
+      recordDistill: async () => undefined,
+      recordAppFailure: async () => null,
+      recordAppSuccess: async () => null,
       listItemsForSync: async (rawInput: unknown) => {
         const { cursor, limit } = rawInput as { cursor?: string; limit: number };
         calls.push({ cursor, limit });
@@ -442,18 +442,18 @@ test("runGraphSyncIteration force option bypasses cadence gating for connected s
   const calls: string[] = [];
 
   const deps: GraphSyncRunnerDeps = {
-      getConnectedToolkits: () => ["github"],
-      getStatus: () => ({ shouldSync: false, distillBudgetRemaining: 1 }) as ReturnType<GraphSyncRunnerDeps["getStatus"]>,
-      getAppStatus: () => ({ inBackoff: false }) as ReturnType<GraphSyncRunnerDeps["getAppStatus"]>,
-      shouldBootstrapApp: () => false,
-      markBootstrapComplete: () => null,
-      writeReviewNote: () => "review",
-      observeItems: () => undefined,
-      shouldFollowUpDetail: () => false,
-      recordDetailFetch: () => null,
-      recordDistill: () => undefined,
-      recordAppFailure: () => null,
-      recordAppSuccess: () => null,
+      getConnectedToolkits: async () => ["github"],
+      getStatus: async () => ({ shouldSync: false, distillBudgetRemaining: 1 }) as Awaited<ReturnType<GraphSyncRunnerDeps["getStatus"]>>,
+      getAppStatus: async () => ({ inBackoff: false }) as Awaited<ReturnType<GraphSyncRunnerDeps["getAppStatus"]>>,
+      shouldBootstrapApp: async () => false,
+      markBootstrapComplete: async () => null,
+      writeReviewNote: async () => "review",
+      observeItems: async () => undefined,
+      shouldFollowUpDetail: async () => false,
+      recordDetailFetch: async () => null,
+      recordDistill: async () => undefined,
+      recordAppFailure: async () => null,
+      recordAppSuccess: async () => null,
       listItemsForSync: async (rawInput: unknown) => {
         const { app } = rawInput as { app: string };
         calls.push(app);
@@ -493,3 +493,5 @@ test("runGraphSyncIteration force option bypasses cadence gating for connected s
   assert.equal(results.find((entry) => entry.source === "github")?.due, true);
   assert.equal(results.find((entry) => entry.source === "github")?.itemsSynced, 1);
 });
+
+

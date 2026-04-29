@@ -83,7 +83,7 @@ const BOOTSTRAP_MAX_ITEMS: Record<Exclude<GraphSyncSource, "conversation">, numb
 };
 
 export type GraphSyncRunnerDeps = {
-  getConnectedToolkits: () => string[];
+  getConnectedToolkits: () => Promise<string[]>;
   getStatus: typeof graphSyncService.getStatus;
   getAppStatus: typeof graphSyncService.getAppStatus;
   shouldBootstrapApp: typeof graphSyncService.shouldBootstrapApp;
@@ -288,18 +288,22 @@ async function collectEmailBootstrapItems(
   };
 }
 
-function selectFollowUpCandidates(
+async function selectFollowUpCandidates(
   app: string,
   items: FollowUpItem[],
   deps: Pick<GraphSyncRunnerDeps, "shouldFollowUpDetail">,
   now: Date,
-) {
+): Promise<FollowUpItem[]> {
   if (app === "github") {
     return items.filter((item) => !!item.id);
   }
-  return items
-    .filter((item) => deps.shouldFollowUpDetail(app, item, { now }))
-    .filter((item) => !!item.id);
+  const decisions = await Promise.all(items.map(async (item) => ({
+    item,
+    shouldFollowUp: await deps.shouldFollowUpDetail(app, item, { now }),
+  })));
+  return decisions
+    .filter(({ item, shouldFollowUp }) => shouldFollowUp && !!item.id)
+    .map(({ item }) => item);
 }
 
 async function syncSource(
@@ -308,13 +312,18 @@ async function syncSource(
   now = new Date(),
   options?: GraphSyncIterationOptions,
 ): Promise<SourceSyncResult> {
-  const status = deps.getStatus(source, { now });
-  const connectedApps = getConnectedAppsForSource(source, deps.getConnectedToolkits());
-  const bootstrapCandidates = connectedApps.filter((app) => {
+  const status = await deps.getStatus(source, { now });
+  const connectedApps = getConnectedAppsForSource(source, await deps.getConnectedToolkits());
+  const bootstrapDecisions = await Promise.all(connectedApps.map(async (app) => {
     const descriptor = deps.getDescriptor(app);
-    if (!descriptor) return false;
-    return deps.shouldBootstrapApp(app, descriptor.resourceType);
-  });
+    return {
+      app,
+      shouldBootstrap: descriptor ? await deps.shouldBootstrapApp(app, descriptor.resourceType) : false,
+    };
+  }));
+  const bootstrapCandidates = bootstrapDecisions
+    .filter((entry) => entry.shouldBootstrap)
+    .map((entry) => entry.app);
   const shouldRun = Boolean(
     connectedApps.length > 0 && (options?.force ? true : status.shouldSync || bootstrapCandidates.length > 0)
   );
@@ -332,12 +341,17 @@ async function syncSource(
     };
   }
 
-  const availableApps = connectedApps.filter((app) => {
+  const availability = await Promise.all(connectedApps.map(async (app) => {
     const descriptor = deps.getDescriptor(app);
-    if (!descriptor) return false;
-    const appStatus = deps.getAppStatus(app, descriptor.resourceType, now);
-    return !appStatus?.inBackoff;
-  });
+    const appStatus = descriptor ? await deps.getAppStatus(app, descriptor.resourceType, now) : null;
+    return {
+      app,
+      available: Boolean(descriptor && !appStatus?.inBackoff),
+    };
+  }));
+  const availableApps = availability
+    .filter((entry) => entry.available)
+    .map((entry) => entry.app);
   const bootstrapApps = availableApps.filter((app) => bootstrapCandidates.includes(app));
   const appsSynced: string[] = [];
   const failures: string[] = [];
@@ -364,7 +378,7 @@ async function syncSource(
           });
       if (result && typeof result === "object" && "success" in result && result.success) {
         appsSynced.push(app);
-        deps.recordAppSuccess(app, descriptor.resourceType, now);
+        await deps.recordAppSuccess(app, descriptor.resourceType, now);
         const normalizedItems = Array.isArray(result.items) ? (result.items as FollowUpItem[]) : [];
         const scopedItems = source === "email"
           ? retainEmailThreads(
@@ -376,7 +390,7 @@ async function syncSource(
             ? filterItemsWithinWindow(normalizedItems, now, BOOTSTRAP_WINDOW_DAYS)
             : normalizedItems;
         itemsSynced += scopedItems.length;
-        deps.observeItems(app, normalizedItems, now);
+        await deps.observeItems(app, normalizedItems, now);
         for (const item of scopedItems) {
           try {
             const result = deps.promoteSourceMemory(app, descriptor.resourceType as IntegrationResourceType, {
@@ -396,7 +410,7 @@ async function syncSource(
             console.warn(`[GraphSyncRunner] Failed to promote source memory snapshot for ${app}:${item.id ?? item.threadId ?? item.title}: ${error instanceof Error ? error.message : "unknown error"}`);
           }
         }
-        const candidates = selectFollowUpCandidates(app, scopedItems, deps, now);
+        const candidates = await selectFollowUpCandidates(app, scopedItems, deps, now);
         for (const candidate of candidates) {
           if (!candidate.id) {
             continue;
@@ -407,8 +421,8 @@ async function syncSource(
           });
           if (detailResult && typeof detailResult === "object" && "success" in detailResult && detailResult.success) {
             detailsFetched += 1;
-            deps.recordDistill(source, 1, now);
-            deps.recordDetailFetch(app, descriptor.resourceType, candidate, now);
+            await deps.recordDistill(source, 1, now);
+            await deps.recordDetailFetch(app, descriptor.resourceType, candidate, now);
             if (detailResult.item && typeof detailResult.item === "object") {
               try {
                 const result = deps.promoteSourceMemory(app, descriptor.resourceType as IntegrationResourceType, detailResult.item as SummaryResultItem);
@@ -421,21 +435,21 @@ async function syncSource(
             }
           } else {
             const error = detailResult && typeof detailResult === "object" && "error" in detailResult ? String(detailResult.error) : "unknown detail sync error";
-            deps.recordAppFailure(app, descriptor.resourceType, error, now);
+            await deps.recordAppFailure(app, descriptor.resourceType, error, now);
             failures.push(`${app}#${candidate.id}: ${error}`);
           }
         }
         if (bootstrap) {
-          deps.markBootstrapComplete(app, descriptor.resourceType, now);
+          await deps.markBootstrapComplete(app, descriptor.resourceType, now);
         }
       } else {
         const error = result && typeof result === "object" && "error" in result ? String(result.error) : "unknown sync error";
-        deps.recordAppFailure(app, descriptor.resourceType, error, now);
+        await deps.recordAppFailure(app, descriptor.resourceType, error, now);
         failures.push(`${app}: ${error}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown sync error";
-      deps.recordAppFailure(app, descriptor.resourceType, message, now);
+      await deps.recordAppFailure(app, descriptor.resourceType, message, now);
       failures.push(`${app}: ${message}`);
     }
   }
@@ -443,7 +457,7 @@ async function syncSource(
   if (sourceWrites > 0) {
     deps.triggerBuildFromSources();
   }
-  deps.writeReviewNote(now);
+  await deps.writeReviewNote(now);
   return {
     source,
     due: true,

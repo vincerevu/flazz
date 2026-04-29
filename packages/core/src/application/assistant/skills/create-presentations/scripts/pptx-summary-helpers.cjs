@@ -40,18 +40,21 @@ function addSummaryRows(slide, items, layout, theme, options = {}) {
 
   const computedRowHeight = rowHeight
     || (typeof h === 'number' && h > 0
-      ? Math.max(0.62, (h - rowGap * (normalized.length - 1)) / normalized.length)
+      ? Math.max(0.42, (h - rowGap * (normalized.length - 1)) / normalized.length)
       : Math.max(0.72, (itemHasBody(normalized) ? 0.78 : 0.52)));
+  const boundedIconSize = Math.min(iconSize, Math.max(0.22, computedRowHeight - 0.08));
+  const boundedTitleFontSize = Math.min(titleFontSize, computedRowHeight < 0.58 ? 15 : titleFontSize);
+  const boundedBodyFontSize = Math.min(bodyFontSize, computedRowHeight < 0.58 ? 9 : bodyFontSize);
 
   normalized.forEach((item, index) => {
     const rowY = y + index * (computedRowHeight + rowGap);
-    const iconY = rowY + Math.max(0.02, (computedRowHeight - iconSize) / 2);
+    const iconY = rowY + Math.max(0.02, (computedRowHeight - boundedIconSize) / 2);
 
     slide.addShape('ellipse', {
       x,
       y: iconY,
-      w: iconSize,
-      h: iconSize,
+      w: boundedIconSize,
+      h: boundedIconSize,
       fill: { color: options.iconFill || theme.accent },
       line: { color: options.iconLine || theme.accent, width: 1 },
     });
@@ -59,9 +62,9 @@ function addSummaryRows(slide, items, layout, theme, options = {}) {
     slide.addText(String(index + 1), {
       x,
       y: iconY,
-      w: iconSize,
-      h: iconSize,
-      fontSize: options.iconFontSize || 11,
+      w: boundedIconSize,
+      h: boundedIconSize,
+      fontSize: Math.min(options.iconFontSize || 11, boundedIconSize < 0.28 ? 8 : 11),
       fontFace: bodyFontFace,
       bold: true,
       color: options.iconTextColor || theme.bg,
@@ -70,16 +73,18 @@ function addSummaryRows(slide, items, layout, theme, options = {}) {
       margin: 0,
     });
 
-    const textX = x + iconSize + iconTextGap;
-    const textW = w - iconSize - iconTextGap;
+    const textX = x + boundedIconSize + iconTextGap;
+    const textW = w - boundedIconSize - iconTextGap;
+    const titleH = item.title ? Math.min(0.3, Math.max(0.18, computedRowHeight * 0.38)) : 0;
+    const bodyY = rowY + (item.title ? titleH + 0.05 : 0);
 
     if (item.title) {
       slide.addText(item.title, {
         x: textX,
         y: rowY,
         w: textW,
-        h: Math.min(0.34, computedRowHeight * 0.42),
-        fontSize: titleFontSize,
+        h: titleH,
+        fontSize: boundedTitleFontSize,
         fontFace: titleFontFace,
         bold: true,
         color: titleColor,
@@ -91,12 +96,12 @@ function addSummaryRows(slide, items, layout, theme, options = {}) {
     if (item.body) {
       slide.addText(item.body, {
         x: textX,
-        y: rowY + (item.title ? Math.min(0.36, computedRowHeight * 0.44) : 0),
+        y: bodyY,
         w: textW,
         h: item.title
-          ? Math.max(0.24, computedRowHeight - Math.min(0.4, computedRowHeight * 0.5))
+          ? Math.max(0.18, computedRowHeight - titleH - 0.07)
           : computedRowHeight,
-        fontSize: bodyFontSize,
+        fontSize: boundedBodyFontSize,
         fontFace: bodyFontFace,
         color: bodyColor,
         margin: 0,

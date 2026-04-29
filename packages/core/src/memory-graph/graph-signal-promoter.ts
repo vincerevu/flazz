@@ -305,9 +305,9 @@ export class GraphSignalPromoter {
     this.projectsDir = path.join(this.signalsDir, "Projects");
     this.workDir = path.join(this.signalsDir, "Work");
     this.reviewDir = path.join(this.signalsDir, "Reviews");
-    this.knowledgePeopleDir = path.join(workDir, "memory", "People");
-    this.knowledgeProjectsDir = path.join(workDir, "memory", "Projects");
-    this.knowledgeWorkDir = path.join(workDir, "memory", "Work");
+    this.knowledgePeopleDir = path.join(workDir, "memory", "Knowledge", "People");
+    this.knowledgeProjectsDir = path.join(workDir, "memory", "Knowledge", "Projects");
+    this.knowledgeWorkDir = path.join(workDir, "memory", "Knowledge", "Work");
   }
 
   promote(signal: GraphSignalRecord, allSignals: GraphSignalRecord[] = [signal]): { path: string; created: boolean; aggregatePaths: string[] } {

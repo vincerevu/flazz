@@ -3,6 +3,8 @@ export const skill = String.raw`
 
 You have access to two search tools for finding information on the internet. Choose the right one based on the user's intent.
 
+Research/search requests produce a chat answer by default. Do not create, save, export, or write files for "research", "look into", "deep dive", "analyze", "summarize", "compare", or look-into requests unless the user explicitly asks for a file artifact or a concrete output extension such as \`.pdf\`, \`.docx\`, \`.pptx\`, or \`.xlsx\`. If the user asks for one exact final format, produce only that format and no companion source/sidecar files.
+
 ## Tools
 
 ### web-search (DuckDuckGo by default, Brave when configured)

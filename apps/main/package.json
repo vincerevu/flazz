@@ -3,7 +3,7 @@
   "productName": "Flazz",
   "description": "AI coworker with memory",
   "type": "module",
-    "version": "0.1.0",
+  "version": "0.1.0",
   "main": ".package/dist/main.cjs",
   "license": "Apache-2.0",
   "scripts": {
@@ -18,9 +18,10 @@
     "make": "node scripts/package-desktop.cjs"
   },
   "dependencies": {
+    "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
-    "electron-updater": "^6.6.2",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.6.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.11.0",
     "papaparse": "^5.5.3",
