@@ -60,7 +60,7 @@ function stripMarkdown(text: string): string {
 }
 
 
-type ProviderStatusRecord = ReturnType<typeof integrationService.listProviders>[number];
+type ProviderStatusRecord = Awaited<ReturnType<typeof integrationService.listProviders>>[number];
 
 function buildGenericRequestGuidance(status: ProviderStatusRecord | null | undefined) {
   if (!status?.genericRequestPolicy) {
@@ -94,7 +94,7 @@ export const integrationTools = {
           error: "Composio is not configured. Please set up your Composio API key first.",
         };
       }
-      const account = composioAccountsRepo.getAccount(app);
+      const account = await composioAccountsRepo.getAccount(app);
       if (!account || account.status !== "ACTIVE") {
         return {
           connected: false,
@@ -102,7 +102,7 @@ export const integrationTools = {
           error: `${app} is not connected. Please connect ${app} from settings first.`,
         };
       }
-      const status = integrationService.listProviders().find((provider) => provider.app === app);
+      const status = (await integrationService.listProviders()).find((provider) => provider.app === app);
       return {
         connected: true,
         normalizedSupported: status?.normalizedSupported ?? false,
@@ -124,7 +124,7 @@ export const integrationTools = {
     description: "List connected integrations with their normalized support level, resource type, supported capabilities, and generic request handling hints. Follow each provider's genericRequestPolicy before asking clarifying questions for ambiguous personal requests.",
     inputSchema: z.object({}).optional(),
     execute: async () => {
-      const providers = integrationService.listProviders();
+      const providers = await integrationService.listProviders();
       return {
         success: true,
         providers: providers.map((provider) => ({
@@ -257,7 +257,7 @@ export const integrationTools = {
       input: z.record(z.string(), z.unknown()).describe("Raw action input"),
     }),
     execute: async ({ app, toolSlug, input }: { app: string; toolSlug: string; input: Record<string, unknown> }) => {
-      const account = composioAccountsRepo.getAccount(app);
+      const account = await composioAccountsRepo.getAccount(app);
       if (!account || account.status !== "ACTIVE") {
         return {
           success: false,

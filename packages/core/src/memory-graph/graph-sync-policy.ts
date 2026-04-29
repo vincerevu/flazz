@@ -22,7 +22,7 @@ export type GraphSyncPolicy = {
 export const GRAPH_SYNC_POLICIES: Record<GraphSyncSource, GraphSyncPolicy> = {
   github: {
     source: "github",
-    activeCadenceMinutes: 60,
+    activeCadenceMinutes: 15,
     idleCadenceMinutes: 120,
     dailyClassificationBudget: 12,
     dailyDistillBudget: 30,
@@ -30,7 +30,7 @@ export const GRAPH_SYNC_POLICIES: Record<GraphSyncSource, GraphSyncPolicy> = {
   },
   jira: {
     source: "jira",
-    activeCadenceMinutes: 60,
+    activeCadenceMinutes: 15,
     idleCadenceMinutes: 120,
     dailyClassificationBudget: 12,
     dailyDistillBudget: 30,
@@ -38,7 +38,7 @@ export const GRAPH_SYNC_POLICIES: Record<GraphSyncSource, GraphSyncPolicy> = {
   },
   linear: {
     source: "linear",
-    activeCadenceMinutes: 60,
+    activeCadenceMinutes: 15,
     idleCadenceMinutes: 120,
     dailyClassificationBudget: 12,
     dailyDistillBudget: 30,
@@ -86,7 +86,7 @@ export const GRAPH_SYNC_POLICIES: Record<GraphSyncSource, GraphSyncPolicy> = {
   },
   email: {
     source: "email",
-    activeCadenceMinutes: 60,
+    activeCadenceMinutes: 45,
     idleCadenceMinutes: 180,
     dailyClassificationBudget: 6,
     dailyDistillBudget: 12,

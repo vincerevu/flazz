@@ -22,6 +22,10 @@ export const runsIpc = {
     return window.ipc.invoke('runs:fetch', { runId })
   },
 
+  fetchConversation(runId: string) {
+    return window.ipc.invoke('runs:fetchConversation', { runId })
+  },
+
   create(agentId: string) {
     return window.ipc.invoke('runs:create', { agentId, runType: 'chat' })
   },

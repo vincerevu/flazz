@@ -3,7 +3,7 @@ import path from "node:path";
 import type { GraphSignal as GraphSignalSchema } from "@flazz/shared/dist/graph-signals.js";
 import { z } from "zod";
 import { getCadenceMinutes, getGraphSyncPolicy, type GraphSyncSource } from "./graph-sync-policy.js";
-import { GraphSyncStateRepo, type GraphSyncAppState, type GraphSyncSourceState } from "./graph-sync-state-repo.js";
+import type { GraphSyncAppState, GraphSyncSourceState, IGraphSyncStateRepo } from "./graph-sync-state-repo.js";
 
 type GraphSignalRecord = z.infer<typeof GraphSignalSchema>;
 const GRAPH_SYNC_BOOTSTRAP_VERSION = 2;
@@ -55,23 +55,23 @@ export function mapAppToGraphSyncSource(app: string, resourceType?: string): Gra
 export class GraphSyncService {
   private readonly reviewPath: string;
 
-  constructor(private repo: GraphSyncStateRepo, workDir: string) {
+  constructor(private repo: IGraphSyncStateRepo, workDir: string) {
     this.reviewPath = path.join(workDir, "memory", "Signals", "Reviews", "sync-budget-status.md");
   }
 
-  recordRead(app: string, resourceType: string | undefined, itemCount: number, at = new Date(), mode: "list" | "detail" = "list") {
+  async recordRead(app: string, resourceType: string | undefined, itemCount: number, at = new Date(), mode: "list" | "detail" = "list") {
     const source = mapAppToGraphSyncSource(app, resourceType);
     if (!source) return null;
     const day = getDayKey(at);
-    const current = this.repo.getSourceState(source, day);
-    const appState = this.repo.getAppState(app, source, day);
+    const current = await this.repo.getSourceState(source, day);
+    const appState = await this.repo.getAppState(app, source, day);
     const next: GraphSyncSourceState = {
       ...current,
       lastReadAt: at.toISOString(),
       readsToday: current.readsToday + 1,
       itemsSeenToday: current.itemsSeenToday + Math.max(0, itemCount),
     };
-    this.repo.upsertSourceState(next);
+    await this.repo.upsertSourceState(next);
     const nextAppState: GraphSyncAppState = {
       ...appState,
       lastListReadAt: mode === "list" ? at.toISOString() : appState.lastListReadAt,
@@ -80,16 +80,16 @@ export class GraphSyncService {
       detailReadsToday: appState.detailReadsToday + (mode === "detail" ? 1 : 0),
       lastError: undefined,
     };
-    this.repo.upsertAppState(nextAppState);
-    this.writeReviewNote(at);
+    await this.repo.upsertAppState(nextAppState);
+    await this.writeReviewNote(at);
     return next;
   }
 
-  observeItems(app: string, items: Array<{ id?: string; title?: string; updatedAt?: string; timestamp?: string; startAt?: string; snippet?: string; preview?: string; status?: string }>, at = new Date()) {
+  async observeItems(app: string, items: Array<{ id?: string; title?: string; updatedAt?: string; timestamp?: string; startAt?: string; snippet?: string; preview?: string; status?: string }>, at = new Date()) {
     for (const item of items) {
       if (!item.id) continue;
-      const current = this.repo.getObjectState(app, item.id);
-      this.repo.upsertObjectState({
+      const current = await this.repo.getObjectState(app, item.id);
+      await this.repo.upsertObjectState({
         app,
         objectId: item.id,
         lastSeenAt: at.toISOString(),
@@ -97,7 +97,7 @@ export class GraphSyncService {
         lastFingerprint: buildObjectFingerprint(item),
       });
     }
-    this.writeReviewNote(at);
+    await this.writeReviewNote(at);
   }
 
   shouldFollowUpDetail(
@@ -105,10 +105,18 @@ export class GraphSyncService {
     item: { id?: string; title?: string; updatedAt?: string; timestamp?: string; startAt?: string; snippet?: string; preview?: string; status?: string },
     options?: { now?: Date; cooldownMinutes?: number },
   ) {
+    return this.shouldFollowUpDetailAsync(app, item, options);
+  }
+
+  async shouldFollowUpDetailAsync(
+    app: string,
+    item: { id?: string; title?: string; updatedAt?: string; timestamp?: string; startAt?: string; snippet?: string; preview?: string; status?: string },
+    options?: { now?: Date; cooldownMinutes?: number },
+  ) {
     if (!item.id) return false;
     const now = options?.now ?? new Date();
     const cooldownMinutes = options?.cooldownMinutes ?? 360;
-    const current = this.repo.getObjectState(app, item.id);
+    const current = await this.repo.getObjectState(app, item.id);
     if (!current) return true;
     const nextFingerprint = buildObjectFingerprint(item);
     if (current.lastFingerprint && nextFingerprint && current.lastFingerprint !== nextFingerprint) {
@@ -117,16 +125,16 @@ export class GraphSyncService {
     return minutesBetween(current.lastDetailAt, now) >= cooldownMinutes;
   }
 
-  recordDetailFetch(
+  async recordDetailFetch(
     app: string,
     resourceType: string | undefined,
     item: { id?: string; title?: string; updatedAt?: string; timestamp?: string; startAt?: string; snippet?: string; preview?: string; status?: string },
     at = new Date(),
   ) {
     if (!item.id) return null;
-    this.recordRead(app, resourceType, 1, at, "detail");
-    const current = this.repo.getObjectState(app, item.id);
-    this.repo.upsertObjectState({
+    await this.recordRead(app, resourceType, 1, at, "detail");
+    const current = await this.repo.getObjectState(app, item.id);
+    await this.repo.upsertObjectState({
       app,
       objectId: item.id,
       lastSeenAt: current?.lastSeenAt ?? at.toISOString(),
@@ -136,11 +144,11 @@ export class GraphSyncService {
     return this.repo.getObjectState(app, item.id);
   }
 
-  getAppStatus(app: string, resourceType: string | undefined, at = new Date()) {
+  async getAppStatus(app: string, resourceType: string | undefined, at = new Date()) {
     const source = mapAppToGraphSyncSource(app, resourceType);
     if (!source) return null;
     const day = getDayKey(at);
-    const state = this.repo.getAppState(app, source, day);
+    const state = await this.repo.getAppState(app, source, day);
     const backoffUntil = state.backoffUntil ? new Date(state.backoffUntil) : null;
     return {
       app,
@@ -151,36 +159,36 @@ export class GraphSyncService {
     };
   }
 
-  shouldBootstrapApp(app: string, resourceType: string | undefined) {
+  async shouldBootstrapApp(app: string, resourceType: string | undefined) {
     const source = mapAppToGraphSyncSource(app, resourceType);
     if (!source) return false;
-    const current = this.repo.getLatestAppState(app, source);
+    const current = await this.repo.getLatestAppState(app, source);
     if ((current?.bootstrapVersion ?? 0) < GRAPH_SYNC_BOOTSTRAP_VERSION) {
       return true;
     }
-    return !this.repo.hasAppHistory(app, source);
+    return !(await this.repo.hasAppHistory(app, source));
   }
 
-  markBootstrapComplete(app: string, resourceType: string | undefined, at = new Date()) {
+  async markBootstrapComplete(app: string, resourceType: string | undefined, at = new Date()) {
     const source = mapAppToGraphSyncSource(app, resourceType);
     if (!source) return null;
     const day = getDayKey(at);
-    const current = this.repo.getAppState(app, source, day);
+    const current = await this.repo.getAppState(app, source, day);
     const nextState: GraphSyncAppState = {
       ...current,
       bootstrapVersion: GRAPH_SYNC_BOOTSTRAP_VERSION,
       bootstrapCompletedAt: at.toISOString(),
     };
-    this.repo.upsertAppState(nextState);
-    this.writeReviewNote(at);
+    await this.repo.upsertAppState(nextState);
+    await this.writeReviewNote(at);
     return nextState;
   }
 
-  recordAppFailure(app: string, resourceType: string | undefined, error: string, at = new Date()) {
+  async recordAppFailure(app: string, resourceType: string | undefined, error: string, at = new Date()) {
     const source = mapAppToGraphSyncSource(app, resourceType);
     if (!source) return null;
     const day = getDayKey(at);
-    const current = this.repo.getAppState(app, source, day);
+    const current = await this.repo.getAppState(app, source, day);
     const consecutiveFailures = current.consecutiveFailures + 1;
     const backoffMinutes = Math.min(360, 5 * Math.pow(2, Math.max(0, consecutiveFailures - 1)));
     const nextState: GraphSyncAppState = {
@@ -189,28 +197,28 @@ export class GraphSyncService {
       backoffUntil: addMinutes(at, backoffMinutes).toISOString(),
       lastError: error,
     };
-    this.repo.upsertAppState(nextState);
-    this.writeReviewNote(at);
+    await this.repo.upsertAppState(nextState);
+    await this.writeReviewNote(at);
     return nextState;
   }
 
-  recordAppSuccess(app: string, resourceType: string | undefined, at = new Date()) {
+  async recordAppSuccess(app: string, resourceType: string | undefined, at = new Date()) {
     const source = mapAppToGraphSyncSource(app, resourceType);
     if (!source) return null;
     const day = getDayKey(at);
-    const current = this.repo.getAppState(app, source, day);
+    const current = await this.repo.getAppState(app, source, day);
     const nextState: GraphSyncAppState = {
       ...current,
       consecutiveFailures: 0,
       backoffUntil: undefined,
       lastError: undefined,
     };
-    this.repo.upsertAppState(nextState);
-    this.writeReviewNote(at);
+    await this.repo.upsertAppState(nextState);
+    await this.writeReviewNote(at);
     return nextState;
   }
 
-  recordSignalBatch(signals: GraphSignalRecord[], at = new Date()) {
+  async recordSignalBatch(signals: GraphSignalRecord[], at = new Date()) {
     if (!signals.length) return;
     const grouped = new Map<GraphSyncSource, number>();
     for (const signal of signals) {
@@ -219,40 +227,40 @@ export class GraphSyncService {
     }
     const day = getDayKey(at);
     for (const [source, count] of grouped.entries()) {
-      const current = this.repo.getSourceState(source, day);
-      this.repo.upsertSourceState({
+      const current = await this.repo.getSourceState(source, day);
+      await this.repo.upsertSourceState({
         ...current,
         lastSignalAt: at.toISOString(),
         signalsToday: current.signalsToday + count,
       });
     }
-    this.writeReviewNote(at);
+    await this.writeReviewNote(at);
   }
 
-  recordClassification(source: GraphSyncSource, count = 1, at = new Date()) {
+  async recordClassification(source: GraphSyncSource, count = 1, at = new Date()) {
     const day = getDayKey(at);
-    const current = this.repo.getSourceState(source, day);
-    this.repo.upsertSourceState({
+    const current = await this.repo.getSourceState(source, day);
+    await this.repo.upsertSourceState({
       ...current,
       classificationCallsToday: current.classificationCallsToday + count,
     });
-    this.writeReviewNote(at);
+    await this.writeReviewNote(at);
   }
 
-  recordDistill(source: GraphSyncSource, count = 1, at = new Date()) {
+  async recordDistill(source: GraphSyncSource, count = 1, at = new Date()) {
     const day = getDayKey(at);
-    const current = this.repo.getSourceState(source, day);
-    this.repo.upsertSourceState({
+    const current = await this.repo.getSourceState(source, day);
+    await this.repo.upsertSourceState({
       ...current,
       distillCallsToday: current.distillCallsToday + count,
     });
-    this.writeReviewNote(at);
+    await this.writeReviewNote(at);
   }
 
-  getStatus(source: GraphSyncSource, options?: { idle?: boolean; now?: Date }) {
+  async getStatus(source: GraphSyncSource, options?: { idle?: boolean; now?: Date }) {
     const now = options?.now ?? new Date();
     const day = getDayKey(now);
-    const current = this.repo.getSourceState(source, day);
+    const current = await this.repo.getSourceState(source, day);
     const policy = getGraphSyncPolicy(source);
     const cadenceMinutes = getCadenceMinutes(source, { idle: options?.idle });
     const minutesSinceLastRead = minutesBetween(current.lastReadAt, now);
@@ -270,14 +278,14 @@ export class GraphSyncService {
     };
   }
 
-  listStatuses(options?: { idle?: boolean; now?: Date }) {
+  async listStatuses(options?: { idle?: boolean; now?: Date }) {
     const sources: GraphSyncSource[] = ["github", "jira", "linear", "googlecalendar", "record", "file", "spreadsheet", "document", "email", "conversation"];
-    return sources.map((source) => this.getStatus(source, options));
+    return Promise.all(sources.map((source) => this.getStatus(source, options)));
   }
 
-  writeReviewNote(at = new Date()) {
-    const statuses = this.listStatuses({ now: at });
-    const appStates = this.repo.listAppStatesForDay(getDayKey(at));
+  async writeReviewNote(at = new Date()) {
+    const statuses = await this.listStatuses({ now: at });
+    const appStates = await this.repo.listAppStatesForDay(getDayKey(at));
     fs.mkdirSync(path.dirname(this.reviewPath), { recursive: true });
     fs.writeFileSync(
       this.reviewPath,

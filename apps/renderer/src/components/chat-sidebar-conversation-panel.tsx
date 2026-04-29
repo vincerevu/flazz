@@ -61,8 +61,10 @@ export function ChatSidebarConversationPanel({
   const tabHasConversation =
     tabState.conversation.length > 0 || Boolean(tabState.currentAssistantMessage)
   const renderBlocks = React.useMemo(
-    () => groupConversationRenderBlocks(tabState.conversation),
-    [tabState.conversation],
+    () => groupConversationRenderBlocks(tabState.conversation, {
+      keepActiveTurnUngrouped: isActive && isProcessing,
+    }),
+    [isActive, isProcessing, tabState.conversation],
   )
   const hasStreamingAssistantMessage = tabState.currentAssistantMessage.trim().length > 0
 
@@ -78,7 +80,6 @@ export function ChatSidebarConversationPanel({
     >
       <Conversation
         key={`${tabId}:${tabState.runId ?? 'new-chat'}`}
-        isActive={isActive}
         className="relative flex-1 overflow-y-auto [scrollbar-gutter:stable]"
       >
         <ScrollPositionPreserver />

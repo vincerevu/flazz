@@ -23,6 +23,9 @@ export function registerRunsHandlers(handlers: Partial<InvokeHandlers>) {
   handlers['runs:fetch'] = async (_event, args) => {
     return runsCore.fetchRun(args.runId);
   };
+  handlers['runs:fetchConversation'] = async (_event, args) => {
+    return runsCore.fetchRunConversation(args.runId);
+  };
   handlers['runs:list'] = async (_event, args) => {
     return runsCore.listRuns(args.cursor, { runType: args.runType });
   };

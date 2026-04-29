@@ -3,6 +3,8 @@ export const skill = String.raw`
 
 Use this skill when the user wants a native PowerPoint deck: create a new \`.pptx\`, revise an existing presentation, adapt a template, or inspect presentation content. The output must be an editable PowerPoint file, not a PDF export.
 
+Only create presentation artifacts when the user explicitly asks for slides, a deck, a presentation, or a \`.pptx\` file. If the user asks to research, explain, summarize, compare, or look into a topic, answer in chat unless they explicitly request a deck/file. For a \`.pptx\` request, deliver only the \`.pptx\`; do not create companion PDF, DOCX, markdown, or source artifacts unless the user asks for those too.
+
 ## What This Skill Covers
 
 - Read and analyze \`.pptx\` content with \`audit-pptx\`
@@ -24,6 +26,14 @@ Use this skill when the user wants a native PowerPoint deck: create a new \`.ppt
   Presentation-ai-inspired infographic template families mapped to Flazz helpers
 - \`references/design-system.md\`
   Color palettes, font pairings, style recipes, typography, spacing, and palette constraints
+- \`references/theme-catalog.md\`
+  Presentation-ai-inspired named themes, mood selection, and theme contract mapping
+- \`references/xml-layouts.md\`
+  XML layout tags and composition patterns ported from presentation-ai prompts
+- \`references/few-shot-slide-examples.md\`
+  Native PPTX example patterns for stronger slide composition
+- \`references/dom-export-architecture.md\`
+  Presentation-ai DOM-first export architecture, trade-offs, and migration plan
 - \`references/editing.md\`
   Template editing workflow and XML-specific safety rules
 - \`references/pitfalls.md\`
@@ -71,6 +81,15 @@ node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" presentati
 
 Use the from-scratch workflow below.
 
+### If the user asks about improving export fidelity or matching presentation-ai
+
+Read \`references/dom-export-architecture.md\`. The current built-in creation
+workflow remains Node-only and direct PptxGenJS, but presentation-ai's stronger
+architecture is DOM-first: render slides in the browser, scan the rendered DOM,
+then convert measured elements to PPTX. Treat that as the target architecture
+for future rich-deck export work and as the comparison baseline when discussing
+visual drift, overlap, or slide layout fidelity.
+
 ### If the user wants to edit a template or existing deck
 
 Use the workflow in \`references/editing.md\`.
@@ -88,11 +107,11 @@ The final artifact must be a valid \`.pptx\` file readable by Microsoft PowerPoi
 Before generating slides, explicitly decide:
 
 1. Audience and presentation goal
-2. Color palette
+2. Named theme or color palette
 3. Font pairing
 4. Style recipe
 5. Deck language
-6. Slide outline, slide types, and content-slide layout families
+6. Slide outline, slide types, section layout rhythm, and content-slide layout families
 
 Do not let the model improvise visual direction slide-by-slide.
 
@@ -100,8 +119,8 @@ Do not let the model improvise visual direction slide-by-slide.
 
 Follow this sequence in order:
 
-1. Planning: audience, goal, language, palette, font pairing, style recipe, outline
-2. Specification: write \`slideSpec\` for every content slide
+1. Planning: audience, goal, language, named theme/palette, font pairing, style recipe, outline
+2. Specification: write \`slideSpec\` for every content slide, including layout rhythm and visual pattern
 3. Content modeling: define \`contentModel\` for each slide as plain arrays/objects
 4. Rendering: call the approved layout helper for that slide's \`layoutFamily\`
 5. Validation: run \`validate-slide-bullets.cjs\` on the source slide modules
@@ -112,13 +131,20 @@ Do not skip directly from prompt to drawing code.
 
 ### Use one deck language
 
-Lock the deck to one primary language before writing slide text. If the user writes in Vietnamese, the deck language is Vietnamese unless they explicitly ask otherwise.
+Lock the deck to one primary language before writing slide text. Use the user's requested language unless they explicitly ask otherwise.
 
-Do not mix Vietnamese, English, Chinese, or other languages in visible slide text. Translate headings, bullets, labels, callouts, captions, sources, and notes into the deck language. Keep foreign text only when it is a proper noun, acronym, product name, legal quote, or the user explicitly asks for bilingual/multilingual teaching material.
+Do not mix languages in visible slide text. Translate headings, bullets, labels, callouts, captions, sources, and notes into the deck language. Keep foreign text only when it is a proper noun, acronym, product name, legal quote, or the user explicitly asks for bilingual/multilingual teaching material.
 
-Do not write slash glosses like "ôm / hug", "ôm /亲吻", "an toàn / safe", or "high-five" in a Vietnamese deck. Choose the deck-language term and, if needed, explain the foreign term in speaker notes instead of visible slide text.
+Do not write slash glosses that mix local-language terms with English, Chinese, or other translations in visible slide text. Choose the deck-language term and, if needed, explain the foreign term in speaker notes instead of visible slide text.
 
-For Vietnamese decks, use natural Vietnamese copy. Avoid English section labels such as "Design", "Best practices", "Use cases", "Summary", "Option A", "Takeaway", unless the user explicitly requested English.
+For localized decks, use natural copy in the deck language. Avoid English section labels such as "Design", "Best practices", "Use cases", "Summary", "Option A", "Takeaway", unless the user explicitly requested English.
+
+For localized decks with diacritics, use Unicode-safe system fonts by default:
+
+- Preferred: \`Segoe UI\` for both headings and body.
+- Safe alternatives: \`Arial\`, \`Aptos\`, \`Calibri\`, \`Tahoma\`, \`Cambria\`.
+- Avoid decorative or uncommon serif/display fonts for generated localized decks unless the user explicitly asks and the result is visually verified. Do not default to \`Georgia\`, \`Playfair Display\`, \`DM Serif Display\`, \`Merriweather\`, \`Garamond\`, \`Palatino\`, or \`Impact\` for diacritic-heavy text.
+- Give diacritic-heavy title text boxes a little extra height compared with English titles so marks are not clipped or visually cramped.
 
 ### Use only approved palette colors
 
@@ -131,6 +157,12 @@ Bold is reserved for titles, section headers, and emphasis labels. Body copy, ca
 ### Avoid generic deck structure
 
 Do not produce a deck that is just repeated \`title + bullets\` slides. Content slides must vary in layout and include non-text visual structure.
+
+For decks with 8+ slides, use at least 4 distinct content layout families. For decks with 15+ slides, use at least 6. Do not use \`text-visual\` or bullet-like slides for more than 25% of content slides.
+
+Every content slide must have one dominant visual pattern such as cards, timeline, roadmap, stats, chart, comparison, relation map, hierarchy, cycle, pyramid, staircase, media panel, or quadrant.
+
+Do not repeat the same \`layoutFamily\` more than twice in a row. Do not use the same section composition (\`left\`, \`right\`, \`vertical\`, \`background\`) more than twice in a row.
 
 ### One slide per module
 
@@ -163,6 +195,15 @@ Use this remediation order:
 3. Split the content across two slides if the structure is still crowded
 4. Use \`fit: "shrink"\` only for titles or very short labels, never as the main rescue plan for full tables or dense body text
 
+For vertical list/timeline slides:
+
+- Do not combine five rows plus a bottom callout/footer on one slide.
+- Do not put a year/date such as \`1947\`, \`1848\`, \`1930-1933\`, or \`8-9/1945\` inside a small circle/marker. Markers may contain only a short index such as \`1\` or \`2\`; dates belong in a separate wide text box.
+- Do not draw standard timeline/list rows manually with \`slide.addText()\` and repeated \`y += ...\`. Use \`addSummaryRows()\`, \`addProcessTimeline()\`, \`addHierarchyStack()\`, or split the slide.
+- Keep content helper frames inside \`y + h <= 4.85\`. If a footer/callout is needed, reserve space first and reduce rows.
+
+Thank-you text is never a content-slide footer. Put the thank-you message on a separate final closing slide.
+
 For comparison slides with many text-heavy columns, do not force a wide table. Prefer cards, box grids, or a two-slide sequence.
 
 ---
@@ -183,21 +224,24 @@ Determine:
 
 Search workspace context when the deck depends on project details, company context, contacts, metrics, or prior notes.
 
-If the user does not specify language, infer it from the user's request. Vietnamese prompt -> Vietnamese deck. English prompt -> English deck. If source material contains multiple languages, normalize all visible copy into the primary deck language unless the user explicitly asks to preserve bilingual source text.
+If the user does not specify language, infer it from the user's request. If source material contains multiple languages, normalize all visible copy into the primary deck language unless the user explicitly asks to preserve bilingual source text.
 
 ### Step 2: Choose palette and fonts
 
 Before generating any slide, read:
 
 - \`references/design-system.md\`
+- \`references/theme-catalog.md\`
 
 Then select:
 
-- One color palette that matches the subject and audience
+- One named theme from \`theme-catalog.md\` when it fits, otherwise one palette from \`design-system.md\`
 - One header/body font pairing
 - One style recipe: \`Sharp & Compact\`, \`Soft & Balanced\`, \`Rounded & Spacious\`, or \`Pill & Airy\`
 
-State the selection clearly in your internal plan and keep it consistent across the deck.
+State the selection clearly in your internal plan and keep it consistent across the deck. Convert named themes into the required five-key Flazz theme contract: \`primary\`, \`secondary\`, \`accent\`, \`light\`, and \`bg\`.
+
+Do not default every deck to blue/white. Pick a theme with a reason tied to audience, tone, and topic.
 
 ### Step 3: Plan the deck
 
@@ -206,6 +250,8 @@ Read:
 - \`references/slide-types.md\`
 - \`references/layout-taxonomy.md\`
 - \`references/infographic-template-catalog.md\`
+- \`references/xml-layouts.md\`
+- \`references/few-shot-slide-examples.md\`
 
 Classify every slide as exactly one of:
 
@@ -215,14 +261,31 @@ Classify every slide as exactly one of:
 4. Content
 5. Summary / Closing
 
+If the deck needs a thank-you message, it must be its own final Summary / Closing slide. Do not place thank-you
+text as a footer, bottom banner, callout, or decorative line on the last content
+slide.
+
 For content slides, choose both:
 
 - a subtype such as text, comparison, timeline, data visualization, mixed media, or image showcase
 - a \`layoutFamily\` from \`references/layout-taxonomy.md\`
+- an XML-inspired visual pattern from \`references/xml-layouts.md\` to guide composition
+- a section rhythm value: \`left\`, \`right\`, \`vertical\`, or \`background\`
 
-Every content slide must have a concise \`slideSpec\` with \`type\`, \`index\`, \`title\`, \`layoutFamily\`, \`layoutVariant\`, and \`density\` before any drawing code.
+Every content slide must have a concise \`slideSpec\` with \`type\`, \`index\`, \`title\`, \`layoutFamily\`, \`layoutVariant\`, \`visualPattern\`, \`sectionLayout\`, and \`density\` before any drawing code.
 
 Every content slide must also lock \`language\` in \`slideSpec\`.
+
+Before writing slide modules, write a layout rhythm plan. Example:
+
+\`\`\`text
+Slide 01: cover / background
+Slide 02: contents / vertical
+Slide 03: stats / STATS / left
+Slide 04: hierarchy / PYRAMID / right
+Slide 05: comparison / COMPARE / vertical
+Slide 06: roadmap / ARROWS / left
+\`\`\`
 
 ### Step 4: Set up output structure
 
@@ -276,6 +339,7 @@ For bullet-heavy slides, do not let the model handcraft bullet text runs directl
 - \`scripts/pptx-quadrant-helpers.cjs\`
 - \`scripts/pptx-roadmap-helpers.cjs\`
 - \`scripts/pptx-infographic-helpers.cjs\`
+- \`scripts/pptx-premium-helpers.cjs\`
 
 The model should first decide the content as plain arrays or objects inside \`contentModel\`, then render with the helper.
 
@@ -292,6 +356,8 @@ node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\validate-slide-bullets.cjs
 \`\`\`
 
 If the validator reports monolithic files, local bullet helpers, dense bullets, fake bullets, missing \`slideSpec\`, or missing \`breakLine: true\`, rewrite the slide code before compiling.
+
+Prefer the premium helpers when they match the content. They exist to prevent flat repeated cards and text-only slides while keeping the output native and editable in PowerPoint.
 
 Preferred bullet pattern:
 
@@ -450,6 +516,11 @@ addStatCardGrid(slide, contentModel.statCards, {
 }, theme);
 \`\`\`
 
+For stat cards, keep \`value\` as a compact metric only: \`85%\`, \`10 groups\`,
+\`1939-1945\`, \`6/6/1944\`. Do not put phrase-like labels such as \`Nomadic 30%\` or
+\`Mongolian language\` in \`value\`; move that text into \`label\` and use another layout
+family if the card is not actually metric-led.
+
 Preferred mixed-media pattern:
 
 \`\`\`javascript
@@ -585,6 +656,49 @@ addRelationMap(slide, contentModel.relationData, {
 }, theme);
 \`\`\`
 
+Premium native patterns:
+
+\`\`\`javascript
+const {
+  addEditorialQuote,
+  addMetricWall,
+  addLayeredStack,
+  addEvidenceMedia,
+  addDiagonalCompare,
+  addHeroImageOverlay,
+} = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-premium-helpers.cjs");
+
+// Use addMetricWall for stats-first slides.
+addMetricWall(slide, contentModel.statCards, {
+  x: 0.8,
+  y: 1.35,
+  w: 8.4,
+  h: 3.35,
+  valueFontFace: "Georgia",
+  labelFontFace: "Calibri",
+  detailFontFace: "Calibri",
+}, theme);
+
+// Use addEditorialQuote when one idea should dominate.
+addEditorialQuote(slide, contentModel.quoteBlock, {
+  x: 1.0,
+  y: 1.45,
+  w: 7.8,
+  h: 2.65,
+  titleFontFace: "Georgia",
+  bodyFontFace: "Calibri",
+}, theme);
+\`\`\`
+
+Use the premium helpers as first choices for:
+
+- quote/callout slides -> \`addEditorialQuote()\`
+- stats-first slides -> \`addMetricWall()\`
+- system or maturity layers -> \`addLayeredStack()\`
+- screenshot/document/photo evidence -> \`addEvidenceMedia()\`
+- before/after contrast -> \`addDiagonalCompare()\`
+- image-led title or transition slide -> \`addHeroImageOverlay()\`
+
 ### Step 6: Use the theme contract
 
 The compile script must pass a theme object with these exact keys:
@@ -644,6 +758,11 @@ Run content QA:
 node "%FLAZZ_SKILL_ROOT%\create-presentations\scripts\audit-pptx.cjs" output/presentation.pptx
 \`\`\`
 
+For rich decks, also compare the result against the DOM-first architecture notes
+in \`references/dom-export-architecture.md\`. If the deck has recurring overlap
+or browser-preview mismatch, document that as a limitation of the direct
+PptxGenJS path rather than trying to hide it with font shrinking.
+
 For structured post-render QA:
 
 \`\`\`cmd
@@ -663,12 +782,19 @@ Check for:
 - Placeholder text
 - Page badge omissions
 - Broken hierarchy or repeated layouts
+- Fewer than the required number of distinct layout families
+- More than 25% bullet-like content slides
+- Three or more consecutive slides with the same layout family or section rhythm
+- Theme contract not used across background, cards, titles, accents, and badges
 - Mixed visible languages
 - More than one icon in the same visible label
 - Icon/text misalignment caused by variable icon widths
 - Out-of-bounds shapes or text boxes
 - Text box overlap after render
+- Footer/callout overlap near \`y > 4.95\`
+- Page badge overlap in the bottom-right safe zone
 - Text boxes that are too dense even if they do not overlap yet
+- \`plain-slide\`, \`text-heavy-slide\`, \`footer-overlap-risk\`, \`page-badge-overlap-risk\`, or \`too-many-text-boxes\` visual QA warnings from \`audit-pptx.cjs\`
 
 Check placeholder residue:
 
@@ -729,6 +855,8 @@ const slideSpec = {
   title: "Presentation Title",
   layoutFamily: "hierarchy",
   layoutVariant: "stacked-layered-cards",
+  visualPattern: "PYRAMID",
+  sectionLayout: "right",
   density: "medium",
   language: "vi",
 };
@@ -809,10 +937,13 @@ The deck should show intentional design choices, not generic automation artifact
 Required qualities:
 
 - Consistent palette and typography
+- Named theme or palette chosen for the topic, not generic defaults
 - Clear hierarchy
 - High contrast
 - Layout variety across content slides
 - Appropriate whitespace
+- Non-text visual structure on every content slide
+- Distinct cover, section, data, comparison, and closing treatments where the deck length allows
 - Clean closing slide
 
 Avoid:
@@ -823,6 +954,8 @@ Avoid:
 - Decorative accent lines under titles
 - Text-only content slides
 - Defaulting every deck to blue palettes
+- Flat card grids on every slide
+- Using bullets when the content is actually a process, comparison, hierarchy, relationship, or metric story
 
 ---
 

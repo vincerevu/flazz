@@ -1,7 +1,6 @@
 // @refresh reset
 "use client"
 
-import * as React from 'react'
 import { Mic, Square } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'

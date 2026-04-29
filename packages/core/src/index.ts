@@ -9,6 +9,7 @@ export { initConfigs } from './config/initConfigs.js';
 
 // Memory note version history
 export * as versionHistory from './memory-graph/version-history.js';
+export * as presentationExport from './presentation/dom-pptx-export.js';
 
 // Graph sync manual trigger
 export { triggerGraphSyncNow } from './memory-graph/graph-sync-runner.js';

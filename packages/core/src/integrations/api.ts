@@ -5,8 +5,8 @@ import { IntegrationProviderStatus } from "@flazz/shared/dist/integration-resour
 
 type ProviderStatusRecord = z.infer<typeof IntegrationProviderStatus>;
 
-export function listIntegrationResourceCatalog() {
-  const connectedApps = composioAccountsRepo.getConnectedToolkits();
+export async function listIntegrationResourceCatalog() {
+  const connectedApps = await composioAccountsRepo.getConnectedToolkits();
   const providers = IntegrationProviderStatus.array().parse(providerMapper.listStatuses(connectedApps));
   return {
     providers,

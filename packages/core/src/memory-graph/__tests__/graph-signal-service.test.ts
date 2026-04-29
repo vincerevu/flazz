@@ -3,19 +3,30 @@ import assert from "node:assert/strict";
 import { mkdtempSync, existsSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { GraphSignalRepo } from "../graph-signal-repo.js";
+import { createPrismaClient, toPrismaSqliteUrl } from "../../storage/prisma.js";
+import { SqliteGraphSignalRepo } from "../graph-signal-repo.js";
 import { GraphSignalPromoter } from "../graph-signal-promoter.js";
 import { GraphSignalService } from "../graph-signal-service.js";
 
-test("GraphSignalService stores and promotes github signals deterministically", () => {
+function createRepo(tempDir: string) {
+  const databaseUrl = toPrismaSqliteUrl(path.join(tempDir, "flazz.db"));
+  const prisma = createPrismaClient({ databaseUrl });
+  const repo = new SqliteGraphSignalRepo({
+    prisma,
+    storage: { databaseUrl },
+  });
+  return { prisma, repo };
+}
+
+test("GraphSignalService stores and promotes github signals deterministically", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "flazz-graph-signal-"));
+  const { prisma, repo } = createRepo(tempDir);
 
   try {
-    const repo = new GraphSignalRepo(tempDir);
     const promoter = new GraphSignalPromoter(tempDir);
     const service = new GraphSignalService(repo, promoter);
 
-    const result = service.ingestNormalizedItem("github", "ticket", {
+    const result = await service.ingestNormalizedItem("github", "ticket", {
       id: "123",
       title: "Fix retrieval regression",
       status: "open",
@@ -27,25 +38,26 @@ test("GraphSignalService stores and promotes github signals deterministically", 
     });
 
     assert.equal(result.count, 2);
-    assert.equal(repo.list().length, 2);
+    assert.equal((await repo.list()).length, 2);
     assert.ok(result.written.every((entry) => entry.path && existsSync(entry.path)));
     assert.ok(result.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`${path.sep}People${path.sep}`))));
     assert.ok(result.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`${path.sep}Projects${path.sep}`))));
     assert.ok(result.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`${path.sep}Work${path.sep}`))));
   } finally {
+    await prisma.$disconnect();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
-test("GraphSignalService writes review/debug aggregates for document signals", () => {
+test("GraphSignalService writes review/debug aggregates for document signals", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "flazz-graph-signal-doc-"));
+  const { prisma, repo } = createRepo(tempDir);
 
   try {
-    const repo = new GraphSignalRepo(tempDir);
     const promoter = new GraphSignalPromoter(tempDir);
     const service = new GraphSignalService(repo, promoter);
 
-    const result = service.ingestNormalizedItem("notion", "document", {
+    const result = await service.ingestNormalizedItem("notion", "document", {
       id: "doc-1",
       title: "Flazz Decision: Calendar rollout",
       updatedAt: "2026-04-18T12:00:00.000Z",
@@ -59,19 +71,20 @@ test("GraphSignalService writes review/debug aggregates for document signals", (
     assert.ok(result.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`Reviews${path.sep}document-promotion-candidates.md`))));
     assert.ok(result.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`Reviews${path.sep}signal-debug-summary.md`))));
   } finally {
+    await prisma.$disconnect();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
-test("GraphSignalService promotes user-facing knowledge notes from repeated signals", () => {
+test("GraphSignalService promotes user-facing knowledge notes from repeated signals", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "flazz-graph-signal-knowledge-"));
+  const { prisma, repo } = createRepo(tempDir);
 
   try {
-    const repo = new GraphSignalRepo(tempDir);
     const promoter = new GraphSignalPromoter(tempDir);
     const service = new GraphSignalService(repo, promoter);
 
-    service.ingestNormalizedItem("github", "ticket", {
+    await service.ingestNormalizedItem("github", "ticket", {
       id: "123",
       title: "Fix retrieval regression",
       status: "open",
@@ -82,7 +95,7 @@ test("GraphSignalService promotes user-facing knowledge notes from repeated sign
       source: "github",
     });
 
-    const secondResult = service.ingestNormalizedItem("github", "ticket", {
+    const secondResult = await service.ingestNormalizedItem("github", "ticket", {
       id: "123",
       title: "Fix retrieval regression",
       status: "blocked",
@@ -97,19 +110,20 @@ test("GraphSignalService promotes user-facing knowledge notes from repeated sign
     assert.ok(secondResult.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`${path.sep}Knowledge${path.sep}People${path.sep}alice.md`))));
     assert.ok(secondResult.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`${path.sep}Knowledge${path.sep}Work${path.sep}`))));
   } finally {
+    await prisma.$disconnect();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
-test("GraphSignalService writes review aggregates for email and conversation signals", () => {
+test("GraphSignalService writes review aggregates for email and conversation signals", async () => {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "flazz-graph-signal-review-"));
+  const { prisma, repo } = createRepo(tempDir);
 
   try {
-    const repo = new GraphSignalRepo(tempDir);
     const promoter = new GraphSignalPromoter(tempDir);
     const service = new GraphSignalService(repo, promoter);
 
-    const emailResult = service.ingestNormalizedItem("gmail", "message", {
+    const emailResult = await service.ingestNormalizedItem("gmail", "message", {
       id: "msg-1",
       threadId: "thread-1",
       title: "Action required for Flazz rollout",
@@ -123,7 +137,7 @@ test("GraphSignalService writes review aggregates for email and conversation sig
       source: "gmail",
     });
 
-    const conversationResult = service.ingestRunMemoryRecord({
+    const conversationResult = await service.ingestRunMemoryRecord({
       id: "runmem-1",
       runId: "run-1",
       agentId: "copilot",
@@ -145,6 +159,7 @@ test("GraphSignalService writes review aggregates for email and conversation sig
     assert.ok(emailResult.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`Reviews${path.sep}email-promotion-candidates.md`))));
     assert.ok(conversationResult.written.some((entry) => entry.aggregatePaths.some((aggregatePath) => aggregatePath.includes(`Reviews${path.sep}conversation-memory-candidates.md`))));
   } finally {
+    await prisma.$disconnect();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });

@@ -1,0 +1,395 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model SchemaMigration {
+  id        String   @id
+  appliedAt DateTime @default(now()) @map("applied_at")
+
+  @@map("schema_migrations")
+}
+
+model AppKv {
+  key       String   @id
+  valueJson String   @map("value_json")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_kv")
+}
+
+model Run {
+  id           String    @id
+  agentId      String    @map("agent_id")
+  runType      String    @map("run_type")
+  title        String?
+  status       String    @default("idle")
+  createdAt    DateTime  @map("created_at")
+  updatedAt    DateTime  @map("updated_at")
+  completedAt  DateTime? @map("completed_at")
+  deletedAt    DateTime? @map("deleted_at")
+  lastEventSeq Int       @default(0) @map("last_event_seq")
+  metadataJson String?   @map("metadata_json")
+
+  events      RunEvent[]
+  messages    RunMessage[]
+  parts       MessagePart[]
+  toolCalls   ToolCall[]
+  permissions RunPermission[]
+
+  @@index([runType, updatedAt, id], map: "runs_type_updated_idx")
+  @@index([agentId, updatedAt, id], map: "runs_agent_updated_idx")
+  @@map("runs")
+}
+
+model RunEvent {
+  id          String   @id
+  runId       String   @map("run_id")
+  seq         Int
+  type        String
+  subflowJson String   @map("subflow_json")
+  ts          DateTime
+  dataJson    String   @map("data_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, seq], map: "run_events_run_seq_unique")
+  @@index([runId, seq], map: "run_events_run_seq_idx")
+  @@index([type, ts], map: "run_events_type_ts_idx")
+  @@map("run_events")
+}
+
+model RunMessage {
+  id              String    @id
+  runId           String    @map("run_id")
+  role            String
+  parentMessageId String?   @map("parent_message_id")
+  status          String    @default("completed")
+  createdAt       DateTime  @map("created_at")
+  updatedAt       DateTime  @map("updated_at")
+  completedAt     DateTime? @map("completed_at")
+  contentPreview  String?   @map("content_preview")
+  dataJson        String?   @map("data_json")
+
+  run       Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+  parts     MessagePart[]
+  toolCalls ToolCall[]
+
+  @@index([runId, createdAt, id], map: "messages_run_created_idx")
+  @@index([runId, role], map: "messages_run_role_idx")
+  @@map("messages")
+}
+
+model MessagePart {
+  id        String   @id
+  runId     String   @map("run_id")
+  messageId String   @map("message_id")
+  position  Int
+  type      String
+  status    String   @default("completed")
+  text      String?
+  dataJson  String?  @map("data_json")
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  run     Run        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  message RunMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, position], map: "message_parts_message_position_unique")
+  @@index([messageId, position], map: "message_parts_message_pos_idx")
+  @@index([runId, type], map: "message_parts_run_type_idx")
+  @@map("message_parts")
+}
+
+model ToolCall {
+  id         String   @id
+  runId      String   @map("run_id")
+  messageId  String?  @map("message_id")
+  toolName   String   @map("tool_name")
+  status     String
+  inputJson  String?  @map("input_json")
+  resultJson String?  @map("result_json")
+  error      String?
+  createdAt  DateTime @map("created_at")
+  updatedAt  DateTime @map("updated_at")
+
+  run     Run         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  message RunMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([runId, status], map: "tool_calls_run_status_idx")
+  @@map("tool_calls")
+}
+
+model RunPermission {
+  id           String    @id
+  runId        String    @map("run_id")
+  toolCallId   String    @map("tool_call_id")
+  subflowJson  String    @map("subflow_json")
+  requestJson  String    @map("request_json")
+  response     String?
+  scope        String?
+  requestedAt  DateTime  @map("requested_at")
+  respondedAt  DateTime? @map("responded_at")
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId], map: "run_permissions_run_idx")
+  @@index([runId, response], map: "run_permissions_pending_idx")
+  @@map("run_permissions")
+}
+
+model IntegrationIdempotency {
+  fingerprint String   @id
+  app         String
+  capability  String
+  createdAt   DateTime @map("created_at")
+  dataJson    String?  @map("data_json")
+
+  @@index([createdAt], map: "integration_idempotency_created_idx")
+  @@map("integration_idempotency")
+}
+
+model RunMemoryRecord {
+  id        String   @id
+  runId     String   @unique(map: "run_memory_records_run_id_unique") @map("run_id")
+  agentId   String   @map("agent_id")
+  title     String?
+  summary   String
+  kind      String?
+  createdAt DateTime @map("created_at")
+  dataJson  String   @map("data_json")
+
+  @@index([createdAt], map: "run_memory_records_created_idx")
+  @@index([agentId, createdAt], map: "run_memory_records_agent_created_idx")
+  @@map("run_memory_records")
+}
+
+model GraphSignal {
+  fingerprint String   @id
+  occurredAt  DateTime @map("occurred_at")
+  source      String
+  objectType  String?  @map("object_type")
+  objectId    String?  @map("object_id")
+  confidence  Float?
+  state       String?
+  dataJson    String   @map("data_json")
+  updatedAt   DateTime @map("updated_at")
+
+  @@index([occurredAt], map: "graph_signals_occurred_idx")
+  @@index([source, occurredAt], map: "graph_signals_source_idx")
+  @@map("graph_signals")
+}
+
+model AgentScheduleState {
+  agentName  String   @id @map("agent_name")
+  status     String
+  startedAt  String?  @map("started_at")
+  lastRunAt  String?  @map("last_run_at")
+  nextRunAt  String?  @map("next_run_at")
+  lastError  String?  @map("last_error")
+  runCount   Int      @default(0) @map("run_count")
+  updatedAt  DateTime @map("updated_at")
+
+  @@map("agent_schedule_state")
+}
+
+model GraphSyncSourceState {
+  source                   String
+  day                      String
+  lastReadAt               String?  @map("last_read_at")
+  lastSignalAt             String?  @map("last_signal_at")
+  readsToday               Int      @default(0) @map("reads_today")
+  itemsSeenToday           Int      @default(0) @map("items_seen_today")
+  signalsToday             Int      @default(0) @map("signals_today")
+  classificationCallsToday Int      @default(0) @map("classification_calls_today")
+  distillCallsToday        Int      @default(0) @map("distill_calls_today")
+  updatedAt                DateTime @map("updated_at")
+
+  @@id([source, day])
+  @@map("graph_sync_sources")
+}
+
+model GraphSyncAppState {
+  app                  String
+  source               String
+  day                  String
+  lastListReadAt       String?  @map("last_list_read_at")
+  lastDetailReadAt     String?  @map("last_detail_read_at")
+  listReadsToday       Int      @default(0) @map("list_reads_today")
+  detailReadsToday     Int      @default(0) @map("detail_reads_today")
+  consecutiveFailures  Int      @default(0) @map("consecutive_failures")
+  backoffUntil         String?  @map("backoff_until")
+  lastError            String?  @map("last_error")
+  bootstrapVersion     Int?     @map("bootstrap_version")
+  bootstrapCompletedAt String?  @map("bootstrap_completed_at")
+  updatedAt            DateTime @map("updated_at")
+
+  @@id([app, source, day])
+  @@index([app, source, day], map: "graph_sync_apps_lookup_idx")
+  @@map("graph_sync_apps")
+}
+
+model GraphSyncObjectState {
+  app             String
+  objectId        String   @map("object_id")
+  lastSeenAt      String?  @map("last_seen_at")
+  lastDetailAt    String?  @map("last_detail_at")
+  lastFingerprint String?  @map("last_fingerprint")
+  updatedAt       DateTime @map("updated_at")
+
+  @@id([app, objectId])
+  @@map("graph_sync_objects")
+}
+
+model SkillRevision {
+  id              String   @id
+  skillPath       String   @map("skill_path")
+  createdAt       DateTime @map("created_at")
+  reason          String
+  actor           String
+  runId           String?  @map("run_id")
+  summary         String?
+  previousContent String?  @map("previous_content")
+  nextContent     String   @map("next_content")
+
+  @@index([skillPath, createdAt], map: "skill_revisions_skill_created_idx")
+  @@map("skill_revisions")
+}
+
+model EmailLabelingFile {
+  path      String   @id
+  labeledAt String   @map("labeled_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@map("email_labeling_files")
+}
+
+model EmailLabelingState {
+  key         String   @id
+  lastRunTime String   @map("last_run_time")
+  updatedAt   DateTime @map("updated_at")
+
+  @@map("email_labeling_state")
+}
+
+model SkillLearningCandidate {
+  signature                 String   @id
+  status                    String   @default("pending")
+  confidence                Float    @default(0.25)
+  occurrences               Int
+  firstSeenAt               String   @map("first_seen_at")
+  lastSeenAt                String   @map("last_seen_at")
+  lastRunId                 String   @map("last_run_id")
+  proposedSkillName         String?  @map("proposed_skill_name")
+  proposedCategory          String?  @map("proposed_category")
+  proposedDescription       String?  @map("proposed_description")
+  draftContent              String?  @map("draft_content")
+  rationale                 String?
+  promotedSkillName         String?  @map("promoted_skill_name")
+  relatedSkillName          String?  @map("related_skill_name")
+  recentRunIdsJson          String   @default("[]") @map("recent_run_ids_json")
+  intentFingerprint         String?  @map("intent_fingerprint")
+  toolSequenceFingerprint   String?  @map("tool_sequence_fingerprint")
+  outputShape               String?  @map("output_shape")
+  explicitUserReuseSignal   Boolean  @default(false) @map("explicit_user_reuse_signal")
+  complexityScore           Float    @default(0) @map("complexity_score")
+  recurrenceScore           Float    @default(0) @map("recurrence_score")
+  updatedAt                 DateTime @map("updated_at")
+
+  @@index([status, lastSeenAt], map: "skill_learning_candidates_status_seen_idx")
+  @@index([intentFingerprint, toolSequenceFingerprint], map: "skill_learning_candidates_fingerprint_idx")
+  @@index([relatedSkillName], map: "skill_learning_candidates_related_idx")
+  @@map("skill_learning_candidates")
+}
+
+model SkillLearningStats {
+  name            String  @id
+  usageCount      Int     @default(0) @map("usage_count")
+  learnedFromRuns Int     @default(0) @map("learned_from_runs")
+  failureCount    Int     @default(0) @map("failure_count")
+  lastUsedAt      String? @map("last_used_at")
+  lastLearnedAt   String? @map("last_learned_at")
+  lastUpdatedAt   String? @map("last_updated_at")
+  lastFailureAt   String? @map("last_failure_at")
+  source          String  @default("unknown")
+  updatedAt       DateTime @map("updated_at")
+
+  @@map("skill_learning_stats")
+}
+
+model SkillRepairCandidate {
+  id              String   @id
+  skillName       String   @map("skill_name")
+  runId           String   @map("run_id")
+  status          String   @default("pending")
+  failureCategory String   @map("failure_category")
+  evidenceSummary String   @map("evidence_summary")
+  proposedPatch   String?  @map("proposed_patch")
+  createdAt       String   @map("created_at")
+  updatedAt       String   @map("updated_at")
+
+  @@index([skillName, updatedAt], map: "skill_repair_candidates_skill_updated_idx")
+  @@index([status, updatedAt], map: "skill_repair_candidates_status_updated_idx")
+  @@map("skill_repair_candidates")
+}
+
+model MemoryGraphProcessedFile {
+  filePath      String   @id @map("file_path")
+  mtime         String
+  hash          String
+  lastProcessed String   @map("last_processed")
+  updatedAt     DateTime @map("updated_at")
+
+  @@map("memory_graph_processed_files")
+}
+
+model MemoryGraphMeta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @map("updated_at")
+
+  @@map("memory_graph_meta")
+}
+
+model ComposioConnectedAccount {
+  toolkitSlug   String   @id @map("toolkit_slug")
+  accountId     String   @map("account_id")
+  authConfigId  String   @map("auth_config_id")
+  status        String
+  createdAt     String   @map("created_at")
+  lastUpdatedAt String   @map("last_updated_at")
+  dataJson      String   @map("data_json")
+  updatedAt     DateTime @map("updated_at")
+
+  @@index([status], map: "composio_connected_accounts_status_idx")
+  @@map("composio_connected_accounts")
+}
+
+model PreBuiltRunnerState {
+  agentName String   @id @map("agent_name")
+  lastRunAt String   @map("last_run_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@map("prebuilt_runner_state")
+}
+
+model ServiceLogEvent {
+  id            String   @id
+  service       String
+  type          String
+  level         String?
+  runId         String?  @map("run_id")
+  correlationId String?  @map("correlation_id")
+  ts            DateTime
+  message       String?
+  dataJson      String   @map("data_json")
+
+  @@index([service, ts], map: "service_log_events_service_ts_idx")
+  @@index([runId, ts], map: "service_log_events_run_ts_idx")
+  @@map("service_log_events")
+}

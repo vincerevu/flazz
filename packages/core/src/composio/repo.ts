@@ -1,140 +1,193 @@
-import fs from "fs";
-import path from "path";
-import { z } from "zod";
-import { WorkDir } from "../config/config.js";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { ZLocalConnectedAccount, LocalConnectedAccount, ConnectedAccountStatus } from "./types.js";
+import {
+    createPrismaClient,
+    type FlazzPrismaClient,
+    type PrismaStorageOptions,
+} from "../storage/prisma.js";
+import { applySqliteMigrations } from "../storage/sqlite-migrations.js";
+import { WorkDir } from "../config/config.js";
 
-const ACCOUNTS_FILE = path.join(WorkDir, 'data', 'composio', 'connected_accounts.json');
+const LEGACY_CONNECTED_ACCOUNTS_PATH = path.join(WorkDir, "data", "composio", "connected_accounts.json");
+const LEGACY_IMPORT_MARKER_KEY = "legacy_import:composio_connected_accounts";
 
-/**
- * Schema for the connected accounts storage file
- */
-const ZConnectedAccountsStorage = z.object({
-    accounts: z.record(z.string(), ZLocalConnectedAccount), // keyed by toolkit slug
-});
-
-type ConnectedAccountsStorage = z.infer<typeof ZConnectedAccountsStorage>;
-
-/**
- * Interface for Composio accounts repository
- */
 export interface IComposioAccountsRepo {
-    getAccount(toolkitSlug: string): LocalConnectedAccount | null;
-    getAllAccounts(): Record<string, LocalConnectedAccount>;
-    saveAccount(account: LocalConnectedAccount): void;
-    updateAccountStatus(toolkitSlug: string, status: ConnectedAccountStatus): boolean;
-    deleteAccount(toolkitSlug: string): void;
-    isConnected(toolkitSlug: string): boolean;
-    getConnectedToolkits(): string[];
+    getAccount(toolkitSlug: string): Promise<LocalConnectedAccount | null>;
+    getAllAccounts(): Promise<Record<string, LocalConnectedAccount>>;
+    saveAccount(account: LocalConnectedAccount): Promise<void>;
+    updateAccountStatus(toolkitSlug: string, status: ConnectedAccountStatus): Promise<boolean>;
+    deleteAccount(toolkitSlug: string): Promise<void>;
+    isConnected(toolkitSlug: string): Promise<boolean>;
+    getConnectedToolkits(): Promise<string[]>;
 }
 
-/**
- * Ensure the storage directory exists
- */
-function ensureStorageDir(): void {
-    const dir = path.dirname(ACCOUNTS_FILE);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-}
-
-/**
- * Load connected accounts from storage
- */
-function loadAccounts(): ConnectedAccountsStorage {
-    try {
-        if (fs.existsSync(ACCOUNTS_FILE)) {
-            const data = fs.readFileSync(ACCOUNTS_FILE, 'utf-8');
-            return ZConnectedAccountsStorage.parse(JSON.parse(data));
-        }
-    } catch (error) {
-        console.error('[ComposioRepo] Failed to load accounts:', error);
-    }
-    return { accounts: {} };
-}
-
-/**
- * Save connected accounts to storage
- */
-function saveAccounts(storage: ConnectedAccountsStorage): void {
-    ensureStorageDir();
-    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(storage, null, 2));
-}
-
-/**
- * Composio Connected Accounts Repository
- * Stores connected account information locally
- */
 export class ComposioAccountsRepo implements IComposioAccountsRepo {
-    /**
-     * Get a connected account by toolkit slug
-     */
-    getAccount(toolkitSlug: string): LocalConnectedAccount | null {
-        const storage = loadAccounts();
-        return storage.accounts[toolkitSlug] || null;
+    private readonly prisma: FlazzPrismaClient;
+    private readonly storage?: PrismaStorageOptions;
+    private ready: Promise<void> | null = null;
+
+    constructor(options: { prisma?: FlazzPrismaClient; storage?: PrismaStorageOptions } = {}) {
+        this.storage = options.storage;
+        this.prisma = options.prisma ?? createPrismaClient(options.storage);
     }
 
-    /**
-     * Get all connected accounts
-     */
-    getAllAccounts(): Record<string, LocalConnectedAccount> {
-        const storage = loadAccounts();
-        return storage.accounts;
+    private ensureReady(): Promise<void> {
+        this.ready ??= this.initialize();
+        return this.ready;
     }
 
-    /**
-     * Save a connected account
-     */
-    saveAccount(account: LocalConnectedAccount): void {
-        const storage = loadAccounts();
-        storage.accounts[account.toolkitSlug] = account;
-        saveAccounts(storage);
+    private async initialize(): Promise<void> {
+        await applySqliteMigrations({ prisma: this.prisma, storage: this.storage });
+        await this.importLegacyAccountsOnce();
     }
 
-    /**
-     * Update account status
-     * @returns true if account was found and updated, false if account doesn't exist
-     */
-    updateAccountStatus(toolkitSlug: string, status: ConnectedAccountStatus): boolean {
-        const storage = loadAccounts();
-        const account = storage.accounts[toolkitSlug];
+    async getAccount(toolkitSlug: string): Promise<LocalConnectedAccount | null> {
+        await this.ensureReady();
+        const row = await this.prisma.composioConnectedAccount.findUnique({
+            where: { toolkitSlug },
+            select: { dataJson: true },
+        });
+        return row ? this.parseAccount(row.dataJson) : null;
+    }
+
+    async getAllAccounts(): Promise<Record<string, LocalConnectedAccount>> {
+        await this.ensureReady();
+        const rows = await this.prisma.composioConnectedAccount.findMany({
+            orderBy: { toolkitSlug: "asc" },
+            select: { toolkitSlug: true, dataJson: true },
+        });
+        return Object.fromEntries(
+            rows.flatMap((row) => {
+                const account = this.parseAccount(row.dataJson);
+                return account ? [[row.toolkitSlug, account] as const] : [];
+            }),
+        );
+    }
+
+    async saveAccount(account: LocalConnectedAccount): Promise<void> {
+        await this.ensureReady();
+        const validated = ZLocalConnectedAccount.parse(account);
+        await this.upsertValidatedAccount(validated);
+    }
+
+    async updateAccountStatus(toolkitSlug: string, status: ConnectedAccountStatus): Promise<boolean> {
+        const account = await this.getAccount(toolkitSlug);
         if (!account) {
             console.warn(`[ComposioRepo] Cannot update status: account '${toolkitSlug}' not found`);
             return false;
         }
-        account.status = status;
-        account.lastUpdatedAt = new Date().toISOString();
-        saveAccounts(storage);
+        await this.saveAccount({
+            ...account,
+            status,
+            lastUpdatedAt: new Date().toISOString(),
+        });
         return true;
     }
 
-    /**
-     * Delete a connected account
-     */
-    deleteAccount(toolkitSlug: string): void {
-        const storage = loadAccounts();
-        delete storage.accounts[toolkitSlug];
-        saveAccounts(storage);
+    async deleteAccount(toolkitSlug: string): Promise<void> {
+        await this.ensureReady();
+        await this.prisma.composioConnectedAccount.deleteMany({
+            where: { toolkitSlug },
+        });
     }
 
-    /**
-     * Check if a toolkit is connected
-     */
-    isConnected(toolkitSlug: string): boolean {
-        const account = this.getAccount(toolkitSlug);
-        return account?.status === 'ACTIVE';
+    async isConnected(toolkitSlug: string): Promise<boolean> {
+        const account = await this.getAccount(toolkitSlug);
+        return account?.status === "ACTIVE";
     }
 
-    /**
-     * Get list of connected toolkit slugs
-     */
-    getConnectedToolkits(): string[] {
-        const storage = loadAccounts();
-        return Object.entries(storage.accounts)
-            .filter(([, account]) => account.status === 'ACTIVE')
-            .map(([slug]) => slug);
+    async getConnectedToolkits(): Promise<string[]> {
+        await this.ensureReady();
+        const rows = await this.prisma.composioConnectedAccount.findMany({
+            where: { status: "ACTIVE" },
+            orderBy: { toolkitSlug: "asc" },
+            select: { toolkitSlug: true },
+        });
+        return rows.map((row) => row.toolkitSlug);
+    }
+
+    private parseAccount(dataJson: string): LocalConnectedAccount | null {
+        try {
+            return ZLocalConnectedAccount.parse(JSON.parse(dataJson));
+        } catch (error) {
+            console.error("[ComposioRepo] Failed to parse account:", error);
+            return null;
+        }
+    }
+
+    private async importLegacyAccountsOnce(): Promise<void> {
+        const marker = await this.prisma.appKv.findUnique({
+            where: { key: LEGACY_IMPORT_MARKER_KEY },
+            select: { key: true },
+        });
+        if (marker) {
+            return;
+        }
+
+        let imported = 0;
+        try {
+            const raw = await fs.readFile(LEGACY_CONNECTED_ACCOUNTS_PATH, "utf8");
+            const parsed = JSON.parse(raw) as { accounts?: Record<string, unknown> };
+            const accounts = parsed.accounts && typeof parsed.accounts === "object"
+                ? Object.values(parsed.accounts)
+                : [];
+            for (const candidate of accounts) {
+                const result = ZLocalConnectedAccount.safeParse(candidate);
+                if (!result.success) {
+                    console.warn("[ComposioRepo] Skipping invalid legacy connected account");
+                    continue;
+                }
+                await this.upsertValidatedAccount(result.data);
+                imported += 1;
+            }
+        } catch (error) {
+            const code = typeof error === "object" && error && "code" in error
+                ? String((error as { code?: unknown }).code)
+                : "";
+            if (code !== "ENOENT") {
+                console.error("[ComposioRepo] Failed to import legacy connected accounts:", error);
+            }
+        }
+
+        await this.prisma.appKv.upsert({
+            where: { key: LEGACY_IMPORT_MARKER_KEY },
+            create: {
+                key: LEGACY_IMPORT_MARKER_KEY,
+                valueJson: JSON.stringify({
+                    imported,
+                    source: LEGACY_CONNECTED_ACCOUNTS_PATH,
+                    importedAt: new Date().toISOString(),
+                }),
+            },
+            update: {},
+        });
+    }
+
+    private async upsertValidatedAccount(validated: LocalConnectedAccount): Promise<void> {
+        await this.prisma.composioConnectedAccount.upsert({
+            where: { toolkitSlug: validated.toolkitSlug },
+            create: {
+                toolkitSlug: validated.toolkitSlug,
+                accountId: validated.id,
+                authConfigId: validated.authConfigId,
+                status: validated.status,
+                createdAt: validated.createdAt,
+                lastUpdatedAt: validated.lastUpdatedAt,
+                dataJson: JSON.stringify(validated),
+                updatedAt: new Date(),
+            },
+            update: {
+                accountId: validated.id,
+                authConfigId: validated.authConfigId,
+                status: validated.status,
+                createdAt: validated.createdAt,
+                lastUpdatedAt: validated.lastUpdatedAt,
+                dataJson: JSON.stringify(validated),
+                updatedAt: new Date(),
+            },
+        });
     }
 }
 
-// Export singleton instance
 export const composioAccountsRepo = new ComposioAccountsRepo();

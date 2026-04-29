@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ingestNormalizedGraphSignals } from "../service.js";
 
-test("ingestNormalizedGraphSignals forwards every normalized item to the signal service", () => {
+test("ingestNormalizedGraphSignals forwards every normalized item to the signal service", async () => {
   const calls: Array<{ app: string; resourceType: string; item: unknown }> = [];
   const signalService = {
-    ingestNormalizedItem(app: string, resourceType: string, item: unknown) {
+    async ingestNormalizedItem(app: string, resourceType: string, item: unknown) {
       calls.push({ app, resourceType, item });
       return { signals: [], count: 0, written: [] };
     },
@@ -16,7 +16,7 @@ test("ingestNormalizedGraphSignals forwards every normalized item to the signal 
     { id: "124", title: "Review billing PR", assignee: "bob" },
   ];
 
-  ingestNormalizedGraphSignals("github", "ticket", items, signalService);
+  await ingestNormalizedGraphSignals("github", "ticket", items, signalService);
 
   assert.deepEqual(calls, [
     { app: "github", resourceType: "ticket", item: items[0] },
@@ -24,10 +24,10 @@ test("ingestNormalizedGraphSignals forwards every normalized item to the signal 
   ]);
 });
 
-test("ingestNormalizedGraphSignals keeps going when one item fails ingestion", () => {
+test("ingestNormalizedGraphSignals keeps going when one item fails ingestion", async () => {
   const seen: string[] = [];
   const signalService = {
-    ingestNormalizedItem(_app: string, _resourceType: string, item: unknown) {
+    async ingestNormalizedItem(_app: string, _resourceType: string, item: unknown) {
       const record = item as { id: string };
       seen.push(record.id);
       if (record.id === "bad") {
@@ -37,7 +37,7 @@ test("ingestNormalizedGraphSignals keeps going when one item fails ingestion", (
     },
   };
 
-  ingestNormalizedGraphSignals(
+  await ingestNormalizedGraphSignals(
     "googlecalendar",
     "event",
     [{ id: "ok-1" }, { id: "bad" }, { id: "ok-2" }],

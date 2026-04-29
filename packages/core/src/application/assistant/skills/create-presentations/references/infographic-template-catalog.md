@@ -16,6 +16,9 @@ This catalog ports the useful planning ideas from `presentation-ai` into Flazz's
 
 ## Useful Template Families
 
+The names below are planning labels, not dependencies. Use them to pick a
+strong visual pattern, then render with the closest Flazz helper.
+
 ### Chart
 
 Use when numbers are the message.
@@ -25,11 +28,17 @@ Use when numbers are the message.
 - `chart-line-plain-text`: trend narrative
 - `chart-pie-donut-compact-card`: share-of-total story
 - `chart-pie-donut-pill-badge`: share callout with premium badges
+- `chart-radar-capability`: capability scoring across 4-6 dimensions
+- `chart-heatmap-pattern`: matrix of intensity, risk, or frequency
+- `chart-waterfall-bridge`: before-to-after numerical bridge
+- `chart-scatter-positioning`: two-axis data relationship
 
 Flazz default:
 
 - use `data` for chart plus takeaways
 - use `stats` for standalone metrics
+- if a chart helper does not exist, use `stats`, `quadrant`, or a compact
+  card grid rather than hand-drawing a fragile chart
 
 ### Compare
 
@@ -39,6 +48,9 @@ Use when the slide has two opposing or alternative concepts.
 - `compare-binary-horizontal-compact-card-arrow`: before-to-after change
 - `compare-binary-horizontal-simple-fold`: old/new or problem/solution
 - `compare-swot`: four-way decision analysis
+- `compare-before-after-photo`: visual transformation with two panels
+- `compare-pros-cons-card`: tradeoff list with strong color coding
+- `compare-feature-matrix`: compact comparison across options
 
 Flazz default:
 
@@ -54,6 +66,9 @@ Use when one concept decomposes into levels, branches, or dependencies.
 - `hierarchy-tree-lr-*`: left-to-right dependency tree
 - `hierarchy-tree-bt-*`: bottom-to-top foundation structure
 - `hierarchy-mindmap-*`: central idea with branches
+- `hierarchy-layered-stack`: layered systems or maturity levels
+- `hierarchy-org-compact`: ownership, team, or role structure
+- `hierarchy-funnel-stack`: narrowing pipeline or prioritization stack
 
 Flazz default:
 
@@ -71,6 +86,9 @@ Use when items are peers and order is not central.
 - `list-column-done-list`: checklist narrative
 - `list-pyramid-*`: layered list
 - `list-zigzag-*`: alternating row story
+- `list-icon-badge-row`: scannable rows with one icon slot each
+- `list-numbered-card-grid`: 4-6 numbered cards with compact body
+- `list-capability-cluster`: grouped features around a shared label
 
 Flazz default:
 
@@ -86,6 +104,9 @@ Use when two axes explain the slide.
 - `quadrant-quarter-simple-card`: clean four-box matrix
 - `quadrant-quarter-circular`: circular four-quadrant concept
 - `quadrant-simple-illus`: quadrant with supporting visual
+- `quadrant-impact-effort`: prioritization
+- `quadrant-risk-return`: decision framing
+- `quadrant-maturity-value`: capability positioning
 
 Flazz default:
 
@@ -99,6 +120,9 @@ Use when nodes affect or depend on each other.
 - `relation-circle-circular-progress`: circular relationship map
 - `relation-dagre-flow-lr-*`: left-to-right dependency flow
 - `relation-dagre-flow-tb-*`: top-to-bottom flow
+- `relation-stakeholder-map`: actors around a central objective
+- `relation-system-map`: inputs, process, outputs, feedback
+- `relation-platform-ecosystem`: product/platform surrounded by modules
 
 Flazz default:
 
@@ -117,6 +141,9 @@ Use when order or progression is the message.
 - `sequence-ascending-steps`: staircase/maturity path
 - `sequence-horizontal-zigzag-*`: alternating process narrative
 - `sequence-funnel-simple`: narrowing pipeline or filtering
+- `sequence-checkpoint-road`: milestone roadmap with callouts
+- `sequence-vertical-arrow-cards`: vertical operating procedure
+- `sequence-flywheel`: repeating growth or learning loop
 
 Flazz default:
 
@@ -125,6 +152,49 @@ Flazz default:
 - use `cycle` for repeated loops
 - use `staircase` for maturity/growth paths
 - use `pyramid` for layered progression
+
+### Stats
+
+Use when the slide needs fast numerical impact.
+
+- `stats-circle-grid`: metrics in circular badges
+- `stats-bold-number-row`: 3-4 large numbers with labels
+- `stats-dot-grid`: visual percentage or completion signal
+- `stats-scorecard`: KPI cards with short interpretation
+
+Flazz default:
+
+- use `stats`
+- each metric needs a short label and optional detail
+- do not bury the metric inside a paragraph
+
+### Quote / Callout
+
+Use when one statement or insight should dominate the slide.
+
+- `quote-large-editorial`: large statement plus attribution
+- `quote-side-card`: statement beside supporting context
+- `callout-numbered-insight`: one big number plus explanation
+- `callout-risk-warning`: warning or decision point
+
+Flazz default:
+
+- use `media`, `text-visual`, or a custom one-slide composition
+- keep body copy short and make the quote/callout visually dominant
+
+### Media
+
+Use when a screenshot, product image, document excerpt, or photo is central.
+
+- `media-split-caption`: image plus concise explanation
+- `media-background-overlay`: full-bleed image with readable overlay
+- `media-gallery-strip`: 3-4 small examples with one takeaway
+- `media-evidence-card`: artifact screenshot with annotation
+
+Flazz default:
+
+- use `media`
+- image-led slides should not be text-first slides with a tiny image
 
 ## Selection Rules
 
@@ -135,6 +205,12 @@ Flazz default:
 - Prefer `pyramid` over `hierarchy` when levels imply foundation, priority, or maturity.
 - Prefer `staircase` over `roadmap` when each step is higher or more advanced than the previous one.
 - Prefer `cycle` only when the last stage loops back to the first.
+- Prefer `stats` over `text-visual` when the slide has numbers.
+- Prefer `quote`/callout patterns over bullets when one idea is the message.
+- Prefer `media` when a real artifact, screenshot, person, place, or product is central.
+- In decks with 8+ slides, use at least 4 distinct visual families.
+- In decks with 15+ slides, use at least 6 distinct visual families.
+- Do not use the same family more than twice in a row.
 
 ## Do Not Port
 

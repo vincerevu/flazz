@@ -148,9 +148,9 @@ You can add a ` + "`description`" + ` field to describe what the agent does. Thi
 
 ### Schedule State (Read-Only)
 
-**IMPORTANT: Do NOT modify ` + "`agent-schedule-state.json`" + `** - it is managed automatically by the background runner.
+**IMPORTANT: Do NOT modify schedule runtime state directly** - it is managed automatically by the background runner in Flazz's SQLite database.
 
-The runner automatically tracks execution state in ` + "`~/Flazz/config/agent-schedule-state.json`" + `:
+The runner automatically tracks execution state:
 - ` + "`status`" + `: scheduled, running, finished, failed, triggered (for once-schedules)
 - ` + "`lastRunAt`" + `: When the agent last ran
 - ` + "`nextRunAt`" + `: When the agent will run next

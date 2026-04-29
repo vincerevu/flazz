@@ -219,7 +219,9 @@ export function ChatMainPanel({
             const tabState = getChatTabStateForRender(tab.id)
             const tabHasConversation = tabState.conversation.length > 0 || tabState.currentAssistantMessage
             const processingStatusText = getProcessingStatusText(tabState)
-            const renderBlocks = groupConversationRenderBlocks(tabState.conversation)
+            const renderBlocks = groupConversationRenderBlocks(tabState.conversation, {
+              keepActiveTurnUngrouped: isActive && isProcessing,
+            })
             const tabConversationContentClassName = tabHasConversation
               ? 'mx-auto w-full max-w-4xl pb-28'
               : 'mx-auto w-full max-w-4xl min-h-full items-center justify-center pb-0'

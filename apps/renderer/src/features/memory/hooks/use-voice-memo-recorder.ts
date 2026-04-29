@@ -25,7 +25,7 @@ export function useVoiceMemoRecorder({
   const streamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
-  const dataArrayRef = useRef<Uint8Array | null>(null)
+  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
   const waveformRafRef = useRef<number | null>(null)
   const discardOnStopRef = useRef(false)
   const chunksRef = useRef<Blob[]>([])
@@ -198,7 +198,7 @@ export function useVoiceMemoRecorder({
         source.connect(analyser)
         audioContextRef.current = audioContext
         analyserRef.current = analyser
-        dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount)
+        dataArrayRef.current = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount))
 
         const updateWaveform = () => {
           const activeAnalyser = analyserRef.current

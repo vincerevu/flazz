@@ -54,6 +54,7 @@ export interface PreparedCompactedContext {
 }
 
 const CHARS_PER_TOKEN = 4;
+const MESSAGE_TOKEN_OVERHEAD = 8;
 const TOOL_RESULT_CHAR_LIMIT = 400;
 const TEXT_CHAR_LIMIT = 1200;
 const REASONING_CHAR_LIMIT = 500;
@@ -87,9 +88,9 @@ export function estimateMessageTokens(message: Message): number {
 
   if (message.role === "user") {
     if (typeof message.content === "string") {
-      return Math.ceil(message.content.length / CHARS_PER_TOKEN);
+      return MESSAGE_TOKEN_OVERHEAD + Math.ceil(message.content.length / CHARS_PER_TOKEN);
     }
-    return Math.ceil(
+    return MESSAGE_TOKEN_OVERHEAD + Math.ceil(
       message.content.reduce((sum, part) => {
         if (part.type === "text") return sum + part.text.length;
         // File / image attachment: use calibrated estimate instead of flat 64.
@@ -100,9 +101,9 @@ export function estimateMessageTokens(message: Message): number {
 
   if (message.role === "assistant") {
     if (typeof message.content === "string") {
-      return Math.ceil(message.content.length / CHARS_PER_TOKEN);
+      return MESSAGE_TOKEN_OVERHEAD + Math.ceil(message.content.length / CHARS_PER_TOKEN);
     }
-    return Math.ceil(
+    return MESSAGE_TOKEN_OVERHEAD + Math.ceil(
       message.content.reduce((sum, part) => {
         if (part.type === "text" || part.type === "reasoning") {
           return sum + part.text.length;
@@ -113,10 +114,10 @@ export function estimateMessageTokens(message: Message): number {
   }
 
   if (message.role === "tool") {
-    return Math.ceil((message.content.length + message.toolName.length + 64) / CHARS_PER_TOKEN);
+    return MESSAGE_TOKEN_OVERHEAD + Math.ceil((message.content.length + message.toolName.length + 64) / CHARS_PER_TOKEN);
   }
 
-  return Math.ceil(message.content.length / CHARS_PER_TOKEN);
+  return MESSAGE_TOKEN_OVERHEAD + Math.ceil(message.content.length / CHARS_PER_TOKEN);
 }
 
 export function estimateMessagesTokens(messages: z.infer<typeof MessageList>): number {
@@ -382,7 +383,7 @@ function selectAdaptiveRecentMessages(
   const baseRecentMessages = selectRecentMessagesWithinBudget(messages, options.budgetTokens);
   let startIndex = Math.max(0, messages.length - baseRecentMessages.length);
   const protectedWindowReasons: string[] = [];
-  const preserveLatestUserTurns = Math.max(1, options.preserveLatestUserTurns ?? 2);
+  const preserveLatestUserTurns = Math.max(1, options.preserveLatestUserTurns ?? 1);
 
   const protectFromIndex = (candidate: number | null, reason: string) => {
     if (candidate == null || candidate >= startIndex) return;
@@ -402,7 +403,9 @@ function selectAdaptiveRecentMessages(
     protectFromIndex(findToolCallContextStart(messages, toolCallId), `pending-tool:${toolCallId}`);
   }
 
-  protectFromIndex(findLatestActiveToolChainStart(messages), "active-tool-chain");
+  if ((options.pendingToolCallIds?.length ?? 0) > 0) {
+    protectFromIndex(findLatestActiveToolChainStart(messages), "active-tool-chain");
+  }
   protectFromIndex(findLatestReferencedContextStart(messages, options.referenceHints ?? []), "task-reference");
 
   while (startIndex > 0 && !hasCompleteToolReferences(messages.slice(startIndex))) {

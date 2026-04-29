@@ -1,0 +1,86 @@
+export { exportRenderedDomSlidesToPptx } from './export-rendered-dom-slides';
+export { auditRenderedDomSlides } from './dom-slide-qa';
+export {
+  buildBarChartWithTakeawaysSlide,
+  buildBoxGridSlide,
+  buildComparisonCardsSlide,
+  buildCycleDiagramSlide,
+  buildDiagonalCompareSlide,
+  buildEditorialQuoteSlide,
+  buildEvidenceMediaSlide,
+  buildHierarchyStackSlide,
+  buildHeroImageOverlaySlide,
+  buildLayeredStackSlide,
+  buildMetricWallSlide,
+  buildMixedMediaPanelSlide,
+  buildProcessTimelineSlide,
+  buildPyramidSlide,
+  buildQuadrantMatrixSlide,
+  buildRelationMapSlide,
+  buildRoadmapSlide,
+  buildStatGridSlide,
+  buildStaircaseSlide,
+  buildSummaryRowsSlide,
+} from './layout-spec-builders';
+export { scanDomSlides } from './dom-slide-scanner';
+export { PresentationDomPreview, PresentationDomSlide } from './presentation-dom-preview';
+export type {
+  ExportRenderedDomSlidesOptions,
+} from './export-rendered-dom-slides';
+export type {
+  AuditRenderedDomSlidesOptions,
+  PresentationDomQaIssue,
+  PresentationDomQaReport,
+  PresentationDomQaSeverity,
+} from './dom-slide-qa';
+export type {
+  ScanDomSlidesOptions,
+} from './dom-slide-scanner';
+export type {
+  ComparisonCardsOptions,
+  ComparisonColumn,
+  BarChartData,
+  BarChartWithTakeawaysOptions,
+  BoxGridOptions,
+  ChartPoint,
+  CycleDiagramOptions,
+  DiagonalCompareOptions,
+  DomSlideBaseOptions,
+  EditorialQuoteBlock,
+  EditorialQuoteOptions,
+  EvidenceMediaOptions,
+  HierarchyNode,
+  HierarchyStackOptions,
+  HeroImageOverlayOptions,
+  InfographicItem,
+  LayeredStackOptions,
+  MediaPanelData,
+  MetricWallOptions,
+  MixedMediaPanelOptions,
+  ProcessTimelineOptions,
+  PyramidOptions,
+  Quadrant,
+  QuadrantMatrixOptions,
+  RelationMapData,
+  RelationMapOptions,
+  RoadmapSlideOptions,
+  RoadmapStage,
+  StatCard,
+  StatGridOptions,
+  StaircaseOptions,
+  SummaryItem,
+  SummaryRowsOptions,
+} from './layout-spec-builders';
+export type {
+  PresentationPreviewBackgroundRectElement,
+  PresentationPreviewDeck,
+  PresentationPreviewDecorElement,
+  PresentationPreviewElement,
+  PresentationPreviewImageElement,
+  PresentationPreviewPosition,
+  PresentationPreviewShapeElement,
+  PresentationPreviewSlide,
+  PresentationPreviewTableElement,
+  PresentationPreviewTextElement,
+  PresentationPreviewTheme,
+} from './types';

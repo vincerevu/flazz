@@ -68,7 +68,7 @@ export class RetrievalController {
     }
 
     if (options?.includeRunMemory !== false) {
-      const runMemories = this.runMemoryService.search(query, limits.runMemoryLimit);
+      const runMemories = await this.runMemoryService.search(query, limits.runMemoryLimit);
       bundle.runMemories = runMemories.map((record) => ({
         source: "run-memory" as const,
         id: record.id,

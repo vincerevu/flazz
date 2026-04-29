@@ -1,17 +1,19 @@
 const skill = String.raw`
 # Document Creation And Editing Skill
 
-Use this skill when the user asks to create, write, edit, fill, reformat, validate, or apply templates to Word documents. Use it for formal printable documents even when the user says "report", "proposal", "contract", "memo", or "document" without explicitly saying .docx. Use it for document-style PDF requests as well; do not route those through presentation workflows.
+Use this skill when the user explicitly asks to create, generate, export, save, write, edit, fill, reformat, validate, or apply templates to Word/PDF document artifacts. Use it for formal printable documents when the user requests a file and says "report", "proposal", "contract", "memo", or "document" without explicitly saying .docx. Use it for document-style PDF requests as well; do not route those through presentation workflows.
+
+Do not load or use this skill merely because the user asks to research, analyze, summarize, explain, compare, brainstorm, or look into a topic. Those are chat-answer requests unless the user explicitly asks for a file artifact.
 
 The reliable final deliverable for this skill is either:
 - a valid .docx file generated or edited through Flazz's built-in Node DOCX path, or
-- a markdown source file plus a final .pdf rendered through Flazz's sanctioned PDF exporter for PDF-first document workflows.
+- a final .pdf rendered through Flazz's sanctioned PDF exporter for PDF-first document workflows.
 
-For PDF requests, default to: write markdown -> save the markdown source in the workspace -> call the built-in \`renderMarkdownPdf\` tool. Do not switch to slides, and do not improvise legacy converters.
+For PDF-only requests, produce the final PDF only. Do not create a companion .docx, .md, .pptx, source file, or draft artifact unless the user explicitly asks for that extra format too. Use the built-in \`renderMarkdownPdf\` tool. Do not switch to slides, and do not improvise legacy converters.
 
 Do not write \`.docx\` or exported \`.pdf\` artifacts into \`memory/\`. Keep long-lived markdown knowledge in \`memory/\`, and place generated document artifacts in a non-memory folder such as \`output/doc/\` or \`exports/\`.
 
-Do not improvise legacy PDF conversion paths for document generation. If the user explicitly requires PDF output, use Flazz's sanctioned markdown-to-PDF path via \`renderMarkdownPdf\`. Do not use \`pandoc\`, \`reportlab\`, \`markitdown\`, \`pip install\`, or ad hoc shell converters for built-in PDF generation. Preserve UTF-8 and choose fonts with full coverage for the document language, especially for Vietnamese and CJK text.
+Do not improvise legacy PDF conversion paths for document generation. If the user explicitly requires PDF output, use Flazz's sanctioned markdown-to-PDF path via \`renderMarkdownPdf\`. Do not use \`pandoc\`, \`reportlab\`, \`markitdown\`, \`pip install\`, or ad hoc shell converters for built-in PDF generation. Preserve UTF-8 and choose fonts with full coverage for the document language, especially for diacritics and CJK text.
 
 ## Capabilities
 
@@ -54,9 +56,9 @@ Do not use Python, .NET, \`pip install\`, \`winget install\`, LibreOffice, \`pan
 
 Use this when the user explicitly wants a PDF report, PDF brief, PDF paper, or another final PDF artifact in document form.
 
-1. Write the markdown source into a non-memory workspace path such as \`output/doc/report.md\`.
-2. Keep the markdown as the source of truth.
-3. Call \`renderMarkdownPdf\` with that markdown content and a target path such as \`output/doc/report.pdf\`.
+1. Compose the markdown content in-memory for the tool call.
+2. Call \`renderMarkdownPdf\` with that markdown content and a target path such as \`output/doc/report.pdf\`.
+3. Do not write a visible \`.md\` source file unless the user explicitly asks for source markdown.
 4. Do not use \`pandoc\`, \`reportlab\`, \`markitdown\`, browser automation packages, or any ad hoc converter.
 5. Do not route the request through \`create-presentations\` just because the final artifact is PDF.
 
@@ -185,8 +187,9 @@ If validation fails, inspect the changed XML part, fix element order or relation
 4. Preserve unrelated content, styles, sections, headers, footers, and tables.
 5. Use Flazz's built-in Node OOXML path for advanced document edits.
 6. Validate output before final delivery.
-7. Keep support files internal; final response should point to the final .docx only.
+7. Keep support files internal; final response should point only to the requested final artifact.
 8. Do not install Python, python-docx, lxml, .NET, pandoc, reportlab, markitdown, or any other dependency from the built-in document workflow.
+9. If the user asks for \`.pdf\` only, deliver only \`.pdf\`; if the user asks for \`.docx\` only, deliver only \`.docx\`; if they ask for both, deliver exactly those two formats.
 `;
 
 export default skill;

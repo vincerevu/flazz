@@ -35,6 +35,8 @@ function addHierarchyStack(slide, nodes, layout, theme, options = {}) {
   } = layout;
 
   const rowH = (h - gap * (normalized.length - 1)) / normalized.length;
+  const boundedTitleFontSize = Math.min(titleFontSize, rowH < 0.58 ? 13 : titleFontSize);
+  const boundedDetailFontSize = Math.min(detailFontSize, rowH < 0.58 ? 8 : detailFontSize);
 
   normalized.forEach((node, index) => {
     const rowY = y + index * (rowH + gap);
@@ -56,8 +58,8 @@ function addHierarchyStack(slide, nodes, layout, theme, options = {}) {
       x: rowX + 0.18,
       y: rowY + 0.09,
       w: rowW - 0.36,
-      h: Math.min(0.25, rowH - 0.08),
-      fontSize: titleFontSize,
+      h: Math.min(0.24, Math.max(0.16, rowH * 0.38)),
+      fontSize: boundedTitleFontSize,
       fontFace: titleFontFace,
       bold: true,
       color: index === 0 ? (options.rootTextColor || theme.bg) : (options.titleColor || theme.primary),
@@ -65,13 +67,14 @@ function addHierarchyStack(slide, nodes, layout, theme, options = {}) {
       fit: 'shrink',
     });
 
-    if (node.detail && rowH > 0.45) {
+    if (node.detail && rowH > 0.42) {
+      const detailY = rowY + Math.min(0.38, Math.max(0.28, rowH * 0.48));
       slide.addText(node.detail, {
         x: rowX + 0.18,
-        y: rowY + 0.38,
+        y: detailY,
         w: rowW - 0.36,
-        h: rowH - 0.44,
-        fontSize: detailFontSize,
+        h: Math.max(0.16, rowH - (detailY - rowY) - 0.06),
+        fontSize: boundedDetailFontSize,
         fontFace: detailFontFace,
         color: index === 0 ? (options.rootDetailColor || theme.bg) : (options.detailColor || theme.secondary),
         margin: 0,

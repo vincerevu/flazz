@@ -34,19 +34,19 @@ export const builtInSkillDefinitions: SkillDefinition[] = [
   {
     id: "create-documents",
     title: "Create Documents",
-    summary: "Create and edit formal document artifacts such as reports, proposals, memos, and long-form deliverables using the dedicated DOCX workflow. Use this for document-style output and PDF-style requests that should be handled as documents rather than slides.",
+    summary: "Create and edit explicitly requested document artifacts such as DOCX/PDF reports, proposals, memos, and long-form deliverables. Do not use for research or analysis unless the user asked for a file.",
     content: createDocumentsSkill,
   },
   {
     id: "create-spreadsheets",
     title: "Create Spreadsheets",
-    summary: "Create and edit spreadsheet artifacts such as .xlsx reports, KPI tables, financial models, and tabular exports using the built-in workbook renderer for new files and XML-safe workflows for existing workbooks.",
+    summary: "Create and edit explicitly requested spreadsheet artifacts such as .xlsx reports, KPI tables, financial models, and tabular exports using the built-in workbook renderer for new files and XML-safe workflows for existing workbooks.",
     content: createSpreadsheetsSkill,
   },
   {
     id: "create-presentations",
     title: "Create Presentations",
-    summary: "Create and edit native PowerPoint slide decks from natural language requests using workspace context, template editing workflows, and PptxGenJS generation with Node-based QA.",
+    summary: "Create and edit explicitly requested native PowerPoint slide decks using workspace context, template editing workflows, and PptxGenJS generation with Node-based QA.",
     content: createPresentationsSkill,
   },
   {

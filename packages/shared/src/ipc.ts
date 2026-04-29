@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { RelPath, Encoding, Stat, DirEntry, ReaddirOptions, ReadFileResult, WorkspaceChangeEvent, WriteFileOptions, WriteFileResult, RemoveOptions } from './workspace.js';
 import { ListToolsResponse } from './mcp.js';
-import { AskHumanResponsePayload, CreateRunOptions, Run, ListRunsResponse, ToolPermissionAuthorizePayload } from './runs.js';
+import { AskHumanResponsePayload, CreateRunOptions, Run, RunConversation, ListRunsResponse, ToolPermissionAuthorizePayload } from './runs.js';
 import { LlmModelConfig } from './models.js';
 import { AgentScheduleConfig, AgentScheduleEntry } from './agent-schedule.js';
 import { AgentScheduleState } from './agent-schedule-state.js';
@@ -11,6 +11,7 @@ import { ZListToolkitsResponse } from './composio.js';
 import { ListSkillsResponse, ListSkillCandidatesResponse, ListSkillRepairCandidatesResponse, ListSkillRevisionsResponse, Skill, SkillLearningStats, SkillRevision } from './skills.js';
 import { ListRunMemoryResponse } from './run-memory.js';
 import { IntegrationProviderStatus } from './integration-resources.js';
+import { PresentationDomExportRequest, PresentationDomExportResponse } from './presentation-export.js';
 
 // ============================================================================
 // Runtime Validation Schemas (Single Source of Truth)
@@ -293,6 +294,12 @@ const ipcSchemas = {
       runId: z.string(),
     }),
     res: Run,
+  },
+  'runs:fetchConversation': {
+    req: z.object({
+      runId: z.string(),
+    }),
+    res: RunConversation,
   },
   'runs:list': {
     req: z.object({
@@ -582,6 +589,10 @@ const ipcSchemas = {
       fullSupportCount: z.number(),
       readOnlySupportCount: z.number(),
     }),
+  },
+  'presentation:exportDomPptx': {
+    req: PresentationDomExportRequest,
+    res: PresentationDomExportResponse,
   },
   'composio:execute-action': {
     req: z.object({

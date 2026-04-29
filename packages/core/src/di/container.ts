@@ -1,9 +1,10 @@
-import { asClass, asValue, createContainer, InjectionMode } from "awilix";
+import { asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
 import { FSModelConfigRepo, IModelConfigRepo } from "../models/repo.js";
 import { FSModelCapabilityRepo, IModelCapabilityRepo } from "../models/capability-repo.js";
 import { FSMcpConfigRepo, IMcpConfigRepo } from "../mcp/repo.js";
 import { FSAgentsRepo, IAgentsRepo } from "../agents/repo.js";
-import { FSRunsRepo, IRunsRepo } from "../runs/repo.js";
+import { IRunsRepo } from "../runs/repo.js";
+import { SqliteRunsRepo } from "../runs/sqlite-repo.js";
 import { IMonotonicallyIncreasingIdGenerator, IdGen } from "../application/lib/id-gen.js";
 import { IMessageQueue, InMemoryMessageQueue } from "../application/lib/message-queue.js";
 import { IBus, InMemoryBus } from "../application/lib/bus.js";
@@ -13,7 +14,7 @@ import { FSOAuthRepo, IOAuthRepo } from "../auth/repo.js";
 import { FSClientRegistrationRepo, IClientRegistrationRepo } from "../auth/client-repo.js";
 import { IAbortRegistry, InMemoryAbortRegistry } from "../runs/abort-registry.js";
 import { FSAgentScheduleRepo, IAgentScheduleRepo } from "../agent-schedule/repo.js";
-import { FSAgentScheduleStateRepo, IAgentScheduleStateRepo } from "../agent-schedule/state-repo.js";
+import { IAgentScheduleStateRepo, SqliteAgentScheduleStateRepo } from "../agent-schedule/state-repo.js";
 import { MemoryRepo } from "../memory/memory-repo.js";
 import { MemoryManager } from "../memory/memory-manager.js";
 import { MemoryArchiver } from "../memory/memory-archiver.js";
@@ -32,13 +33,13 @@ import { SkillRegistry } from "../skills/registry.js";
 import { SourceSkillSource } from "../application/assistant/skills/source-skill-source.js";
 import { RunLearningService } from "../skills/run-learning-service.js";
 import { LearningStateRepo } from "../skills/learning-state-repo.js";
-import { RunMemoryRepo } from "../run-memory/run-memory-repo.js";
+import { SqliteRunMemoryRepo } from "../run-memory/run-memory-repo.js";
 import { RunMemoryService } from "../run-memory/run-memory-service.js";
 import { RunMemoryGraphPromoter } from "../memory-graph/run-memory-promoter.js";
-import { GraphSignalRepo } from "../memory-graph/graph-signal-repo.js";
+import { SqliteGraphSignalRepo } from "../memory-graph/graph-signal-repo.js";
 import { GraphSignalPromoter } from "../memory-graph/graph-signal-promoter.js";
 import { GraphSignalService } from "../memory-graph/graph-signal-service.js";
-import { GraphSyncStateRepo } from "../memory-graph/graph-sync-state-repo.js";
+import { SqliteGraphSyncStateRepo } from "../memory-graph/graph-sync-state-repo.js";
 import { GraphSyncService } from "../memory-graph/graph-sync-service.js";
 import { IntegrationItemMemoryPromoter } from "../memory-graph/integration-item-memory-promoter.js";
 import { IntegrationSourceMemoryPromoter } from "../memory-graph/integration-source-memory-promoter.js";
@@ -47,7 +48,7 @@ import { ProviderMapper } from "../integrations/provider-mapper.js";
 import { CapabilityRegistry } from "../integrations/capability-registry.js";
 import { IntegrationNormalizer } from "../integrations/normalizer.js";
 import { IntegrationRetrievalController } from "../integrations/retrieval-controller.js";
-import { IntegrationIdempotencyRepo } from "../integrations/idempotency-repo.js";
+import { SqliteIntegrationIdempotencyRepo } from "../integrations/idempotency-repo.js";
 
 const container = createContainer({
     injectionMode: InjectionMode.PROXY,
@@ -67,11 +68,13 @@ container.register({
     modelConfigRepo: asClass<IModelConfigRepo>(FSModelConfigRepo).singleton(),
     modelCapabilityRepo: asClass<IModelCapabilityRepo>(FSModelCapabilityRepo).singleton(),
     agentsRepo: asClass<IAgentsRepo>(FSAgentsRepo).singleton(),
-    runsRepo: asClass<IRunsRepo>(FSRunsRepo).singleton(),
+    runsRepo: asFunction<IRunsRepo>((cradle) => new SqliteRunsRepo({
+        idGenerator: cradle.idGenerator,
+    })).singleton(),
     oauthRepo: asClass<IOAuthRepo>(FSOAuthRepo).singleton(),
     clientRegistrationRepo: asClass<IClientRegistrationRepo>(FSClientRegistrationRepo).singleton(),
     agentScheduleRepo: asClass<IAgentScheduleRepo>(FSAgentScheduleRepo).singleton(),
-    agentScheduleStateRepo: asClass<IAgentScheduleStateRepo>(FSAgentScheduleStateRepo).singleton(),
+    agentScheduleStateRepo: asFunction<IAgentScheduleStateRepo>(() => new SqliteAgentScheduleStateRepo()).singleton(),
 });
 
 setAgentsRepo(container.resolve<IAgentsRepo>("agentsRepo"));
@@ -110,13 +113,13 @@ setPdfExportService({
     },
 });
 const learningStateRepo = new LearningStateRepo(WorkDir);
-const runMemoryRepo = new RunMemoryRepo(WorkDir);
+const runMemoryRepo = new SqliteRunMemoryRepo();
 const runMemoryGraphPromoter = new RunMemoryGraphPromoter(WorkDir);
-const graphSignalRepo = new GraphSignalRepo(WorkDir);
+const graphSignalRepo = new SqliteGraphSignalRepo();
 const graphSignalPromoter = new GraphSignalPromoter(WorkDir);
 const integrationItemMemoryPromoter = new IntegrationItemMemoryPromoter(WorkDir);
 const integrationSourceMemoryPromoter = new IntegrationSourceMemoryPromoter(WorkDir);
-const graphSyncStateRepo = new GraphSyncStateRepo(WorkDir);
+const graphSyncStateRepo = new SqliteGraphSyncStateRepo();
 const graphSyncService = new GraphSyncService(graphSyncStateRepo, WorkDir);
 const graphSignalService = new GraphSignalService(graphSignalRepo, graphSignalPromoter, graphSyncService);
 const runMemoryService = new RunMemoryService(runMemoryRepo, runMemoryGraphPromoter, graphSignalService);
@@ -133,7 +136,7 @@ const providerMapper = new ProviderMapper();
 const capabilityRegistry = new CapabilityRegistry(providerMapper);
 const integrationNormalizer = new IntegrationNormalizer();
 const integrationRetrievalController = new IntegrationRetrievalController();
-const integrationIdempotencyRepo = new IntegrationIdempotencyRepo(WorkDir);
+const integrationIdempotencyRepo = new SqliteIntegrationIdempotencyRepo();
 
 // Initialize retrieval + context systems
 const memorySearch = new MemorySearchProvider();

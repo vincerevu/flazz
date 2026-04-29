@@ -31,9 +31,9 @@ const slideSpec = {
 
 Before writing any visible text, identify the deck's primary language from the user request or deck plan.
 
-- Vietnamese deck: all titles, labels, bullets, captions, warnings, and callouts must be Vietnamese.
+- Localized deck: all titles, labels, bullets, captions, warnings, and callouts must use the deck language.
 - English deck: all visible text must be English.
-- Do not mix slash translations such as `Vietnamese / English`, `Vietnamese / 中文`, or `English / 中文`.
+- Do not mix slash translations between the deck language and another language.
 - Do not preserve random source-language fragments. Translate them into the deck language unless they are proper nouns, acronyms, product names, quoted source text, or explicitly requested bilingual teaching content.
 - If a concept needs a foreign-language synonym, put it in speaker notes, not on the slide.
 - Use at most one icon/emoji per visible item. Never prepend a title or card label with an icon cluster such as `👶👧👦👨`; choose one icon or use a simple shape marker.
@@ -396,6 +396,39 @@ addStatCardGrid(slide, statCards, {
   y: 1.55,
   w: 8.4,
   h: 3.0,
+  valueFontFace: "Georgia",
+  labelFontFace: "Calibri",
+  detailFontFace: "Calibri",
+}, theme);
+```
+
+### 16. Premium Native Patterns
+- Use these when a standard helper would make the slide look like another flat card grid
+- Render with `pptx-premium-helpers.cjs`
+- Pick the helper from content intent:
+  - one dominant quote or insight -> `addEditorialQuote()`
+  - metrics-first story -> `addMetricWall()`
+  - architecture, system, or maturity levels -> `addLayeredStack()`
+  - screenshot/document/photo evidence -> `addEvidenceMedia()`
+  - before/after or problem/solution contrast -> `addDiagonalCompare()`
+  - image-led transition or title-style content slide -> `addHeroImageOverlay()`
+
+Preferred premium pattern:
+
+```javascript
+const {
+  addMetricWall,
+  addLayeredStack,
+  addEvidenceMedia,
+  addDiagonalCompare,
+  addEditorialQuote,
+} = require(process.env.FLAZZ_SKILL_ROOT + "/create-presentations/scripts/pptx-premium-helpers.cjs");
+
+addMetricWall(slide, contentModel.statCards, {
+  x: 0.75,
+  y: 1.35,
+  w: 8.5,
+  h: 3.25,
   valueFontFace: "Georgia",
   labelFontFace: "Calibri",
   detailFontFace: "Calibri",

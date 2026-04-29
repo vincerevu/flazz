@@ -35,16 +35,17 @@ export const memoryTools = {
       '- Speculation, guesses, or low-confidence inferences.\n' +
       '- Anything better represented as a skill or a permanent markdown note.\n\n' +
       'LANGUAGE POLICY:\n' +
-      '- Write the memory entry in the same language the user is currently using.\n' +
-      '- If the user is writing in Vietnamese, store the memory in Vietnamese.\n' +
-      '- Do not switch languages just because an English phrasing sounds more generic.\n' +
-      '- Preserve important proper nouns, product names, commands, and code identifiers verbatim.\n\n' +
+      '- Write durable memory entries in English by default, even when the user is currently using another language.\n' +
+      '- Preserve proper nouns, product names, commands, file extensions, and code identifiers verbatim.\n' +
+      '- Store an exact non-English quote only when the user explicitly asks to remember the wording itself.\n' +
+      '- Keep stable operating rules clear enough for future model turns to follow without translation ambiguity.\n\n' +
       'ENTRY FORMAT:\n' +
       '- Write one compact canonical fact per entry.\n' +
       '- Use plain declarative phrasing, not meta-instructions to yourself.\n' +
       '- Avoid prefixes like "Remember that", "The user said", or "When asking".\n' +
-      '- Good: "Buổi sáng: kiểm tra GitHub notifications trước email."\n' +
-      '- Good: "Repo này dùng pnpm workspace trên Windows."\n' +
+      '- Good: "For GitHub update requests, check assigned issues and pull requests before notifications."\n' +
+      '- Good: "This repo uses a pnpm workspace on Windows."\n' +
+      '- Good: "For research or look-into requests, answer in chat unless the user explicitly asks for a file."\n' +
       '- Bad: "When asking GitHub updates: prioritize notifications first."\n' +
       '- Bad: "The user told me that every morning I should maybe check email."\n\n' +
       'DEDUPLICATION AND UPDATES:\n' +
@@ -56,11 +57,11 @@ export const memoryTools = {
       '- replace: revise an existing entry identified by old_text.\n' +
       '- remove: delete an outdated entry identified by old_text.\n\n' +
       'EXAMPLES:\n' +
-      '- "Tôi thích câu trả lời ngắn gọn." -> target="user"\n' +
-      '- "Buổi sáng: kiểm tra GitHub notifications trước email." -> target="memory"\n' +
-      '- "Repo này dùng pnpm workspace trên Windows." -> target="memory"\n' +
-      '- "Tôi ghét bullet dài." -> target="user"\n' +
-      '- "Khi chưa rõ target thì ưu tiên memory, không ưu tiên user." -> target="memory"\n\n' +
+      '- "The user prefers concise answers." -> target="user"\n' +
+      '- "For morning GitHub updates, check assigned issues and pull requests before notifications." -> target="memory"\n' +
+      '- "This repo uses a pnpm workspace on Windows." -> target="memory"\n' +
+      '- "The user dislikes long bullet lists." -> target="user"\n' +
+      '- "When the target is unclear, prefer memory over user." -> target="memory"\n\n' +
       'Only call this tool when the memory will improve future behavior.',
     inputSchema: z.object({
       action: z

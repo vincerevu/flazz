@@ -1,14 +1,24 @@
 import fs from 'fs';
+import fsp from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { z } from 'zod';
 import { WorkDir } from '../config/config.js';
+import {
+    createPrismaClient,
+    type FlazzPrismaClient,
+    type PrismaStorageOptions,
+} from '../storage/prisma.js';
+import { applySqliteMigrations } from '../storage/sqlite-migrations.js';
 
 /**
- * State tracking for memory graph processing
- * Uses mtime + hash hybrid approach to detect file changes
+ * State tracking for memory graph processing.
+ * Uses mtime + hash hybrid approach to detect file changes.
  */
 
-const STATE_FILE = path.join(WorkDir, 'memory_graph_state.json');
+const LAST_BUILD_TIME_KEY = 'lastBuildTime';
+const LEGACY_STATE_RELATIVE_PATH = 'memory_graph_state.json';
+const LEGACY_IMPORT_MARKER_KEY = 'legacy_import:memory_graph_state';
 
 export interface FileState {
     mtime: string; // ISO timestamp of last modification
@@ -21,30 +31,186 @@ export interface GraphState {
     lastBuildTime: string; // ISO timestamp of last successful build
 }
 
-/**
- * Load the current state from disk
- */
-export function loadState(): GraphState {
-    if (fs.existsSync(STATE_FILE)) {
+const DEFAULT_STATE: GraphState = {
+    processedFiles: {},
+    lastBuildTime: new Date(0).toISOString(),
+};
+
+const LegacyFileState = z.object({
+    mtime: z.string(),
+    hash: z.string(),
+    lastProcessed: z.string(),
+});
+
+const LegacyGraphState = z.object({
+    processedFiles: z.record(z.string(), LegacyFileState).default({}),
+    lastBuildTime: z.string().optional(),
+});
+
+class SqliteMemoryGraphStateRepo {
+    private readonly prisma: FlazzPrismaClient;
+    private readonly storage?: PrismaStorageOptions;
+    private ready: Promise<void> | null = null;
+
+    constructor(options: { prisma?: FlazzPrismaClient; storage?: PrismaStorageOptions } = {}) {
+        this.storage = options.storage;
+        this.prisma = options.prisma ?? createPrismaClient(options.storage);
+    }
+
+    private ensureReady(): Promise<void> {
+        this.ready ??= this.initialize();
+        return this.ready;
+    }
+
+    private async initialize(): Promise<void> {
+        await applySqliteMigrations({ prisma: this.prisma, storage: this.storage });
+        await this.importLegacyStateOnce();
+    }
+
+    async load(): Promise<GraphState> {
+        await this.ensureReady();
+        const [files, meta] = await Promise.all([
+            this.prisma.memoryGraphProcessedFile.findMany(),
+            this.prisma.memoryGraphMeta.findUnique({ where: { key: LAST_BUILD_TIME_KEY } }),
+        ]);
+
+        return {
+            processedFiles: Object.fromEntries(
+                files.map((file) => [
+                    file.filePath,
+                    {
+                        mtime: file.mtime,
+                        hash: file.hash,
+                        lastProcessed: file.lastProcessed,
+                    },
+                ]),
+            ),
+            lastBuildTime: meta?.value ?? DEFAULT_STATE.lastBuildTime,
+        };
+    }
+
+    async save(state: GraphState): Promise<void> {
+        await this.ensureReady();
+        await this.saveValidatedState(state);
+    }
+
+    private async saveValidatedState(state: GraphState): Promise<void> {
+        const now = new Date();
+        const entries = Object.entries(state.processedFiles);
+
+        await this.prisma.$transaction(async (tx) => {
+            await tx.memoryGraphMeta.upsert({
+                where: { key: LAST_BUILD_TIME_KEY },
+                create: {
+                    key: LAST_BUILD_TIME_KEY,
+                    value: state.lastBuildTime,
+                    updatedAt: now,
+                },
+                update: {
+                    value: state.lastBuildTime,
+                    updatedAt: now,
+                },
+            });
+
+            for (const [filePath, fileState] of entries) {
+                await tx.memoryGraphProcessedFile.upsert({
+                    where: { filePath },
+                    create: {
+                        filePath,
+                        mtime: fileState.mtime,
+                        hash: fileState.hash,
+                        lastProcessed: fileState.lastProcessed,
+                        updatedAt: now,
+                    },
+                    update: {
+                        mtime: fileState.mtime,
+                        hash: fileState.hash,
+                        lastProcessed: fileState.lastProcessed,
+                        updatedAt: now,
+                    },
+                });
+            }
+        });
+    }
+
+    private async importLegacyStateOnce(): Promise<void> {
+        const marker = await this.prisma.appKv.findUnique({ where: { key: LEGACY_IMPORT_MARKER_KEY } });
+        if (marker) {
+            return;
+        }
+
         try {
-            return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+            const legacyPath = this.legacyStatePath();
+            if (!legacyPath) {
+                return;
+            }
+            const raw = await fsp.readFile(legacyPath, 'utf8').catch((error: NodeJS.ErrnoException) => {
+                if (error.code === 'ENOENT') return null;
+                throw error;
+            });
+            if (raw) {
+                const legacy = LegacyGraphState.parse(JSON.parse(raw));
+                await this.saveValidatedState({
+                    processedFiles: legacy.processedFiles,
+                    lastBuildTime: legacy.lastBuildTime ?? DEFAULT_STATE.lastBuildTime,
+                });
+            }
         } catch (error) {
-            console.error('Error loading memory graph state:', error);
+            console.error('[SqliteMemoryGraphStateRepo] Failed to import legacy state:', error);
+        } finally {
+            await this.prisma.appKv.upsert({
+                where: { key: LEGACY_IMPORT_MARKER_KEY },
+                create: { key: LEGACY_IMPORT_MARKER_KEY, valueJson: JSON.stringify({ importedAt: new Date().toISOString() }) },
+                update: { valueJson: JSON.stringify({ importedAt: new Date().toISOString() }) },
+            });
         }
     }
 
-    return {
-        processedFiles: {},
-        lastBuildTime: new Date(0).toISOString(), // epoch
-    };
+    private legacyStatePath(): string | null {
+        if (this.storage?.databaseUrl && !this.storage.workDir) return null;
+        return path.join(this.storage?.workDir ?? WorkDir, LEGACY_STATE_RELATIVE_PATH);
+    }
+
+    async reset(): Promise<void> {
+        await this.ensureReady();
+        await this.prisma.$transaction([
+            this.prisma.memoryGraphProcessedFile.deleteMany(),
+            this.prisma.memoryGraphMeta.upsert({
+                where: { key: LAST_BUILD_TIME_KEY },
+                create: {
+                    key: LAST_BUILD_TIME_KEY,
+                    value: new Date().toISOString(),
+                    updatedAt: new Date(),
+                },
+                update: {
+                    value: new Date().toISOString(),
+                    updatedAt: new Date(),
+                },
+            }),
+        ]);
+    }
+}
+
+const defaultRepo = new SqliteMemoryGraphStateRepo();
+
+/**
+ * Load the current state from SQLite.
+ */
+export async function loadState(): Promise<GraphState> {
+    try {
+        return await defaultRepo.load();
+    } catch (error) {
+        console.error('Error loading memory graph state:', error);
+        return DEFAULT_STATE;
+    }
 }
 
 /**
- * Save the current state to disk
+ * Save the current state to SQLite.
  */
-export function saveState(state: GraphState): void {
+export async function saveState(state: GraphState): Promise<void> {
     try {
-        fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+        await defaultRepo.save(state);
     } catch (error) {
         console.error('Error saving memory graph state:', error);
         throw error;
@@ -52,7 +218,7 @@ export function saveState(state: GraphState): void {
 }
 
 /**
- * Compute hash of file content
+ * Compute hash of file content.
  */
 export function computeFileHash(filePath: string): string {
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -60,33 +226,29 @@ export function computeFileHash(filePath: string): string {
 }
 
 /**
- * Check if a file has changed since it was last processed
- * Uses mtime for quick check, then hash for verification
+ * Check if a file has changed since it was last processed.
+ * Uses mtime for quick check, then hash for verification.
  */
 export function hasFileChanged(filePath: string, state: GraphState): boolean {
     const fileState = state.processedFiles[filePath];
 
-    // New file - never processed
     if (!fileState) {
         return true;
     }
 
-    // Check mtime first (fast)
     const stats = fs.statSync(filePath);
     const currentMtime = stats.mtime.toISOString();
 
-    // If mtime is the same, file definitely hasn't changed
     if (currentMtime === fileState.mtime) {
         return false;
     }
 
-    // mtime changed - verify with hash to confirm actual content change
     const currentHash = computeFileHash(filePath);
     return currentHash !== fileState.hash;
 }
 
 /**
- * Update state after processing a file
+ * Update state after processing a file.
  */
 export function markFileAsProcessed(filePath: string, state: GraphState): void {
     const stats = fs.statSync(filePath);
@@ -94,14 +256,14 @@ export function markFileAsProcessed(filePath: string, state: GraphState): void {
 
     state.processedFiles[filePath] = {
         mtime: stats.mtime.toISOString(),
-        hash: hash,
+        hash,
         lastProcessed: new Date().toISOString(),
     };
 }
 
 /**
- * Get list of files that need processing from a source directory
- * Returns only new or changed files, recursively traversing subdirectories
+ * Get list of files that need processing from a source directory.
+ * Returns only new or changed files, recursively traversing subdirectories.
  */
 export function getFilesToProcess(
     sourceDir: string,
@@ -113,7 +275,6 @@ export function getFilesToProcess(
 
     const filesToProcess: string[] = [];
 
-    // Recursive function to traverse directories
     function traverseDirectory(dir: string) {
         const entries = fs.readdirSync(dir);
 
@@ -122,7 +283,6 @@ export function getFilesToProcess(
             const stat = fs.statSync(fullPath);
 
             if (stat.isDirectory()) {
-                // Recurse into subdirectories
                 traverseDirectory(fullPath);
             } else if (stat.isFile() && entry.endsWith('.md')) {
                 if (hasFileChanged(fullPath, state)) {
@@ -137,12 +297,8 @@ export function getFilesToProcess(
 }
 
 /**
- * Reset state - useful for reprocessing everything
+ * Reset state - useful for reprocessing everything.
  */
-export function resetState(): void {
-    const emptyState: GraphState = {
-        processedFiles: {},
-        lastBuildTime: new Date().toISOString(),
-    };
-    saveState(emptyState);
+export async function resetState(): Promise<void> {
+    await defaultRepo.reset();
 }

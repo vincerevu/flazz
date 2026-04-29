@@ -125,7 +125,7 @@ async function labelEmailBatch(
 export async function processUnlabeledEmails(concurrency: number = DEFAULT_CONCURRENCY): Promise<void> {
     console.log('[EmailLabeling] Checking for unlabeled emails...');
 
-    const state = loadLabelingState();
+    const state = await loadLabelingState();
     const unlabeled = getUnlabeledEmails(state);
 
     if (unlabeled.length === 0) {
@@ -223,11 +223,11 @@ export async function processUnlabeledEmails(concurrency: number = DEFAULT_CONCU
 
         const results = await Promise.all(promises);
         totalEdited += results.reduce((sum, n) => sum + n, 0);
-        saveLabelingState(state);
+        await saveLabelingState(state);
     }
 
     state.lastRunTime = new Date().toISOString();
-    saveLabelingState(state);
+    await saveLabelingState(state);
 
     await serviceLogger.log({
         type: 'run_complete',

@@ -3,6 +3,8 @@ const skill = String.raw`
 
 Use this skill when the user asks to read, analyze, create, edit, validate, repair, or format spreadsheet files such as .xlsx, .xlsm, .csv, or .tsv. The final deliverable should be the requested spreadsheet file when the user asks for file output.
 
+Only create spreadsheet artifacts when the user explicitly asks for a workbook, spreadsheet, table export, tracker file, or a concrete spreadsheet extension such as \`.xlsx\`, \`.csv\`, or \`.tsv\`. If the user asks to research, explain, summarize, compare, or look into data, answer in chat unless they explicitly request a file. When the user requests one format, deliver only that format and do not create companion documents, PDFs, markdown files, or other sidecars unless requested.
+
 For new spreadsheet artifacts and straightforward generated workbooks, default to Flazz's built-in Node path via \`renderWorkbookXlsx\`, then validate with \`validateWorkbookXlsx\`. For existing-workbook inspection, style auditing, shifting rows, inserting rows, or adding formula columns, use Flazz's built-in Node spreadsheet tools first. Do not fall back to Python helpers for normal spreadsheet work.
 
 ## Capabilities
