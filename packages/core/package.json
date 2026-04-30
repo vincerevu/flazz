@@ -50,6 +50,7 @@
     "@flazz/shared": "workspace:*",
     "@google-cloud/local-auth": "^3.0.1",
     "@modelcontextprotocol/sdk": "^1.25.1",
+    "@mudbill/duckduckgo-images-api": "^2.0.1",
     "@openrouter/ai-sdk-provider": "^1.2.6",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",

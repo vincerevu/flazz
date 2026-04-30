@@ -19,13 +19,18 @@ import {
   PaperclipIcon,
   XIcon,
 } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type { ComponentProps, HTMLAttributes, ReactElement, SyntheticEvent } from "react";
 import { createContext, memo, useContext, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { splitStreamingMarkdown } from "@/components/ai-elements/streaming-markdown";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -316,6 +321,59 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
+const markdownMediaClassName = [
+  "[&_img]:!inline-block",
+  "[&_img]:!h-auto",
+  "[&_img]:!max-h-14",
+  "[&_img]:!w-auto",
+  "[&_img]:!max-w-20",
+  "[&_img]:!rounded-md",
+  "[&_img]:!border",
+  "[&_img]:!object-contain",
+  "[&_img]:!align-middle",
+  "sm:[&_img]:!max-h-16",
+  "sm:[&_img]:!max-w-24",
+  "[&_[data-streamdown=image-wrapper]]:!my-0",
+  "[&_[data-streamdown=image-wrapper]]:!inline-flex",
+  "[&_[data-streamdown=image-wrapper]]:!align-middle",
+  "[&_[data-streamdown=image-wrapper]>button]:!right-0.5",
+  "[&_[data-streamdown=image-wrapper]>button]:!bottom-0.5",
+  "[&_[data-streamdown=image-wrapper]>button]:!h-5",
+  "[&_[data-streamdown=image-wrapper]>button]:!w-5",
+  "[&_[data-streamdown=image-wrapper]>button_svg]:!size-3",
+  "[&_[data-streamdown=image-wrapper]>div]:!rounded-md",
+  "[&_td]:align-middle",
+].join(" ");
+
+function hideBrokenMarkdownImage(event: SyntheticEvent<HTMLElement>) {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement)) return;
+  const wrapper = target.closest<HTMLElement>('[data-streamdown="image-wrapper"]');
+  (wrapper ?? target).style.display = "none";
+}
+
+function hideSuspiciousMarkdownImage(event: SyntheticEvent<HTMLElement>) {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement)) return;
+  if (/\/\/(?:tse\d*\.)?mm\.bing\.net\//i.test(target.src) || /\/\/[^/]*\.bing\.com\/th\/id\//i.test(target.src)) {
+    const wrapper = target.closest<HTMLElement>('[data-streamdown="image-wrapper"]');
+    (wrapper ?? target).style.display = "none";
+    return;
+  }
+  const isTinyPlaceholder = target.naturalWidth > 0
+    && target.naturalHeight > 0
+    && target.naturalWidth <= 140
+    && target.naturalHeight <= 140;
+  if (!isTinyPlaceholder) return;
+  const wrapper = target.closest<HTMLElement>('[data-streamdown="image-wrapper"]');
+  (wrapper ?? target).style.display = "none";
+}
+
+type PreviewImage = {
+  src: string;
+  alt: string;
+};
+
 const MessageResponseBlock = memo(function MessageResponseBlock({
   content,
   ...props
@@ -336,6 +394,7 @@ const MessageResponseBlock = memo(function MessageResponseBlock({
 
 export const MessageResponse = memo(
   ({ className, children, streaming, ...props }: MessageResponseProps & { streaming?: boolean }) => {
+    const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
     const textChildren = typeof children === "string" ? children : null;
     const deferredTextChildren = useDeferredValue(textChildren);
     const renderText = streaming
@@ -348,35 +407,76 @@ export const MessageResponse = memo(
 
     if (blocks) {
       return (
-        <div
-          className={cn(
-            "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-            className
-          )}
-        >
-          {blocks.map((block, index) => (
-            <MessageResponseBlock
-              key={`${index}-${block.mode}`}
-              {...props}
-              content={block.src}
-            />
-          ))}
-        </div>
+        <>
+          <div
+            onClickCapture={(event) => {
+              const target = event.target;
+              if (!(target instanceof HTMLElement)) return;
+              if (target.closest('button[aria-label="Download image"], button[title="Download image"]')) return;
+              const image = target instanceof HTMLImageElement
+                ? target
+                : target.closest('[data-streamdown="image-wrapper"]')?.querySelector('img');
+              if (!image?.src) return;
+              event.preventDefault();
+              setPreviewImage({ src: image.src, alt: image.alt || "Image preview" });
+            }}
+            onErrorCapture={hideBrokenMarkdownImage}
+            onLoadCapture={hideSuspiciousMarkdownImage}
+            className={cn(
+              "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+              markdownMediaClassName,
+              className
+            )}
+          >
+            {blocks.map((block, index) => (
+              <MessageResponseBlock
+                key={`${index}-${block.mode}`}
+                {...props}
+                content={block.src}
+              />
+            ))}
+          </div>
+          <MarkdownImagePreview image={previewImage} onOpenChange={(open) => {
+            if (!open) setPreviewImage(null);
+          }} />
+        </>
       );
     }
 
     return (
-      <Streamdown
-        className={cn(
-          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-          className
-        )}
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { output: 'mathml' }]]}
-        {...props}
-      >
-        {children}
-      </Streamdown>
+      <>
+        <div
+          onClickCapture={(event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+            if (target.closest('button[aria-label="Download image"], button[title="Download image"]')) return;
+            const image = target instanceof HTMLImageElement
+              ? target
+              : target.closest('[data-streamdown="image-wrapper"]')?.querySelector('img');
+            if (!image?.src) return;
+            event.preventDefault();
+            setPreviewImage({ src: image.src, alt: image.alt || "Image preview" });
+          }}
+          onErrorCapture={hideBrokenMarkdownImage}
+          onLoadCapture={hideSuspiciousMarkdownImage}
+          className={cn(
+            "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+            markdownMediaClassName,
+            className
+          )}
+        >
+          <Streamdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[[rehypeKatex, { output: 'mathml' }]]}
+            {...props}
+          >
+            {children}
+          </Streamdown>
+        </div>
+        <MarkdownImagePreview image={previewImage} onOpenChange={(open) => {
+          if (!open) setPreviewImage(null);
+        }} />
+      </>
     );
   },
   (prevProps, nextProps) => (
@@ -386,6 +486,32 @@ export const MessageResponse = memo(
 );
 
 MessageResponse.displayName = "MessageResponse";
+
+function MarkdownImagePreview({
+  image,
+  onOpenChange,
+}: {
+  image: PreviewImage | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={Boolean(image)} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[min(78vw,760px)] border bg-background/95 p-3 shadow-lg sm:max-w-[min(78vw,760px)] [&>button]:rounded-full [&>button]:bg-background/80 [&>button]:p-1 [&>button]:backdrop-blur">
+        <DialogTitle className="sr-only">{image?.alt || "Image preview"}</DialogTitle>
+        {image && (
+          <div className="flex max-h-[72vh] min-h-0 items-center justify-center overflow-auto">
+            <img
+              alt={image.alt}
+              src={image.src}
+              referrerPolicy="no-referrer"
+              className="max-h-[72vh] max-w-full object-contain"
+            />
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: FileUIPart;

@@ -12,12 +12,13 @@ const graphGroupColors: Record<string, { hue: number; sat: number; light: number
   organizations: { hue: 200, sat: 90, light: 60 },
   organization: { hue: 200, sat: 90, light: 60 },
   people: { hue: 338, sat: 86, light: 62 },
-  projects: { hue: 164, sat: 72, light: 52 },
-  project: { hue: 164, sat: 72, light: 52 },
+  flazz: { hue: 172, sat: 74, light: 52 },
+  projects: { hue: 142, sat: 76, light: 50 },
+  project: { hue: 142, sat: 76, light: 50 },
   skills: { hue: 32, sat: 94, light: 58 },
   skill: { hue: 32, sat: 94, light: 58 },
-  topics: { hue: 118, sat: 78, light: 50 },
-  topic: { hue: 118, sat: 78, light: 50 },
+  topics: { hue: 118, sat: 82, light: 50 },
+  topic: { hue: 118, sat: 82, light: 50 },
   'voice memos': { hue: 276, sat: 82, light: 62 },
   'voice memo': { hue: 276, sat: 82, light: 62 },
   voice: { hue: 276, sat: 82, light: 62 },
@@ -45,8 +46,8 @@ const createFallbackGroupColor = (group: string) => {
       Math.abs(hue - reservedHue),
       360 - Math.abs(hue - reservedHue),
     )
-    if (distance < 18) {
-      hue = (hue + 31) % 360
+    if (distance < 28) {
+      hue = (hue + 43) % 360
     }
   }
 

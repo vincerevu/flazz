@@ -9,9 +9,10 @@ import {
 import { ContextCompactionCard } from '@/components/ai-elements/context-compaction'
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { WebSearchResult } from '@/components/ai-elements/web-search-result'
+import { ImageSearchResult } from '@/components/ai-elements/image-search-result'
 import { type PromptInputMessage, type FileMention } from '@/components/ai-elements/prompt-input'
 import { FileCardProvider } from '@/contexts/file-card-context'
-import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
+import { MarkdownImageOverride, MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
 import { type ChatTab } from '@/components/tab-bar'
 import { ChatSidebarHeader } from '@/components/chat-sidebar-header'
 import { ChatSidebarInputPanels } from '@/components/chat-sidebar-input-panels'
@@ -25,6 +26,7 @@ import {
   type PermissionResponse,
   createEmptyChatTabViewState,
   getProcessingStatusText,
+  getImageSearchCardData,
   getWebSearchCardData,
   isChatMessage,
   isContextCompactionItem,
@@ -36,7 +38,7 @@ import {
   toToolState,
 } from '@/lib/chat-conversation'
 
-const streamdownComponents = { pre: MarkdownPreOverride }
+const streamdownComponents = { pre: MarkdownPreOverride, img: MarkdownImageOverride }
 
 const MIN_WIDTH = 360
 const MAX_WIDTH = 1600
@@ -116,7 +118,6 @@ export function ChatSidebar({
   isChatTabProcessing,
   onSwitchChatTab,
   onCloseChatTab,
-  onNewChatTab: _onNewChatTab,
   onOpenFullScreen,
   conversation,
   currentAssistantMessage,
@@ -305,6 +306,19 @@ export function ChatSidebar({
     }
 
     if (isToolCall(item)) {
+      const imageSearchData = getImageSearchCardData(item)
+      if (imageSearchData) {
+        return (
+          <ImageSearchResult
+            key={item.id}
+            query={imageSearchData.query}
+            results={imageSearchData.results}
+            status={item.status}
+            error={imageSearchData.error}
+            filteredOut={imageSearchData.filteredOut}
+          />
+        )
+      }
       const webSearchData = getWebSearchCardData(item)
       if (webSearchData) {
         return (

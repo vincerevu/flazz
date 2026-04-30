@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getImageSearchCardData,
   groupConversationRenderBlocks,
   type ChatMessage,
   type ContextCompactionItem,
@@ -164,6 +165,66 @@ describe('groupConversationRenderBlocks', () => {
       'tool-2',
     ])
     expect(blocks.every((block) => block.kind === 'item')).toBe(true)
+  })
+})
+
+describe('getImageSearchCardData', () => {
+  it('normalizes image-search tool output for the thumbnail card', () => {
+    const tool = makeToolCall('tool-1', 'image-search', 'completed', 1000)
+    tool.input = { query: 'red lounge chair' }
+    tool.result = {
+      results: [
+        {
+          title: 'Red lounge chair',
+          imageUrl: 'https://images.example/chair.jpg',
+          thumbnailUrl: 'https://images.example/chair-thumb.jpg',
+          sourceUrl: 'https://example.com/chair',
+          width: 1200,
+          height: 800,
+          sourceDomain: 'example.com',
+        },
+        {
+          title: 'Missing URLs',
+        },
+      ],
+    }
+
+    expect(getImageSearchCardData(tool)).toEqual({
+      query: 'red lounge chair',
+      results: [
+        {
+          title: 'Red lounge chair',
+          imageUrl: 'https://images.example/chair.jpg',
+          thumbnailUrl: 'https://images.example/chair-thumb.jpg',
+          sourceUrl: 'https://example.com/chair',
+          width: 1200,
+          height: 800,
+          sourceDomain: 'example.com',
+        },
+      ],
+      error: undefined,
+      filteredOut: undefined,
+    })
+  })
+
+  it('preserves image-search errors for the custom card', () => {
+    const tool = makeToolCall('tool-1', 'image-search', 'error', 1000)
+    tool.input = '{"query":"desk setup"}'
+    tool.result = {
+      success: false,
+      error: 'DuckDuckGo Images request timed out',
+      filteredOut: {
+        watermarkedSource: 2,
+        duplicate: 1,
+      },
+    }
+
+    expect(getImageSearchCardData(tool)).toEqual({
+      query: 'desk setup',
+      results: [],
+      error: 'DuckDuckGo Images request timed out',
+      filteredOut: 3,
+    })
   })
 })
 

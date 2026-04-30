@@ -334,6 +334,24 @@ export type WebSearchCardData = {
   title?: string
 }
 
+export type ImageSearchCardResult = {
+  title: string
+  imageUrl: string
+  thumbnailUrl: string
+  sourceUrl: string
+  width?: number
+  height?: number
+  source?: string
+  sourceDomain?: string
+}
+
+export type ImageSearchCardData = {
+  query: string
+  results: ImageSearchCardResult[]
+  error?: string
+  filteredOut?: number
+}
+
 export const getWebSearchCardData = (tool: ToolCall): WebSearchCardData | null => {
   if (tool.name === 'web-search') {
     const input = normalizeToolInput(tool.input) as Record<string, unknown> | undefined
@@ -369,6 +387,37 @@ export const getWebSearchCardData = (tool: ToolCall): WebSearchCardData | null =
   }
 
   return null
+}
+
+const isImageSearchCardResult = (value: unknown): value is ImageSearchCardResult => {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.title === 'string' &&
+    typeof record.imageUrl === 'string' &&
+    typeof record.thumbnailUrl === 'string' &&
+    typeof record.sourceUrl === 'string'
+  )
+}
+
+export const getImageSearchCardData = (tool: ToolCall): ImageSearchCardData | null => {
+  if (tool.name !== 'image-search') return null
+
+  const input = normalizeToolInput(tool.input) as Record<string, unknown> | undefined
+  const result = tool.result as Record<string, unknown> | undefined
+  const rawResults = Array.isArray(result?.results) ? result.results : []
+  const filteredOut: number | undefined = result?.filteredOut && typeof result.filteredOut === 'object'
+    ? Object.values(result.filteredOut as Record<string, unknown>).reduce<number>((total, value) => (
+      typeof value === 'number' ? total + value : total
+    ), 0)
+    : undefined
+
+  return {
+    query: (input?.query as string) || '',
+    results: rawResults.filter(isImageSearchCardResult),
+    error: typeof result?.error === 'string' ? result.error : undefined,
+    filteredOut,
+  }
 }
 
 // Parse attached files from message content and return clean message + file paths.

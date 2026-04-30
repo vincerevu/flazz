@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import type { ViewState, MarkdownHistoryHandlers } from '../types'
+import { GRAPH_TAB_PATH, isGraphTabPath, type ViewState, type MarkdownHistoryHandlers } from '../types'
 import {
   rewriteWikiLinksForRenamedFileInMarkdown,
   getHeadingTitle,
@@ -12,7 +12,6 @@ import type { FileTab } from '@/components/tab-bar'
 import { stripMemoryPrefix, toMemoryPath, wikiLabel } from '@/lib/wiki-links'
 import { workspaceIpc } from '@/services/workspace-ipc'
 
-const GRAPH_TAB_PATH = '__Flazz_graph_view__'
 const untitledBaseName = 'untitled'
 
 function normalizeForCompare(value: string): string {
@@ -145,7 +144,7 @@ export function useFileEditor({
 
   // Load file content
   useEffect(() => {
-    if (!selectedPath) {
+    if (!selectedPath || isGraphTabPath(selectedPath)) {
       setFileContent('')
       setEditorContent('')
       editorContentRef.current = ''
@@ -348,7 +347,7 @@ export function useFileEditor({
 
   const closeFileTab = useCallback((tabId: string) => {
     const closingTab = fileTabs.find(t => t.id === tabId)
-    if (closingTab && !closingTab.path.includes('__Flazz_graph_view__')) {
+    if (closingTab && !isGraphTabPath(closingTab.path)) {
       removeEditorCacheForPath(closingTab.path)
       initialContentByPathRef.current.delete(closingTab.path)
       if (editorPathRef.current === closingTab.path) {
@@ -368,7 +367,7 @@ export function useFileEditor({
         const newIdx = Math.min(idx, next.length - 1)
         const newActiveTab = next[newIdx]
         setActiveFileTabId(newActiveTab.id)
-        if (newActiveTab.path.includes('__Flazz_graph_view__')) {
+        if (isGraphTabPath(newActiveTab.path)) {
           setSelectedPath(null)
         } else {
           setSelectedPath(newActiveTab.path)
@@ -395,7 +394,7 @@ export function useFileEditor({
 
     if (activeFileTabId && !options?.newTab) {
       const activeTab = fileTabs.find((tab) => tab.id === activeFileTabId)
-      if (activeTab && !activeTab.path.includes('__Flazz_graph_view__')) {
+      if (activeTab && !isGraphTabPath(activeTab.path)) {
         setFileTabs((prev) => prev.map((tab) => (
           tab.id === activeFileTabId ? { ...tab, path } : tab
         )))
