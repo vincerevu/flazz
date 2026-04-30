@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import PptxGenJS from 'pptxgenjs';
 import type {
   PresentationDomExportElement,
   PresentationDomExportRequest,
@@ -11,8 +11,7 @@ import { writeFile } from '../workspace/workspace.js';
 
 const SLIDE_WIDTH_INCHES = 10;
 const SLIDE_HEIGHT_INCHES = 5.625;
-const require = createRequire(import.meta.url);
-const PptxGenJS = require('pptxgenjs') as new () => PptxPresentation;
+const PptxPresentationCtor = PptxGenJS as unknown as new () => PptxPresentation;
 type PptxPresentation = {
   layout: string;
   author: string;
@@ -261,7 +260,7 @@ export async function exportDomPresentationToPptx(
 ): Promise<PresentationDomExportResponse> {
   assertPptxOutputPath(request.outputPath);
 
-  const pres = new PptxGenJS();
+  const pres = new PptxPresentationCtor();
   pres.layout = 'LAYOUT_16x9';
   pres.author = 'Flazz';
   pres.subject = request.title ?? path.basename(request.outputPath, '.pptx');
