@@ -332,7 +332,7 @@ export function PromptInputAttachment({
       <HoverCardTrigger asChild>
         <div
           className={cn(
-            "group relative flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md border border-border px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+            "group relative flex h-8 max-w-full cursor-pointer select-none items-center gap-1.5 overflow-hidden rounded-md border border-border px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
             className
           )}
           key={data.id}
@@ -356,7 +356,7 @@ export function PromptInputAttachment({
             </div>
             <Button
               aria-label="Remove attachment"
-              className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
+              className="absolute inset-0 flex size-5 cursor-pointer items-center justify-center rounded bg-background/95 p-0 opacity-0 shadow-none transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-destructive hover:text-destructive-foreground [&>svg]:size-3"
               onClick={(e) => {
                 e.stopPropagation();
                 attachments.remove(data.id);

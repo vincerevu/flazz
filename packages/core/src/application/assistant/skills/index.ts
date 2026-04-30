@@ -100,7 +100,7 @@ export const builtInSkillDefinitions: SkillDefinition[] = [
   {
     id: "web-search",
     title: "Web Search",
-    summary: "Searching the web or researching a topic. Guidance on when to use web-search vs research-search, and how many searches to do.",
+    summary: "Searching the web, image results, or researching a topic. Guidance on when to use web-search, image-search, or research-search, and how many searches to do.",
     content: webSearchSkill,
   },
   {

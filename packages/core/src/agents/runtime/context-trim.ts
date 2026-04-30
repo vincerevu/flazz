@@ -95,6 +95,7 @@ function classifyToolOutput(toolName: string, parsed: unknown, content: string):
   if ([
     "web-search",
     "research-search",
+    "image-search",
     "integration-listitemscompact",
     "integration-searchitemscompact",
     "workspace-search",

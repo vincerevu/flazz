@@ -23,8 +23,9 @@ export const memoryTools = {
       '  Examples: project conventions, workflow defaults, repository rules, integration behavior, tool quirks, environment facts, recurring procedures, learned fixes.\n' +
       '- Default to target="memory" unless the fact is clearly about the user as a person.\n\n' +
       'WHEN TO SAVE:\n' +
-      '- The user explicitly says to remember something.\n' +
+      '- The user explicitly says to remember something, using remember/save/note/store phrasing in any user language.\n' +
       '- The user corrects you in a way that should change future behavior.\n' +
+      '- The user states a stable future preference with phrasing such as from-now-on, next-time, default-behavior, preference, dislike, or prohibition statements in any user language.\n' +
       '- You learn a stable environment or project fact that will reduce future friction.\n' +
       '- You identify a durable workflow rule or operating preference that should be followed later.\n' +
       '- You discover a recurring constraint, integration quirk, or setup detail that is expensive to rediscover.\n\n' +
@@ -56,6 +57,11 @@ export const memoryTools = {
       '- add: create a new memory entry.\n' +
       '- replace: revise an existing entry identified by old_text.\n' +
       '- remove: delete an outdated entry identified by old_text.\n\n' +
+      'ROUTING PRIORITY:\n' +
+      '- For remember-only messages, call this tool and stop. Do not reinterpret the same message as a request to browse, search images, regenerate slides, create files, or continue a previous task unless the user explicitly asks for that action too.\n' +
+      '- For mixed messages that contain both a durable preference and an explicit task, save the preference first, then perform only the requested task.\n' +
+      '- Domain keywords inside a preference, such as "slide", "image", "email", "GitHub", or "search", are not enough to trigger those tools by themselves.\n' +
+      '- Example: A remember-only preference about vivid illustrative images in slide decks should save a user preference, not call image-search.\n\n' +
       'EXAMPLES:\n' +
       '- "The user prefers concise answers." -> target="user"\n' +
       '- "For morning GitHub updates, check assigned issues and pull requests before notifications." -> target="memory"\n' +

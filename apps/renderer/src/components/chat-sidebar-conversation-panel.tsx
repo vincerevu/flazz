@@ -22,9 +22,9 @@ import {
   type ConversationItem,
   type PermissionResponse,
 } from '@/lib/chat-conversation'
-import { MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
+import { MarkdownImageOverride, MarkdownPreOverride } from '@/components/ai-elements/markdown-code-override'
 
-const streamdownComponents = { pre: MarkdownPreOverride }
+const streamdownComponents = { pre: MarkdownPreOverride, img: MarkdownImageOverride }
 
 type RenderConversationItem = (item: ConversationItem, tabId: string) => React.ReactNode
 
